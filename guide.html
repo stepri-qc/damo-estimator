@@ -1,0 +1,605 @@
+<title>DAMO Estimator &mdash; User Guide</title>
+<style>
+:root{
+  --paper:#EDEEEA; --surface:#F6F7F4; --sunken:#E3E5DF;
+  --ink:#171A1F; --ink-2:#464C55; --ink-3:#6E747E;
+  --rule:#CBCEC6; --rule-2:#DCDED7;
+  --accent:#1F5C8B; --accent-soft:#DCE6EE; --accent-ink:#12405F; --on-accent:#FFFFFF;
+  --compute:#6D5BD0; --compute-soft:#E5E1F7; --compute-ink:#4A3B9B;
+  --crit:#B42318; --warn:#B54708; --good:#0F7B4F;
+  --crit-soft:#F7E0DD; --warn-soft:#F8E7D6; --good-soft:#D9EFE4;
+  --display:"Iowan Old Style",Charter,"Palatino Linotype",Palatino,Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --r:3px; color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#101317; --surface:#171B20; --sunken:#0B0E11;
+  --ink:#E4E6E3; --ink-2:#A2A8B0; --ink-3:#767D87;
+  --rule:#2A3037; --rule-2:#212730;
+  --accent:#6FA8D4; --accent-soft:#1A2A38; --accent-ink:#9CC6E6; --on-accent:#0B0E11;
+  --compute:#A594F0; --compute-soft:#241F3D; --compute-ink:#BFB2FA;
+  --crit:#F0776B; --warn:#E0A063; --good:#5FC79A;
+  --crit-soft:#2E1917; --warn-soft:#2C2113; --good-soft:#12291F;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#101317; --surface:#171B20; --sunken:#0B0E11;
+  --ink:#E4E6E3; --ink-2:#A2A8B0; --ink-3:#767D87;
+  --rule:#2A3037; --rule-2:#212730;
+  --accent:#6FA8D4; --accent-soft:#1A2A38; --accent-ink:#9CC6E6; --on-accent:#0B0E11;
+  --compute:#A594F0; --compute-soft:#241F3D; --compute-ink:#BFB2FA;
+  --crit:#F0776B; --warn:#E0A063; --good:#5FC79A;
+  --crit-soft:#2E1917; --warn-soft:#2C2113; --good-soft:#12291F;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --paper:#EDEEEA; --surface:#F6F7F4; --sunken:#E3E5DF;
+  --ink:#171A1F; --ink-2:#464C55; --ink-3:#6E747E;
+  --rule:#CBCEC6; --rule-2:#DCDED7;
+  --accent:#1F5C8B; --accent-soft:#DCE6EE; --accent-ink:#12405F; --on-accent:#FFFFFF;
+  --compute:#6D5BD0; --compute-soft:#E5E1F7; --compute-ink:#4A3B9B;
+  --crit:#B42318; --warn:#B54708; --good:#0F7B4F;
+  --crit-soft:#F7E0DD; --warn-soft:#F8E7D6; --good-soft:#D9EFE4;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance;letter-spacing:-.01em}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+table{color:var(--ink)}
+
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px 100px;display:grid;grid-template-columns:196px minmax(0,1fr);gap:40px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;gap:0}}
+
+.hero{border-bottom:1px solid var(--rule);background:var(--surface);margin-bottom:36px}
+.hero .inner{max-width:1160px;margin:0 auto;padding:44px 24px 34px}
+.hero .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+.hero h1{font-size:clamp(30px,5vw,46px);line-height:1.06;max-width:17ch}
+.hero p{max-width:62ch;color:var(--ink-2);font-size:16.5px;margin:16px 0 0}
+.hero .btns{display:flex;gap:9px;margin-top:24px;flex-wrap:wrap}
+
+nav.toc{position:sticky;top:24px;font-size:13px;line-height:1.45}
+@media (max-width:900px){nav.toc{position:static;margin-bottom:30px;padding-bottom:20px;border-bottom:1px solid var(--rule)}}
+nav.toc .t{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+nav.toc a{display:block;padding:4px 0 4px 11px;border-left:2px solid var(--rule-2);color:var(--ink-2);text-decoration:none}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+
+section{margin-bottom:52px;scroll-margin-top:24px}
+section>h2{font-size:26px;margin-bottom:6px}
+section>.lede{color:var(--ink-2);max-width:64ch;margin:0 0 22px}
+h3{font-size:17px;margin:28px 0 8px}
+p{max-width:66ch}
+ul,ol{max-width:66ch;padding-left:20px}
+li{margin:5px 0}
+code{font-family:var(--mono);font-size:.88em;background:var(--sunken);padding:1px 5px;border-radius:2px}
+
+.steps{counter-reset:s;display:flex;flex-direction:column;gap:2px;margin:20px 0}
+.step{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule-2)}
+.step::before{content:counter(s);font-family:var(--mono);font-size:13px;font-weight:700;color:var(--on-accent);background:var(--accent);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.step h4{font-size:15px;margin-bottom:3px}
+.step p{margin:0;font-size:14px;color:var(--ink-2)}
+
+.demo{border:1px solid var(--accent);border-radius:var(--r);background:var(--surface);margin:22px 0;overflow:hidden}
+.demo>header{padding:10px 16px;background:var(--accent-soft);border-bottom:1px solid var(--accent);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.demo>header h4{font-size:14.5px;color:var(--accent-ink)}
+.demo>header .tag{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-ink);opacity:.75}
+.demo .body{padding:16px;display:grid;grid-template-columns:250px minmax(0,1fr);gap:22px}
+@media (max-width:760px){.demo .body{grid-template-columns:1fr}}
+.ctrl{display:flex;flex-direction:column;gap:12px}
+.ctrl label{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:650;display:flex;justify-content:space-between;gap:8px}
+.ctrl label b{font-family:var(--mono);color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.ctrl input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.out{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r);padding:14px}
+
+.flow{display:flex;flex-direction:column;gap:9px}
+.frow{display:grid;grid-template-columns:82px 1fr 116px;align-items:center;gap:10px}
+.frow .k{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);font-weight:650}
+.frow .track{height:22px;background:var(--sunken);border-radius:2px;overflow:hidden;position:relative}
+.frow .track i{display:block;height:100%;background:var(--accent)}
+.frow .v{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.frow .v small{color:var(--ink-3)}
+.tot{border-top:1px solid var(--rule);margin-top:6px;padding-top:9px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+
+.scenbox{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+.scenbox button{border:1px solid var(--rule);background:var(--paper);color:var(--ink-2);border-radius:var(--r);padding:8px;cursor:pointer;font-size:12.5px;text-align:left}
+.scenbox button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.scengrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:600px){.scengrid{grid-template-columns:1fr}}
+.scencell{border:1px solid var(--rule-2);border-radius:var(--r);padding:9px 11px;font-size:12.5px}
+.scencell .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:650}
+.scencell .v{font-family:var(--mono);font-size:13px}
+
+.pill{display:inline-flex;align-items:center;border-radius:100px;padding:2px 10px;font-size:11px;font-weight:650;border:1px solid transparent;font-family:var(--mono);letter-spacing:.03em}
+.pill.acc{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
+.pill.good{background:var(--good-soft);color:var(--good);border-color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.pill.crit{background:var(--crit-soft);color:var(--crit);border-color:var(--crit)}
+.pill.cmp{background:var(--compute-soft);color:var(--compute-ink);border-color:var(--compute)}
+
+.callout{border-left:2px solid var(--accent);background:var(--accent-soft);padding:12px 15px;border-radius:0 var(--r) var(--r) 0;margin:18px 0;max-width:70ch}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.callout.crit{border-left-color:var(--crit);background:var(--crit-soft)}
+.callout.cmp{border-left-color:var(--compute);background:var(--compute-soft)}
+.callout p{margin:0}
+.callout p+p{margin-top:8px}
+
+.tablewrap{overflow-x:auto;margin:16px 0}
+table.ref{border-collapse:collapse;width:100%;font-size:13.5px}
+table.ref th,table.ref td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule-2);vertical-align:top}
+table.ref thead th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:650;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.ref td:first-child{font-weight:600;white-space:nowrap}
+table.ref tbody tr:hover{background:var(--sunken)}
+
+dl.gloss{margin:0}
+dl.gloss>div{padding:11px 0;border-bottom:1px solid var(--rule-2);display:grid;grid-template-columns:214px minmax(0,1fr);gap:18px}
+@media (max-width:640px){dl.gloss>div{grid-template-columns:1fr;gap:2px}}
+dl.gloss dt{font-weight:650}
+dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
+
+.btn{border:1px solid var(--rule);background:var(--paper);color:var(--ink);border-radius:var(--r);padding:8px 14px;cursor:pointer;font-size:13.5px;text-decoration:none;display:inline-block}
+.btn:hover{border-color:var(--ink-3);background:var(--sunken)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.mini{font-size:12.5px;color:var(--ink-3)}
+</style>
+
+<header class="hero">
+  <div class="inner">
+    <p class="eyebrow">DAMO Managed Services &middot; User Guide</p>
+    <h1>How to size a managed-services bid with the DAMO Estimator</h1>
+    <p>A working guide to the tool: what each input drives, how the framework's arithmetic actually behaves, and the four places where a careless estimate goes wrong. The demos below are live &mdash; drag them.</p>
+    <div class="btns">
+      <a class="btn primary" href="/">Open the estimator</a>
+      <button class="btn" type="button" id="btnTheme">Switch theme</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" id="toc">
+    <p class="t">Contents</p>
+    <a href="#start">Start here</a>
+    <a href="#intake">Starting from an RFP</a>
+    <a href="#cascade">The cascade</a>
+    <a href="#scenario">Picking a scenario</a>
+    <a href="#breakeven">AIOps break-even</a>
+    <a href="#inputs">Input reference</a>
+    <a href="#outputs">Reading the outputs</a>
+    <a href="#resp">Who provides what</a>
+    <a href="#roles">Roles &amp; grades</a>
+    <a href="#policy">Role policy</a>
+    <a href="#location">Delivery location</a>
+    <a href="#gotchas">Five traps</a>
+    <a href="#glossary">Glossary</a>
+  </nav>
+
+  <main>
+
+  <section id="start">
+    <h2>Start here</h2>
+    <p class="lede">Six steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
+    <div class="steps">
+      <div class="step"><div><h4>Set the engagement</h4><p>Term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out. These four choices alone select the scenario &mdash; and with it your contingency, team shape, AIOps timing and savings target.</p></div></div>
+      <div class="step"><div><h4>Pick the service mix</h4><p>Click <b>AMS</b>, <b>IMS</b> and/or <b>DMS</b> at the top of Service towers to say what you are proposing &mdash; any combination works. Use <b>+ Add another tower</b> only when one line needs more than one tower, such as separate estates on different SLAs. Then set who provides L1, L2 and L3 for each.</p></div></div>
+      <div class="step"><div><h4>Enter demand</h4><p>Incident history if you have it. If you do not, switch the tower to <b>Complexity</b> (apps by S/M/L/XL/XXL) or <b>MAU</b>. The tool handles all four scenarios, not just the ones with data.</p></div></div>
+      <div class="step"><div><h4>Set SLAs and coverage</h4><p>P1 response under 15 minutes adds 25% to L2/L3 staffing. Coverage window sets a headcount <em>floor</em> through the shift maths &mdash; often the binding constraint, not the ticket volume.</p></div></div>
+      <div class="step"><div><h4>Score confidence and risk</h4><p>Nine drivers, nine risk categories. This is not decoration: the effective score sets your contingency posture <em>and</em> widens the Monte Carlo bands.</p></div></div>
+      <div class="step"><div><h4>Export the register</h4><p>Copy the auto-composed assumptions, exclusions, volume-band clause and risk log straight into the proposal annex. Then run <b>Verify against framework</b> in front of the client if you want to show your working.</p></div></div>
+    </div>
+  </section>
+
+  <section id="intake">
+    <h2>Starting from an RFP</h2>
+    <p class="lede">On a fresh visit the tool opens on an intake screen instead of the dashboard &mdash; add the RFP, an incident-history sheet, anything relevant, and let it pre-fill what it can before you touch the rail. Also reachable any time via <b>Start from RFP</b> in the masthead.</p>
+
+    <div class="steps">
+      <div class="step"><div><h4>Add one or more documents</h4><p>Paste text, or upload real files &mdash; <b>.docx</b>, <b>.pdf</b>, <b>.xlsx</b>, <b>.txt</b>, <b>.md</b> are all supported natively. Add a second, third document (the RFP, a separate incident-history workbook, an SLA sheet) and they combine into a single pass rather than needing to be merged by hand.</p></div></div>
+      <div class="step"><div><h4>Detect inputs</h4><p>A pattern-matching engine scans the combined text for contract term, which of AMS/IMS/DMS are mentioned, incident volume, P1&ndash;P4 SLAs and mix, coverage window, AIOps intent, MAU and tier ownership. Every match shows the exact text it came from &mdash; check it, do not just trust it.</p></div></div>
+      <div class="step"><div><h4>Continue, or fix what is missing</h4><p>Whatever was found pre-fills the estimator; whatever was not is simply left at default, editable in the rail exactly as normal. There is no separate gap-filling screen because the rail already is that screen.</p></div></div>
+    </div>
+
+    <div class="callout">
+      <p><b>This is pattern-matching, not comprehension.</b> A published Artifact has no runtime AI access &mdash; there is no way for this page to actually read and understand a document the way a chat turn with Claude can. So <em>Detect inputs</em> is regex over known DAMO phrasing (&ldquo;P1 response within 15 minutes&rdquo;, &ldquo;24x7 coverage&rdquo;), not an AI summary. It will miss anything phrased unusually, and it will occasionally match the wrong sentence &mdash; that is exactly why every hit shows its source excerpt.</p>
+    </div>
+
+    <h3>Incident-history spreadsheets are read as tables, not prose</h3>
+    <p>A cell reading <code>P1, 20, 15, 120</code> does not match a sentence-shaped regex. Upload an incident-history workbook and the tool instead looks for a header row (a priority/severity column plus incident-count and response/resolution-SLA columns) and reads the data rows directly &mdash; aggregate volume, per-priority SLA in minutes, a derived mix. When both a spreadsheet and prose text mention the same field, the tabular figure wins: structured data beats a regex guess.</p>
+
+    <h3>For a real AI summary, hand it to Claude</h3>
+    <p>The intake screen's <b>Import Claude-prepared inputs</b> panel has a <b>Copy prompt for Claude</b> button. One click copies instructions, the target JSON schema and the document text you have entered into your clipboard &mdash; paste that into a fresh Claude conversation, and you get back a genuine narrative summary plus the same structured fields, written by an actual model reading the actual document. Paste the JSON it returns into the box below and hit <b>Apply prepared inputs</b>. The summary lands as a <b>Document Summary</b> card at the top of the dashboard, and flows into the exported register and the printed SA report.</p>
+  </section>
+
+  <section id="cascade">
+    <h2>The cascade &mdash; the one thing to get right</h2>
+    <p class="lede">Tiering is a cascade, not a partition. This trips up most hand-built estimates, and the framework's own page-3 illustration settles it.</p>
+    <p>100 tickets arrive at L1. Only the <b>30 resolved there</b> consume L1 effort. The 70 that pass through consume <b>3 hours each at L2 &mdash; all 70</b>, including the ones that later escalate. Then 20% of those 70 escalate to L3 and consume 10 hours each <b>on top of</b> their L2 hours.</p>
+
+    <div class="demo">
+      <header><h4>Live: effort cascade</h4><span class="tag">drag to explore</span><span style="flex:1"></span><button class="btn" type="button" id="btnFw" style="padding:4px 10px;font-size:12px">Reset to framework example</button></header>
+      <div class="body">
+        <div class="ctrl">
+          <div><label>Tickets / month <b id="lv">100</b></label><input type="range" id="rv" min="20" max="600" step="10" value="100"></div>
+          <div><label>L1 &rarr; L2 pass-through <b id="l12">70%</b></label><input type="range" id="r12" min="30" max="95" step="1" value="70"></div>
+          <div><label>L2 &rarr; L3 escalation <b id="l23">20%</b></label><input type="range" id="r23" min="2" max="50" step="1" value="20"></div>
+          <div><label>L2 ARE, hours <b id="la2">3.0</b></label><input type="range" id="ra2" min="1" max="6" step="0.5" value="3"></div>
+          <div><label>L3 ARE, hours <b id="la3">10.0</b></label><input type="range" id="ra3" min="4" max="16" step="0.5" value="10"></div>
+          <div><label>Non-ticketing B <b id="lb">25%</b></label><input type="range" id="rb" min="15" max="40" step="1" value="25"></div>
+        </div>
+        <div class="out">
+          <div class="flow" id="flow"></div>
+          <div class="tot"><span>Base FTE</span><span id="fte">3.3</span></div>
+          <p class="mini" id="fwnote" style="margin:10px 0 0"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p><b>Why it matters commercially.</b> Because L3 hours are additive and L3 ARE is 8&ndash;12 hours, a small shift in the escalation rate moves the estimate far more than a large shift in ticket volume. Drag <em>L2 &rarr; L3</em> from 20% to 30% and watch. That is why the framework prices a higher Y1 escalation assumption as a risk mitigation, and why "reduce escalations" beats "reduce tickets" as an AIOps target.</p>
+    </div>
+  </section>
+
+  <section id="scenario">
+    <h2>Picking a scenario</h2>
+    <p class="lede">Two questions decide it: does the client have usable volumetrics, and are they already doing anything with AI? Everything downstream follows.</p>
+    <div class="demo">
+      <header><h4>Live: scenario selector</h4><span class="tag">click both rows</span></header>
+      <div class="body">
+        <div class="ctrl">
+          <div><label style="margin-bottom:6px">Client AI maturity</label>
+            <div class="scenbox"><button type="button" data-ai="low" aria-pressed="true">Low</button><button type="button" data-ai="moderate" aria-pressed="false">Moderate</button></div></div>
+          <div><label style="margin-bottom:6px">Historical volumetrics</label>
+            <div class="scenbox"><button type="button" data-vol="no" aria-pressed="true">Not available</button><button type="button" data-vol="yes" aria-pressed="false">Available</button></div></div>
+          <p class="mini" style="margin:0">Volumetric availability is the single largest confidence differentiator in the framework &mdash; it outweighs AI maturity.</p>
+        </div>
+        <div class="out">
+          <h4 style="font-size:16px;margin-bottom:10px" id="scTitle"></h4>
+          <div class="scengrid" id="scGrid"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="breakeven">
+    <h2>AIOps break-even</h2>
+    <p class="lede">An embedded AIOps engineer is added headcount. Below a threshold, adding AIOps makes the team <em>bigger</em>. Know where that threshold sits before you promise savings.</p>
+    <p>At a ratio of 1:<i>r</i>, AIOps adds <code>1/r</code> to the team. The team only shrinks once deflection <i>d</i> satisfies <code>(1 &minus; d)(1 + 1/r) &lt; 1</code>, which solves to <code>d &gt; 1/(r + 1)</code>.</p>
+    <div class="demo">
+      <header><h4>Live: does the team actually shrink?</h4><span class="tag">drag both</span></header>
+      <div class="body">
+        <div class="ctrl">
+          <div><label>AIOps ratio 1 : <b id="lr">4</b></label><input type="range" id="rr" min="3" max="12" step="1" value="4"></div>
+          <div><label>Deflection achieved <b id="ld">14%</b></label><input type="range" id="rd" min="0" max="65" step="1" value="14"></div>
+          <div><label>Delivery FTE before AIOps <b id="lp">18.7</b></label><input type="range" id="rp" min="4" max="60" step="0.5" value="18.7"></div>
+        </div>
+        <div class="out">
+          <div class="scengrid">
+            <div class="scencell"><div class="k">Break-even deflection</div><div class="v" id="beV"></div></div>
+            <div class="scencell"><div class="k">Verdict</div><div class="v" id="beVerdict"></div></div>
+            <div class="scencell"><div class="k">Team without AIOps</div><div class="v" id="beNo"></div></div>
+            <div class="scencell"><div class="k">Team with AIOps</div><div class="v" id="beYes"></div></div>
+          </div>
+          <p class="mini" id="beNote" style="margin:12px 0 0"></p>
+        </div>
+      </div>
+    </div>
+    <div class="callout warn">
+      <p><b>The Scenario 3 trap.</b> In Scenario 3 the AIOps engineers arrive in Y1 but deflection does not start until Y2. So Y1 is <em>larger</em> with AIOps than without. That is a real investment year, and it is far better to say so in the proposal than to let the client discover it in the first QBR.</p>
+    </div>
+  </section>
+
+  <section id="inputs">
+    <h2>Input reference</h2>
+    <p class="lede">What each control actually drives, and where the default comes from.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Input</th><th>Drives</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>Service mix</td><td>Which of AMS, IMS and DMS are in the proposal. Each line brings its own ARE multipliers, B-factor, automation ceiling and role set.</td><td>Client requirement</td></tr>
+        <tr><td>Term</td><td>Number of years modelled; how far the productivity curve compounds. Y4&ndash;Y5 extend the Y3+ benchmarks.</td><td>Client requirement</td></tr>
+        <tr><td>Client AI maturity</td><td>Half of scenario selection. Sets AIOps ratio (1:4 low, 1:8 moderate) and whether AIOps starts in Y1 or Y2.</td><td>[F] Part 2</td></tr>
+        <tr><td>Volumetrics</td><td>The other half. Available &rarr; bottom-up sizing and higher confidence; not available &rarr; proxy sizing and maximum contingency.</td><td>[F] Part 2</td></tr>
+        <tr><td>Estate profile</td><td>Non-ticketing B-factor: 20&ndash;25% for modern custom/SaaS, 30&ndash;35% for complex legacy.</td><td>[F] 1.1</td></tr>
+        <tr><td>Demand basis</td><td>History, complexity proxy (3&ndash;5 to 40&ndash;60 tickets/app/month by size), or MAU &times; 0.5&ndash;2%.</td><td>[F] Sc.1 Steps 1&ndash;2</td></tr>
+        <tr><td>Severity mix</td><td>Through the P1&ndash;P4 matrix, where volume <em>enters</em> the stack. P1 mostly bypasses L1 into L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>SLA response / restore</td><td>P1 response &le;15 min adds 25% to L2/L3 effort; &le;30 min adds 12%. P1 restore &le;2 h adds 10% on L3. Capped at +40%.</td><td>[F] Sc.3 Step 2</td></tr>
+        <tr><td>Availability target</td><td>&ge;99.9% adds a further 10% to L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Existing automation</td><td>Deflates raw volume before sizing: 20&ndash;30% coverage &rarr; &minus;15&ndash;20%; 30&ndash;50% &rarr; &minus;20&ndash;30%.</td><td>[F] Sc.2 Step 2</td></tr>
+        <tr><td>Coverage window</td><td>Shift maths: <code>(shifts/wk &times; per-shift) / 5</code>. Acts as a headcount <b>floor</b>, not an addition.</td><td>[F] p3</td></tr>
+        <tr><td>Shared roster</td><td>Whether towers share one follow-the-sun rota or each runs its own. Materially cheaper when shared.</td><td>Engagement design</td></tr>
+        <tr><td>Productivity curve</td><td>Scenario YoY targets (conservative) or the 18%&rarr;65% cumulative template (stretch). The two do not reconcile &mdash; pick deliberately.</td><td>[F] Part 3 vs Sc.3</td></tr>
+        <tr><td>Confidence &amp; risk</td><td>Contingency posture, commercial recommendation, and the width of the Monte Carlo bands.</td><td>[F] Annexures 1&ndash;2</td></tr>
+        <tr><td>Role weights</td><td>How tier headcount is distributed across whichever roles you have switched on.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>SRE is the objective</td><td>IMS towers only. Off: SRE is not a candidate at all. On: SRE and Infrastructure Engineer both staff IMS L3, weighted 1.8&times; / 0.5&times;.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Delivery region</td><td>IME: shown as 100% India. Europe: unlocks the onshore/nearshore/offshore mix, applied uniformly to every role's headcount.</td><td>Engagement design</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="outputs">
+    <h2>Reading the outputs</h2>
+    <p class="lede">What each results card is for, and the one number to look at first.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Card</th><th>Look at</th></tr></thead>
+      <tbody>
+        <tr><td>Scenario posture</td><td>Your commercial recommendation and volume-band requirement. Take this to the pricing conversation before you take numbers.</td></tr>
+        <tr><td>Year by year</td><td>The <code>Base FTE</code> column with a <span class="pill acc">cover</span> flag &mdash; it means the support window, not demand, is setting your headcount.</td></tr>
+        <tr><td>FTE trajectory</td><td>The gap between the solid line and the dashed baseline. If they touch, AIOps is not paying for itself yet.</td></tr>
+        <tr><td>Traditional vs AI-driven</td><td>The break-even callout. It tells you whether the savings story survives contact with the AIOps ratio.</td></tr>
+        <tr><td>Team shape</td><td>The progression pyramid &rarr; diamond &rarr; inverted across years, and the AIOps band in violet.</td></tr>
+        <tr><td>Role &amp; grade staffing plan</td><td>Lead share by year. This is the seniority narrative in your own grade ladder.</td></tr>
+        <tr><td>Delivery location mix</td><td>The onshore/nearshore/offshore split for Europe deals &mdash; who sits where, for team-loading. IME just confirms India.</td></tr>
+        <tr><td>O1 portfolio</td><td>Which AIOps use cases are funded in which year, and what did <em>not</em> make the capacity cut.</td></tr>
+        <tr><td>O2 rostering</td><td>Rostered FTE against the analytic lower bound. A gap means rounding waste from unshareable time blocks.</td></tr>
+        <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
+        <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
+        <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
+        <tr><td>Verify against framework</td><td>26 checks reproducing worked examples from the source documents. Run it in front of a sceptical client.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="resp">
+    <h2>Who provides what</h2>
+    <p class="lede">Declare who runs each tier &mdash; us, the customer, another vendor or the product team. Only tiers marked DAMO are sized.</p>
+    <p>Set it per tower, or use a preset to apply one shape across the whole deal:</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Preset</th><th>L1</th><th>L2</th><th>L3</th></tr></thead>
+      <tbody>
+        <tr><td>Full stack</td><td>DAMO</td><td>DAMO</td><td>DAMO</td></tr>
+        <tr><td>L1 customer</td><td>Customer</td><td>DAMO</td><td>DAMO</td></tr>
+        <tr><td>L1+L2 customer</td><td>Customer</td><td>Customer</td><td>DAMO</td></tr>
+        <tr><td>L1 cust, L2 us, L3 prod</td><td>Customer</td><td>DAMO</td><td>Product team</td></tr>
+        <tr><td>L1 vendor</td><td>Other vendor</td><td>DAMO</td><td>DAMO</td></tr>
+      </tbody>
+    </table></div>
+    <h3>What changes downstream</h3>
+    <ul>
+      <li>Tiers we do not provide carry <b>no effort, no headcount and no roles</b> &mdash; but volume still cascades through them.</li>
+      <li>Team-shape splits <b>renormalise</b> over the tiers we do provide, so a "customer keeps L1" deal never staffs phantom L1 people.</li>
+      <li>AIOps use cases deflecting a tier we do not own drop out of the O1 portfolio. The client may benefit; they buy <em>us</em> no headcount.</li>
+      <li>The rostered coverage floor only applies where we hold a front-line tier. As the L3 escalation party only, coverage is on-call, not a rota.</li>
+      <li>Every adjacent tier pair under different ownership adds a coordination uplift to our ticketing effort.</li>
+    </ul>
+    <div class="callout warn">
+      <p><b>You do not control your own inflow.</b> If another party runs L1, <em>their</em> resolution rate sets your L2 volume. The estimate assumes the benchmark 70% pass-through &mdash; if the incumbent under-performs it, your volume rises with no contractual trigger. A volume-band clause will not protect you. Ask for a <b>pass-through band</b> as well.</p>
+    </div>
+  </section>
+
+  <section id="roles">
+    <h2>Roles &amp; grades</h2>
+    <p class="lede">Only nine roles are on by default &mdash; a deliberate, narrow list, not a weighted contest across the full 37.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Tower</th><th>L1</th><th>L2</th><th>L3</th></tr></thead>
+      <tbody>
+        <tr><td>AMS</td><td>Product Support Engineer</td><td><b>Systems Support Engineer</b></td><td><b>SSE</b> below the evolution threshold, <b>Developer</b> at or above it</td></tr>
+        <tr><td>IMS</td><td>Product Support Engineer</td><td><b>Infrastructure Support Engineer</b></td><td><b>Infrastructure Engineer</b>, plus <b>SRE</b> only if named the objective</td></tr>
+        <tr><td>DMS</td><td>Product Support Engineer</td><td><b>Data Engineer</b> (spans L2 and L3)</td><td><b>Data Engineer</b> (spans L2 and L3)</td></tr>
+      </tbody>
+    </table></div>
+    <p>Plus <b>Machine Learning Engineer</b> for AIOps, and <b>Service Delivery Manager</b> as the only governance role, present on every engagement &mdash; every other governance role (Delivery Principal, Solution Architect, Enterprise Architect, Data Architect, and the rest of the 37) is off by default.</p>
+    <p>For most tiers there's exactly one eligible candidate, so it automatically takes 100% of that tier's headcount. The full catalogue is still there in <b>Roles &amp; grades</b> &mdash; switch on whatever a specific deal genuinely needs (a Data Scientist for an ML-heavy DMS engagement, say). Off-by-default is a starting posture, not a ceiling.</p>
+    <div class="callout">
+      <p><b>The inverted pyramid is a grade story.</b> Every role splits <b>Lead : Senior : Consultant</b> at a proper pyramid ratio of <b>1 : 2 : 4</b> &mdash; no Principal grade, rarely used here. As automation strips the Consultant-heavy L1 base over the engagement, the Lead share of a shrinking team rises. The staffing card shows that movement year by year in your own ladder.</p>
+    </div>
+    <p class="mini"><b>Service Delivery Manager is graded wholly Lead</b>, not split &mdash; the one deliberate exception to the uniform 1:2:4 ratio, and it falls out for free since SDM is the sole role left in governance.</p>
+  </section>
+
+  <section id="policy">
+    <h2>Manual-estimation role policy</h2>
+    <p class="lede">Two roles are <b>genuinely gated in or out</b>, not just down-weighted &mdash; if they're not eligible, they aren't candidates at all.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Input</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td>SRE is the client's named objective <span class="mini">(IMS towers only)</span></td><td>Unchecked: Infrastructure Engineer covers 100% of IMS L3, SRE is not a candidate at all. Checked: both are candidates, weighted 1.8&times; SRE to 0.5&times; Infrastructure Engineer &mdash; their combined headcount stays unchanged, this reallocates within the pool rather than adding people.</td></tr>
+        <tr><td>Evolution work expected, % <span class="mini">(AMS towers only)</span></td><td>Below the threshold (default 30%): Systems Support Engineer covers AMS L3 as well as L2 &mdash; "SSEs are capable of doing the minor enhancements." At or above it: Developer takes over L3 and SSE drops back to L2 only. Exactly one is ever eligible, never both.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn">
+      <p><b>SRE can only be used with IMS.</b> The restriction sits at the role's tower eligibility, not just the checkbox &mdash; even switching SRE on and setting the flag for an AMS or DMS tower produces zero SRE headcount there. That's why the checkbox itself only appears on IMS tower cards, and the evolution input only appears on AMS ones.</p>
+    </div>
+    <p>Data Engineer is the one role that spans <b>both</b> the L2 and L3 headcount pools for DMS, reflecting "we use Data Engineer for L2/L3" &mdash; every other on-by-default role draws from exactly one tier.</p>
+    <p>A mixed AMS+IMS deal loads both towers' roles independently and at the same time &mdash; SSE from the AMS slice, Infrastructure Support Engineer from the IMS slice &mdash; since each tower resolves against its own headcount share, not a deal-wide blend.</p>
+    <p class="mini">SDM ratio defaults to 1:8, the manual-estimation convention, replacing the framework's vaguer 1:8&ndash;10 range.</p>
+  </section>
+
+  <section id="location">
+    <h2>Delivery location</h2>
+    <p class="lede">A third split, independent of role and grade &mdash; <b>where</b> the team sits. Purely informational: it never changes total FTE, role selection or grade mix.</p>
+    <p>Set <b>Region</b> under Engagement:</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Region</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>IME</td><td>The whole team is shown as delivered from <b>India</b>. No further configuration &mdash; the Delivery location mix card just states it.</td></tr>
+        <tr><td>Europe</td><td>A percentage table appears: <b>Onshore (Europe)</b> / <b>Nearshore (Romania)</b> / <b>Offshore (India)</b>, entered as location and percentage in two columns.</td></tr>
+      </tbody>
+    </table></div>
+    <h3>Four quick presets for Europe</h3>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Preset</th><th>Onshore</th><th>Nearshore</th><th>Offshore</th></tr></thead>
+      <tbody>
+        <tr><td>Offshore only</td><td>0%</td><td>0%</td><td>100%</td></tr>
+        <tr><td>Nearshore + Offshore</td><td>0%</td><td>40%</td><td>60%</td></tr>
+        <tr><td>Onshore + Offshore</td><td>30%</td><td>0%</td><td>70%</td></tr>
+        <tr><td>Onshore + Nearshore + Offshore</td><td>20%</td><td>30%</td><td>50%</td></tr>
+      </tbody>
+    </table></div>
+    <p>Type directly into the percentage cells for anything else. A live hint flags when the three don't sum to 100% &mdash; the split still <b>normalises proportionally</b> rather than dropping or inventing headcount, so the numbers stay correct mid-edit, but a clean 100% is what makes the exported register read well.</p>
+    <div class="callout warn">
+      <p><b>The split is uniform, not per-role.</b> Every role's Year 1 FTE gets the same percentage split &mdash; a Developer at 20/30/50 lands at those same three shares, and so does everyone else. It does not pin specific roles to specific locations. A "Developers from Romania, everyone else from India" pattern is achieved by shaping the overall percentages to roughly match that mix, not by assigning Developer to nearshore directly. If you need true per-role location pinning, that's a follow-up, not something the current mix does.</p>
+    </div>
+  </section>
+
+  <section id="gotchas">
+    <h2>Five traps</h2>
+    <p class="lede">Things the tool surfaces that a hand-built estimate will miss.</p>
+
+    <h3>1. Annexure 2 does not add up</h3>
+    <p>The worked risk-drag example lists nine weighted values summing to <b>14.25</b>, but the total row prints <b>15.3</b>. The band conclusion (Medium) survives either way, so nothing downstream breaks &mdash; but if you reproduce the published total you will not match your own rows. The tool sums the rows.</p>
+
+    <h3>2. Coverage usually beats demand</h3>
+    <p>A 24&times;7 window at 2 per shift needs <code>(21 &times; 2) / 5 = 8.4</code> FTE regardless of ticket volume. For small estates that floor is the entire estimate. When the tool flags <span class="pill acc">cover</span>, negotiating the support window will move the price far more than negotiating volume.</p>
+
+    <h3>3. Effort-based sizing says you need almost no L1</h3>
+    <p>Because L1 ARE is 15 minutes and is charged only on tickets <em>resolved</em> at L1, L1 is under 1% of resolution effort. The integer programme therefore allocates roughly none of the team to L1, while the pyramid convention allocates 45%. Both are defensible &mdash; L1 headcount is driven by coverage presence and triage throughput, not resolution hours. Size L1 from the roster, and state which basis the proposal uses.</p>
+
+    <h3>4. Handing L1 to the customer saves almost nothing</h3>
+    <p>On the default deal, full stack sizes at 23.7 FTE and "L1 by customer" sizes at <b>24.3</b> &mdash; it goes <em>up</em>. L1 is 0.7% of resolution effort at a 15-minute ARE charged only on resolved tickets, while the new ownership interface costs 4%. The real saving from moving L1 out is the <b>rostered coverage</b>, not the effort. If the commercial case for the split is headcount, drop <i>FTE per shift</i> too &mdash; otherwise the split buys you nothing and costs you an interface.</p>
+
+    <h3>5. The automation ceiling caps the stretch curve</h3>
+    <p>Per-tower automation ceilings (AMS 60%, IMS 70%, DMS 50%) are volume-weighted into a deal-level cap. On a mixed AMS+IMS+DMS deal that lands near 56%, so the 18%&rarr;65% template flattens rather than reaching 65%. The tool marks the year it binds. Raising a ceiling is fine &mdash; but only with evidence, because committing past it is how AIOps savings promises break.</p>
+  </section>
+
+  <section id="glossary">
+    <h2>Glossary</h2>
+    <dl class="gloss">
+      <div><dt>A / B factor</dt><dd>A is ticketing effort; B is non-ticketing effort (transformation, automation, CFR), expressed as a percentage of A.</dd></div>
+      <div><dt>ARE</dt><dd>Average Resolution Effort per tier. Framework benchmarks: L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h.</dd></div>
+      <div><dt>Pass-through rate</dt><dd>Share of tickets escalating from one tier to the next. Improves year on year as runbooks, knowledge capture and automation mature.</dd></div>
+      <div><dt>FTE modifier (C)</dt><dd>Coverage adjustment from shift maths. Converts a support window into a minimum headcount.</dd></div>
+      <div><dt>POD</dt><dd>Team unit: Sustain (day-to-day ops), Transformation (SRE, AI, automation &mdash; 10&ndash;20% of effort), Flex (change requests), Governance.</dd></div>
+      <div><dt>Deflection</dt><dd>Share of demand removed by automation and AIOps, as a cumulative percentage against the Y1 baseline.</dd></div>
+      <div><dt>Automation ceiling</dt><dd>The maximum credible cumulative deflection for a tower type. Caps the productivity curve.</dd></div>
+      <div><dt>Risk drag</dt><dd>Annexure 2 overlay subtracted from the weighted driver score to give the effective confidence score.</dd></div>
+      <div><dt>Volume band clause</dt><dd>Contract term defining the ticket-volume range within which the fixed fee holds. Defaults to &plusmn;15% of modelled Y1 demand.</dd></div>
+      <div><dt>QUBO</dt><dd>Quadratic Unconstrained Binary Optimisation. A problem stated as minimising <code>x'Qx</code> over binary <code>x</code>, with constraints folded in as penalty terms. The native input format for quantum annealers and QAOA.</dd></div>
+      <div><dt>P80</dt><dd>The value 80% of Monte Carlo samples fall below. The number to commit to on a fixed fee, rather than the point estimate.</dd></div>
+    </dl>
+  </section>
+
+  </main>
+</div>
+
+<script>
+"use strict";
+var $=function(s){return document.querySelector(s);};
+var f1=function(v){return (Math.round(v*10)/10).toFixed(1);};
+var f0=function(v){return Math.round(v).toLocaleString();};
+/* keep one decimal under 100 so the framework's 7.5 h reads exactly as published */
+var hh=function(v){return v<100?(Math.round(v*10)/10).toLocaleString():Math.round(v).toLocaleString();};
+
+/* ---- theme ---- */
+$("#btnTheme").addEventListener("click",function(){
+  var r=document.documentElement;
+  var cur=r.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+  r.setAttribute("data-theme",cur==="dark"?"light":"dark");
+});
+
+/* ---- cascade demo ---- */
+var C={v:100,p12:70,p23:20,a1:0.25,a2:3,a3:10,b:25,util:0.85,hrs:160};
+function drawCascade(){
+  var V1=C.v, l1res=V1*(1-C.p12/100), l2=V1*(C.p12/100), l3=l2*(C.p23/100);
+  var h1=l1res*C.a1, h2=l2*C.a2, h3=l3*C.a3, raw=h1+h2+h3;
+  var A=raw/C.util, B=A*(C.b/100), fte=(A+B)/C.hrs;
+  var mx=Math.max(h1,h2,h3,1);
+  var rows=[
+    ["L1",l1res,C.a1,h1,"resolved at L1"],
+    ["L2",l2,C.a2,h2,"all pass-throughs"],
+    ["L3",l3,C.a3,h3,"escalations, additive"]
+  ];
+  $("#flow").innerHTML=rows.map(function(r){
+    return '<div class="frow"><span class="k">'+r[0]+'</span>'+
+      '<span class="track"><i style="width:'+(r[3]/mx*100)+'%"></i></span>'+
+      '<span class="v">'+hh(r[3])+' h <small>'+hh(r[1])+'&times;'+r[2]+'</small></span></div>';
+  }).join("")+
+  '<div class="frow" style="margin-top:6px"><span class="k">A</span><span class="track"><i style="width:100%;opacity:.45"></i></span><span class="v">'+f0(A)+' h <small>/'+C.util+'</small></span></div>'+
+  '<div class="frow"><span class="k">B</span><span class="track"><i style="width:'+(B/A*100)+'%;opacity:.3"></i></span><span class="v">'+f0(B)+' h <small>'+C.b+'%</small></span></div>';
+  $("#fte").textContent=f1(fte);
+  var isFw=(C.v===100&&C.p12===70&&C.p23===20&&C.a2===3&&C.a3===10&&C.b===25);
+  $("#fwnote").innerHTML = isFw
+    ? 'These are exactly the framework\u2019s page-3 numbers: <b>A = 421 h</b>, <b>B = 105 h</b>, <b>base FTE = 3.3</b>. The estimator reproduces them as a self-test.'
+    : 'Framework page-3 example is 100 tickets, 70% / 20%, ARE 0.25 / 3 / 10, B = 25% \u2014 giving A = 421 h and 3.3 FTE.';
+}
+[["rv","lv","v",function(x){return x+"";}],
+ ["r12","l12","p12",function(x){return x+"%";}],
+ ["r23","l23","p23",function(x){return x+"%";}],
+ ["ra2","la2","a2",function(x){return f1(x);}],
+ ["ra3","la3","a3",function(x){return f1(x);}],
+ ["rb","lb","b",function(x){return x+"%";}]].forEach(function(cfg){
+  var el=$("#"+cfg[0]);
+  el.addEventListener("input",function(){
+    C[cfg[2]]=parseFloat(el.value);
+    $("#"+cfg[1]).textContent=cfg[3](C[cfg[2]]);
+    drawCascade();
+  });
+});
+$("#btnFw").addEventListener("click",function(){
+  C.v=100;C.p12=70;C.p23=20;C.a2=3;C.a3=10;C.b=25;
+  $("#rv").value=100;$("#r12").value=70;$("#r23").value=20;$("#ra2").value=3;$("#ra3").value=10;$("#rb").value=25;
+  $("#lv").textContent="100";$("#l12").textContent="70%";$("#l23").textContent="20%";
+  $("#la2").textContent="3.0";$("#la3").textContent="10.0";$("#lb").textContent="25%";
+  drawCascade();
+});
+drawCascade();
+
+/* ---- scenario demo ---- */
+var SC={ai:"low",vol:"no"};
+var SCEN={
+ 1:{n:"Low AI + volumetrics unavailable",conf:"Low",cont:"10%",shape:"Standard pyramid",ratio:"1:4 from Y1",when:"Y2 onwards",yoy:"12\u201315%",comm:"T&M \u2192 Fixed Fee",band:"Critical",pre:"DAMO rapid assessment",risk:"Highest",method:"Complexity-point proxy"},
+ 2:{n:"Moderate AI + volumetrics unavailable",conf:"Low-Medium",cont:"8\u20139%",shape:"Diamond from Y1",ratio:"1:8 from Y1",when:"Y1 (faster ramp)",yoy:"10\u201312%",comm:"T&M \u2192 Outcome-based",band:"Required",pre:"AIOps maturity assessment",risk:"High",method:"AI-signal-augmented proxy"},
+ 3:{n:"Low AI + volumetrics available",conf:"High",cont:"8%",shape:"Pyramid \u2192 Diamond by Y3",ratio:"1:4 from Y1",when:"Y2 onwards",yoy:"12\u201315%",comm:"Fixed Fee from Day 1",band:"Standard",pre:"Standard portfolio assessment",risk:"Medium",method:"Full bottom-up"},
+ 4:{n:"Moderate AI + volumetrics available",conf:"Highest",cont:"5\u20136%",shape:"Inverted pyramid from Y1",ratio:"1:8 from Y1",when:"Y1 full deployment",yoy:"15\u201320%",comm:"Fixed Fee + outcome-based",band:"Minimal",pre:"AIOps inception PoC",risk:"Lowest",method:"AI-adjusted bottom-up"}
+};
+function drawScen(){
+  var mod=SC.ai==="moderate", vol=SC.vol==="yes";
+  var n=vol?(mod?4:3):(mod?2:1), d=SCEN[n];
+  var cls=n===4?"good":n===3?"acc":n===2?"warn":"crit";
+  $("#scTitle").innerHTML='<span class="pill '+cls+'">SCENARIO '+n+'</span> &nbsp;'+d.n;
+  $("#scGrid").innerHTML=[["Estimation method",d.method],["Risk level",d.risk],["Confidence",d.conf],
+    ["Y1 contingency",d.cont],["Team shape",d.shape],["AIOps timeline",d.when],["AIOps ratio",d.ratio],
+    ["YoY savings target",d.yoy],["Commercial model",d.comm],["Volume band clause",d.band],
+    ["Pre-sales investment",d.pre]]
+    .map(function(r){return '<div class="scencell"><div class="k">'+r[0]+'</div><div class="v">'+r[1]+'</div></div>';}).join("");
+}
+document.querySelectorAll("[data-ai],[data-vol]").forEach(function(b){
+  b.addEventListener("click",function(){
+    var k=b.dataset.ai?"ai":"vol", v=b.dataset.ai||b.dataset.vol;
+    SC[k]=v;
+    b.parentElement.querySelectorAll("button").forEach(function(x){x.setAttribute("aria-pressed",String(x===b));});
+    drawScen();
+  });
+});
+drawScen();
+
+/* ---- break-even demo ---- */
+var BE={r:4,d:14,p:18.7};
+function drawBE(){
+  var be=1/(BE.r+1);
+  var no=BE.p;
+  var del=BE.p*(1-BE.d/100);
+  var yes=del+Math.ceil(del/BE.r);
+  var wins=yes<no;
+  $("#beV").textContent=Math.round(be*100)+"%";
+  $("#beVerdict").innerHTML=wins
+    ? '<span class="pill good">TEAM SHRINKS</span>'
+    : '<span class="pill crit">TEAM GROWS</span>';
+  $("#beNo").textContent=f1(no)+" FTE";
+  $("#beYes").textContent=f1(yes)+" FTE";
+  $("#beNote").innerHTML = wins
+    ? 'Deflection of '+BE.d+'% clears the '+Math.round(be*100)+'% break-even at 1:'+BE.r+
+      ', so the AIOps engineers more than pay for themselves \u2014 a net '+f1(no-yes)+' FTE saved.'
+    : 'Deflection of '+BE.d+'% is below the '+Math.round(be*100)+'% break-even at 1:'+BE.r+
+      '. Adding AIOps costs a net '+f1(yes-no)+' FTE this year. Position it as investment, not saving \u2014 or widen the ratio.';
+}
+[["rr","lr","r"],["rd","ld","d"],["rp","lp","p"]].forEach(function(c){
+  var el=$("#"+c[0]);
+  el.addEventListener("input",function(){
+    BE[c[2]]=parseFloat(el.value);
+    $("#"+c[1]).textContent = c[2]==="d" ? BE.d+"%" : (c[2]==="p"? f1(BE.p) : BE.r);
+    drawBE();
+  });
+});
+drawBE();
+
+/* ---- toc scrollspy ---- */
+var links=[].slice.call(document.querySelectorAll("nav.toc a"));
+var secs=links.map(function(a){return document.querySelector(a.getAttribute("href"));});
+function spy(){
+  var best=0;
+  secs.forEach(function(s,i){ if(s && s.getBoundingClientRect().top<=140) best=i; });
+  links.forEach(function(a,i){ a.classList.toggle("on",i===best); });
+}
+addEventListener("scroll",spy,{passive:true}); spy();
+</script>
