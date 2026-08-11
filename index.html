@@ -401,6 +401,7 @@ function defaults(){return{
     govBase:40, govPerTower:8,          // PROPOSED governance & reporting hrs/month
     handoffPct:0.04,                    // PROPOSED coordination uplift per ownership boundary
     hypercareMonths:4, hypercareMult:3, // [F G4] 3-6 months at ~3x steady-state
+    brownfieldUplift:0.20,              // PROPOSED - hidden-work/handoff friction on an existing build others made; Y1 full, Y2 half, Y3+ none (taper hardcoded alongside inflowMul/p12/p23)
     // [F Part 3] scenario matrix
     scen:{
       1:{name:"Low AI + no volumetrics",conf:"Low",cont:"10%",contV:0.10,shape:"pyramid",aiopsFrom:2,ratio:4,yoy:0.135,yoyLabel:"12-15%",comm:"T&M \u2192 Fixed Fee",band:"Critical",presales:"DAMO rapid assessment"},
@@ -869,6 +870,13 @@ function runEngine(S,opts){
     let hyper=1;
     if(y===1){ hyper = 1 + (B.hypercareMonths/12)*((B.hypercareMult-1)/2); pre*=hyper; }
 
+    // PROPOSED - brownfield engagements carry hidden-work/handoff friction that
+    // fades as the team learns a system it did not build. Greenfield state never
+    // sets engagementType (e.g. the [F p3] regression test's hand-built T1.eng),
+    // so this is a strict no-op there.
+    const engUplift = (e.engagementType==="brownfield") ? [1,0.5,0][yi]*(B.brownfieldUplift||0) : 0;
+    if(engUplift) pre*=(1+engUplift);
+
     const d=deflectionAt(S2,y,smp.defl);
     const ceil_=towerCeiling(S2);
     const deflCapped = d>0 && Math.abs(d-ceil_)<1e-9;   // automation ceiling is binding, not the curve
@@ -890,7 +898,7 @@ function runEngine(S,opts){
 
     years.push({y:y,yi:yi,rows:rows,vol:vol,tickets:tk,A:A,B:Bh,G:G,
       baseFTE:baseFTE,floor:floor,floorBinds:floorBinds,floorNote:floorNote,
-      hyper:hyper,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,
+      hyper:hyper,engUplift:engUplift,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,
       total:total,roles:roles,shape:sh});
   }
 
@@ -2310,6 +2318,37 @@ function selfTests(){
     exp:"brownfield", got:String(migrated48.eng.engagementType),
     ok:migrated48.eng.engagementType==="brownfield"});
 
+  // 49. Brownfield genuinely inflates Y1 total FTE over an otherwise-identical
+  //     greenfield run (this is the actual behavioural fix, not just a slider
+  //     seed) - same towers/bench, only engagementType differs.
+  const T49g=seedRoles(defaults()); T49g.eng.engagementType="greenfield";
+  const T49b=seedRoles(defaults()); T49b.eng.engagementType="brownfield";
+  const r49g=runEngine(T49g,{}), r49b=runEngine(T49b,{});
+  out.push({n:"Brownfield Y1 total FTE exceeds an otherwise-identical greenfield run",
+    exp:"brownfield Y1 > greenfield Y1",
+    got:"greenfield="+r49g.years[0].total.toFixed(1)+", brownfield="+r49b.years[0].total.toFixed(1),
+    ok:r49b.years[0].total>r49g.years[0].total});
+
+  // 50. The uplift tapers to exactly zero by Y3+, so a 3-year brownfield and
+  //     greenfield run converge in the final year (same B.brownfieldUplift
+  //     taper table [1,0.5,0] applied at yi=2).
+  const T50g=seedRoles(defaults()); T50g.eng.term=3; T50g.eng.engagementType="greenfield";
+  const T50b=seedRoles(defaults()); T50b.eng.term=3; T50b.eng.engagementType="brownfield";
+  const r50g=runEngine(T50g,{}), r50b=runEngine(T50b,{});
+  out.push({n:"Brownfield uplift tapers to none by Y3, converging with greenfield",
+    exp:"Y3 totals equal",
+    got:"greenfield="+r50g.years[2].total.toFixed(3)+", brownfield="+r50b.years[2].total.toFixed(3),
+    ok:near(r50g.years[2].total,r50b.years[2].total,0.001)});
+
+  // 51. The [F p3] regression test (test 1 above) hand-builds T1.eng as a fresh
+  //     literal with no engagementType key, so it must never pick up the
+  //     brownfield uplift - the isolation this feature depends on to keep
+  //     3.3 FTE reproducing exactly.
+  out.push({n:"[F p3] regression state (T1) has no engagementType, so no uplift applies",
+    exp:"engagementType undefined -> engUplift 0",
+    got:"engagementType="+String(T1.eng.engagementType)+", engUplift="+y1.engUplift,
+    ok:T1.eng.engagementType===undefined && y1.engUplift===0});
+
   return out;
 }
 
@@ -2506,7 +2545,8 @@ function renderRail(){
       '<p class="hint">Who built and knows the system today \u2014 not tech modernity (see Estate profile). '+
       'Selecting a value re-seeds \u2018Transition &amp; incumbent handoff risk\u2019 (confidence) and \u2018Transition &amp; handoff risk\u2019, '+
       '\u2018Hidden work content\u2019, \u2018Complexity &amp; tech debt misread\u2019 (risk) below \u2014 a proposed calibration, not from [F]. '+
-      'All four stay freely editable afterward.</p></div>'+
+      'Brownfield also adds a direct Y1 FTE uplift (Benchmarks panel, default +20%, tapering to none by Y3) for hidden-work/handoff friction on a build we did not do. '+
+      'All five effects stay freely editable afterward.</p></div>'+
     chk("eng.aiops","AIOps in scope")+
     chk("eng.sharedRoster","Shared roster across towers")+
     '<div class="field"><label>Delivery region</label>'+seg("eng.region",[["ime","IME"],["eu","EU"],["apac","APAC"],["na","NA"]])+
@@ -2663,6 +2703,7 @@ function renderRail(){
     '<div class="row c2">'+num("bench.govBase","Governance hrs/mo (deal)",5)+num("bench.govPerTower","Governance hrs/mo (tower)",1)+'</div>'+
     '<div class="field">'+num("bench.handoffPct","Coordination uplift per interface",0.01)+'<p class="hint">Applied to our ticketing effort for each adjacent tier pair under different ownership. <span class="flag">proposed</span></p></div>'+
     '<div class="row c2">'+num("bench.hypercareMonths","Hypercare months")+num("bench.hypercareMult","Hypercare volume x",0.5)+'</div>'+
+    '<div class="field">'+num("bench.brownfieldUplift","Brownfield Y1 uplift",0.01)+'<p class="hint">Applied only when Engagement type is Brownfield: Y1 full, Y2 half, Y3+ none. <span class="flag">proposed</span></p></div>'+
     '<div class="row c2">'+num("bench.span","FTE per SDM")+num("bench.qaShare","QA share",0.01)+'</div>'+
     '<p class="hint">SDM ratio defaults to 1:8, the manual-estimation convention. QA share defaults to 0 since Quality Analyst is off by default (limited role list) &mdash; raising it without also turning the QA role on in Roles &amp; grades will not show up anywhere.</p>'+
     '<div class="field">'+num("bench.evoThreshold","AMS evolution threshold, %",5)+'<p class="hint">At or above this, Developer replaces Systems Support Engineer at AMS L3. Given as "thirty or forty percent" &mdash; defaulted to 30.</p></div>'+
@@ -2823,7 +2864,8 @@ function buildRegister(base,mc,o1,rp){
   L.push("- Scenario "+n+" \u2014 "+sc.name+". Estimation confidence "+sc.conf+".");
   L.push("- Term "+S.eng.term+" year(s); estate profile: "+(S.eng.estate==="legacy"?"complex legacy":"modern custom/SaaS")+".");
   L.push("- Engagement type: **"+(S.eng.engagementType==="greenfield"?"Greenfield (built and operated by Thoughtworks)":"Brownfield (built by another party; Thoughtworks is taking over operations)")+"**. "+
-    "Transition & incumbent handoff risk (confidence), Transition & handoff risk, Hidden work content, and Complexity & tech debt misread (risk) were auto-seeded from this selection \u2014 a proposed calibration, not sourced from [F], and freely editable in the Confidence & risk section.");
+    "Transition & incumbent handoff risk (confidence), Transition & handoff risk, Hidden work content, and Complexity & tech debt misread (risk) were auto-seeded from this selection \u2014 a proposed calibration, not sourced from [F], and freely editable in the Confidence & risk section."+
+    (base.years[0].engUplift?" It also adds a direct **+"+Math.round(base.years[0].engUplift*100)+"% Y1 FTE uplift** (tapering to none by Y3, Benchmarks panel) for hidden-work and handoff friction on a build we did not do.":""));
   L.push("- Recommended commercial model: "+sc.comm+". Volume band clause: "+sc.band+".");
   L.push("- Recommended pre-sales investment: "+sc.presales+".");
   L.push("");
@@ -3025,7 +3067,8 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
      ["AIOps timeline",sc.aiopsFrom===1?"Y1 full deployment":"Y2 onwards"],
      ["AIOps FTE ratio","1:"+last.ratio],["YoY savings target",sc.yoyLabel],
      ["Commercial model",sc.comm],["Volume band clause",sc.band],
-     ["Engagement type",(S.eng.engagementType==="greenfield"?"Greenfield (built by Thoughtworks)":"Brownfield (existing build, ops handover)")+" \u2014 proposed calibration applied to 4 confidence/risk drivers"]]
+     ["Engagement type",(S.eng.engagementType==="greenfield"?"Greenfield (built by Thoughtworks)":"Brownfield (existing build, ops handover)")+" \u2014 proposed calibration applied to 4 confidence/risk drivers"+
+       (base.years[0].engUplift?"; +"+Math.round(base.years[0].engUplift*100)+"% direct Y1 FTE uplift, tapering to none by Y3":"")]]
      .map(r=>'<tr><td>'+r[0]+'</td><td>'+esc(r[1])+'</td></tr>').join("")+
     '</tbody></table></section>';
 

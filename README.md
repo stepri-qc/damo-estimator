@@ -53,7 +53,7 @@ Adds roughly 1.5 MB to the artifact (the pdf.js bundle) — well inside the 16 M
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 59 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
+7. Hit **Verify against framework** at the bottom — 62 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -190,10 +190,12 @@ Selecting either value auto-seeds four sliders that already existed in the frame
 
 Marked `proposed` (this calibration isn't sourced from [F]) both on the Engagement type control itself and on the four affected sliders. Switching the value **always re-seeds** — a manual edit to one of the four sliders is overwritten the next time the toggle is clicked, matching how other engagement inputs already reshape the estimate elsewhere. All four stay freely editable afterward.
 
-Two things worth knowing about how the seeding is wired, because they're easy to get wrong:
+**Brownfield also applies a direct FTE uplift, on top of the slider seeding.** The four sliders above only ever fed the Annexure 1/2 confidence score and risk drag, which in turn only ever moved contingency guidance and the Monte Carlo P50/P80/P95 band width — never the deterministic Y1 FTE number itself. Brownfield now additionally multiplies `pre` (post-hypercare, pre-AIOps-deflection base FTE) by `1 + Benchmarks → "Brownfield Y1 uplift"` (default **+20%**), tapering by a hardcoded `[1, 0.5, 0]` table across Y1/Y2/Y3+ so the uplift fades to nothing once the team has had a full year to learn a system it didn't build — the same "unknowns shrink with time" logic already used for hypercare step-down. Greenfield state applies no uplift (multiplier stays at 1). Editable in the Benchmarks panel; shown in the exported register and print report whenever it's non-zero.
 
-- **The Annexure 1/2 fidelity self-test is completely unaffected.** `defaults()` still returns the framework's exact worked-example `conf`/`risk` arrays; the four values above are only ever applied by a page-bootstrap call (`seedEngagementType(S, S.eng.engagementType)`, run once right after `let S=seedRoles(defaults())`) or by clicking the toggle — never by `defaults()` or `seedRoles()` themselves. Self-tests that reproduce the framework's own confidence score (64.8) and risk drag (14.25) construct their own `seedRoles(defaults())` state directly and never call `seedEngagementType`, so they keep reproducing the source document exactly.
-- **Hash-restore and JSON Import never re-seed.** A returning user's own saved `conf`/`risk` values — even ones that happen to differ from what the current seed table would produce — are trusted as-is. Only a missing `engagementType` field gets backfilled (to `"brownfield"`, via the same `seedRoles` migration choke point used for the region/locMix legacy migration); the arrays next to it are left untouched.
+Two things worth knowing about how the seeding and the uplift are wired, because they're easy to get wrong:
+
+- **The [F p3] framework regression test (3.3 FTE) and the Annexure 1/2 fidelity test are completely unaffected.** `defaults()` still returns the framework's exact worked-example `conf`/`risk` arrays and no `engagementType` at all in the regression test's hand-built `T1.eng` literal — the uplift check is a strict `engagementType==="brownfield"`, which is `false` for `undefined`, so `engUplift` is `0` there. The four confidence/risk values are only ever applied by a page-bootstrap call (`seedEngagementType(S, S.eng.engagementType)`, run once right after `let S=seedRoles(defaults())`) or by clicking the toggle — never by `defaults()` or `seedRoles()` themselves.
+- **Hash-restore and JSON Import never re-seed.** A returning user's own saved `conf`/`risk` values — even ones that happen to differ from what the current seed table would produce — are trusted as-is. Only a missing `engagementType` field gets backfilled (to `"brownfield"`, via the same `seedRoles` migration choke point used for the region/locMix legacy migration); the arrays next to it are left untouched. The FTE uplift, by contrast, is recomputed from whatever `engagementType` the state carries every time `runEngine` runs — there's nothing to migrate for it specifically.
 
 ---
 
@@ -248,7 +250,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 59 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 62 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -302,6 +304,9 @@ The **Verify against framework** card runs 59 checks on every render. Each is a 
 57. `defaults().eng.engagementType` defaults to `'brownfield'`
 58. `confScore`/`riskDrag`/`bandOf` compute without throwing for both engagement types
 59. `seedRoles` backfills a missing `eng.engagementType` to `'brownfield'` for legacy saved states, without touching that state's own `conf`/`risk` values
+60. Brownfield Y1 total FTE exceeds an otherwise-identical greenfield run — the actual behavioural fix, not just the slider seed
+61. The brownfield uplift tapers to exactly zero by Y3, so a 3-year brownfield and greenfield run converge in the final year
+62. The [F p3] regression state (`T1`) carries no `engagementType`, so it picks up zero uplift — the isolation the whole feature depends on to keep reproducing 3.3 FTE exactly
 
 ---
 
