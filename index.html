@@ -470,6 +470,15 @@ function seedRoles(st){
     }
     e.locMix=Object.assign({},defaults().eng.locMix,e.locMix||{});
   }
+  if(st){
+    // Backfill any bench field missing from an older saved hash/import (shallow,
+    // top-level scalars - same pattern as locMix above). Without this, loadHash's
+    // Object.assign(defaults(), parsed) wholesale-replaces the entire bench object
+    // with whatever was saved at the time, silently zeroing out any bench field
+    // added since (e.g. brownfieldUplift) for anyone reloading or revisiting a
+    // tab/bookmark/shared link carrying an old #hash.
+    st.bench=Object.assign({},defaults().bench,st.bench||{});
+  }
   ROLES.forEach(r=>{ if(st.roles[r.id]==null) st.roles[r.id]=r.on;
                      if(st.roleW[r.id]==null) st.roleW[r.id]=r.w; });
   return st;
@@ -2348,6 +2357,19 @@ function selfTests(){
     exp:"engagementType undefined -> engUplift 0",
     got:"engagementType="+String(T1.eng.engagementType)+", engUplift="+y1.engUplift,
     ok:T1.eng.engagementType===undefined && y1.engUplift===0});
+
+  // 52. seedRoles backfills a bench field missing from an old saved hash/import -
+  //     simulates a real #hash/JSON saved before brownfieldUplift existed:
+  //     Object.assign(defaults(), parsed) would otherwise wholesale-replace
+  //     S.bench with the old (incomplete) bench object, silently zeroing the
+  //     uplift for anyone reloading a stale bookmarked/shared link.
+  const oldBench52=defaults().bench; delete oldBench52.brownfieldUplift;
+  const legacy52=Object.assign(defaults(),{eng:defaults().eng,bench:oldBench52});
+  const migrated52=seedRoles(legacy52);
+  out.push({n:"seedRoles backfills a bench field missing from an old saved hash (e.g. brownfieldUplift)",
+    exp:"0.2 (defaults().bench.brownfieldUplift)",
+    got:String(migrated52.bench.brownfieldUplift),
+    ok:migrated52.bench.brownfieldUplift===defaults().bench.brownfieldUplift});
 
   return out;
 }

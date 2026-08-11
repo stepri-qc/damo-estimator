@@ -53,7 +53,7 @@ Adds roughly 1.5 MB to the artifact (the pdf.js bundle) — well inside the 16 M
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 62 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
+7. Hit **Verify against framework** at the bottom — 63 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -196,6 +196,7 @@ Two things worth knowing about how the seeding and the uplift are wired, because
 
 - **The [F p3] framework regression test (3.3 FTE) and the Annexure 1/2 fidelity test are completely unaffected.** `defaults()` still returns the framework's exact worked-example `conf`/`risk` arrays and no `engagementType` at all in the regression test's hand-built `T1.eng` literal — the uplift check is a strict `engagementType==="brownfield"`, which is `false` for `undefined`, so `engUplift` is `0` there. The four confidence/risk values are only ever applied by a page-bootstrap call (`seedEngagementType(S, S.eng.engagementType)`, run once right after `let S=seedRoles(defaults())`) or by clicking the toggle — never by `defaults()` or `seedRoles()` themselves.
 - **Hash-restore and JSON Import never re-seed.** A returning user's own saved `conf`/`risk` values — even ones that happen to differ from what the current seed table would produce — are trusted as-is. Only a missing `engagementType` field gets backfilled (to `"brownfield"`, via the same `seedRoles` migration choke point used for the region/locMix legacy migration); the arrays next to it are left untouched. The FTE uplift, by contrast, is recomputed from whatever `engagementType` the state carries every time `runEngine` runs — there's nothing to migrate for it specifically.
+- **`seedRoles` now also backfills missing `bench` fields, not just `eng` ones.** `loadHash()`/JSON Import do `Object.assign(defaults(), parsed)` — a *shallow* merge, so a saved state's top-level `bench` key wholesale-replaces `defaults().bench` rather than merging into it. Any bookmarked link, shared URL, or browser tab still carrying a `#hash` saved before `bench.brownfieldUplift` existed would otherwise silently load with the uplift permanently zeroed — indistinguishable from "brownfield doesn't affect FTE" even after this fix shipped. `seedRoles` now does `st.bench=Object.assign({},defaults().bench,st.bench||{})`, the same shallow-backfill pattern already used for `eng.locMix`, so any bench field missing from an old saved state picks up the current default instead of silently disappearing. **This is the most likely explanation if engagement type or any Benchmarks-panel field ever appears to have "stopped working" after a change that was actually deployed** — it means the browser has an old `#hash` in the address bar. A hard reload of the *same* URL doesn't clear it (the hash travels with the URL); navigating to the bare URL with no `#fragment`, or opening the Reset button, does.
 
 ---
 
@@ -250,7 +251,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 62 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 63 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
