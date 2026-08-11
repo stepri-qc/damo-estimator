@@ -53,7 +53,7 @@ Adds roughly 1.5 MB to the artifact (the pdf.js bundle) — well inside the 16 M
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 53 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
+7. Hit **Verify against framework** at the bottom — 59 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -172,6 +172,29 @@ All non-EU presets are marked `proposed` — there's no framework or client guid
 
 The split applies uniformly to every role's Year 1 FTE within the active region — it does not assign specific roles to specific locations (a "Developers from Romania, everyone else from India" pattern is achieved by shaping the overall percentages to match, not by a per-role override). Self-tests assert the split conserves headcount exactly, per role and in total, for every region including when the entered percentages don't sum to 100, plus a dedicated test proving old saved links/exports (`region:"europe"`, a flat `locMix`) migrate through `seedRoles` to the new shape with numerically identical results, and a test proving switching regions never disturbs another region's already-entered mix.
 
+### 3.10 Engagement type — Greenfield / Brownfield
+
+A new engagement-level input, independent of **Estate profile** (modern/legacy is about how modern the tech stack is; this is about **who built and knows the system today**):
+
+- **Greenfield** — built and will be operated by Thoughtworks. High confidence: the team already knows the codebase, engineering practices and maturity level, because they built it.
+- **Brownfield** (default — the more conservative starting posture) — built by another vendor or the customer; Thoughtworks is taking over operations of something it didn't build. Real unknowns going in on code quality, documentation and technical debt.
+
+Selecting either value auto-seeds four sliders that already existed in the framework's own Annexure 1/2 model — the first auto-seeding mechanic in the tool (every other input has always left the confidence/risk sliders alone):
+
+| Slider | Greenfield | Brownfield |
+|---|---|---|
+| Confidence — Transition & incumbent handoff risk | 4 | 2 |
+| Risk — Transition & handoff risk | 0.25 | 0.75 |
+| Risk — Hidden work content | 0.25 | 0.75 |
+| Risk — Complexity & tech debt misread | 0.25 | 0.75 |
+
+Marked `proposed` (this calibration isn't sourced from [F]) both on the Engagement type control itself and on the four affected sliders. Switching the value **always re-seeds** — a manual edit to one of the four sliders is overwritten the next time the toggle is clicked, matching how other engagement inputs already reshape the estimate elsewhere. All four stay freely editable afterward.
+
+Two things worth knowing about how the seeding is wired, because they're easy to get wrong:
+
+- **The Annexure 1/2 fidelity self-test is completely unaffected.** `defaults()` still returns the framework's exact worked-example `conf`/`risk` arrays; the four values above are only ever applied by a page-bootstrap call (`seedEngagementType(S, S.eng.engagementType)`, run once right after `let S=seedRoles(defaults())`) or by clicking the toggle — never by `defaults()` or `seedRoles()` themselves. Self-tests that reproduce the framework's own confidence score (64.8) and risk drag (14.25) construct their own `seedRoles(defaults())` state directly and never call `seedEngagementType`, so they keep reproducing the source document exactly.
+- **Hash-restore and JSON Import never re-seed.** A returning user's own saved `conf`/`risk` values — even ones that happen to differ from what the current seed table would produce — are trusted as-is. Only a missing `engagementType` field gets backfilled (to `"brownfield"`, via the same `seedRoles` migration choke point used for the region/locMix legacy migration); the arrays next to it are left untouched.
+
 ---
 
 ## 5. The optimization layer
@@ -225,7 +248,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 53 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 59 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -273,6 +296,12 @@ The **Verify against framework** card runs 53 checks on every render. Each is a 
 51. NA location split conserves headcount per role and in total
 52. Legacy region/locMix migration is behaviour-preserving — a raw `region:"europe"` + flat `locMix` state, run through `seedRoles`, produces identical `locationSplit` results to an equivalent freshly-constructed new-shape state, not just the same shape
 53. Per-region memory — setting an EU mix, switching to APAC and setting a mix there, then switching back to EU leaves the EU mix exactly as it was
+54. Engagement type 'greenfield' seeds conf[4]=4, risk[2,3,4]=0.25
+55. Engagement type 'brownfield' seeds conf[4]=2, risk[2,3,4]=0.75
+56. Switching engagement type always re-seeds rather than preserving a manual edit
+57. `defaults().eng.engagementType` defaults to `'brownfield'`
+58. `confScore`/`riskDrag`/`bandOf` compute without throwing for both engagement types
+59. `seedRoles` backfills a missing `eng.engagementType` to `'brownfield'` for legacy saved states, without touching that state's own `conf`/`risk` values
 
 ---
 
