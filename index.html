@@ -1620,6 +1620,24 @@ function deepMergeState(base,partial){
   });
   return out;
 }
+/* deepMergeState replaces towers[] wholesale (arrays aren't recursed into),
+   so a Claude-prepared tower object that omits fields - despite the prompt
+   instructing complete objects - lands in S.towers missing things like
+   `enabled`, `own`, `apps`, `mau`. That's silent, not a crash: every engine
+   entry point filters S.towers.filter(t=>t.enabled), so an incomplete tower
+   (enabled undefined -> falsy) is quietly excluded from every calculation -
+   Y1 FTE becomes just the governance baseline, and no input for that tower
+   (complexity, MAU, coverage, ownership) does anything, because the tower
+   was never in the computed set to begin with. Confirmed live against a
+   real AI-extracted tower missing exactly these fields. Backfilling each
+   tower against mkTower(type) - the same shape every other tower in the
+   app already has - fixes this at the one shared choke point both the
+   manual-paste and AI-extraction paths apply through, rather than trying
+   to make prompt wording alone reliable. */
+function backfillTowers(towers){
+  if(!Array.isArray(towers)) return towers;
+  return towers.map(t=>Object.assign({},mkTower((t&&t.type)||"AMS"),t||{}));
+}
 
 /* =====================  DOCUMENT PARSING  =====================
    Native, dependency-free .docx/.xlsx text extraction: both formats are a
@@ -2370,6 +2388,40 @@ function selfTests(){
     exp:"0.2 (defaults().bench.brownfieldUplift)",
     got:String(migrated52.bench.brownfieldUplift),
     ok:migrated52.bench.brownfieldUplift===defaults().bench.brownfieldUplift});
+
+  // 53. backfillTowers() fixes the real bug found via a live AI-extraction test:
+  //     deepMergeState replaces towers[] wholesale (arrays aren't recursed into),
+  //     so a Claude-prepared tower missing `enabled` silently drops out of every
+  //     S.towers.filter(t=>t.enabled) engine entry point - Y1 FTE becomes just
+  //     the governance baseline, and no edit to that tower's complexity/MAU/
+  //     coverage/ownership does anything, because the tower is never in the
+  //     computed set. Reproduces the exact partial shape the live bug had.
+  const partialTower53={type:"AMS",mode:"proxy",sla:{P1x:60,P2x:90,P3x:480,P4x:1440},avail:99.9,coverage:"24x7"};
+  const T53g=seedRoles(defaults()); T53g.towers=[mkTower("AMS")]; // known-good baseline for comparison
+  const T53b=seedRoles(deepMergeState(defaults(),{towers:[partialTower53]})); // pre-fix: raw partial tower
+  const T53fixed=seedRoles(Object.assign({},deepMergeState(defaults(),{towers:[partialTower53]}),
+    {towers:backfillTowers(deepMergeState(defaults(),{towers:[partialTower53]}).towers)}));
+  out.push({n:"backfillTowers: a partial AI-extracted tower is excluded from the engine before the fix",
+    exp:"unfixed tower has enabled=undefined, excluded from S.towers.filter(t=>t.enabled)",
+    got:"enabled="+String(T53b.towers[0].enabled)+", enabledCount="+T53b.towers.filter(t=>t.enabled).length,
+    ok:T53b.towers[0].enabled===undefined && T53b.towers.filter(t=>t.enabled).length===0});
+  out.push({n:"backfillTowers: the same partial tower is complete and included after the fix",
+    exp:"enabled=true, own/apps/mau/inc/sr present, included in S.towers.filter(t=>t.enabled)",
+    got:"enabled="+T53fixed.towers[0].enabled+", hasOwn="+(!!T53fixed.towers[0].own)+", hasApps="+(!!T53fixed.towers[0].apps)+
+        ", mau="+T53fixed.towers[0].mau+", enabledCount="+T53fixed.towers.filter(t=>t.enabled).length,
+    ok:T53fixed.towers[0].enabled===true && !!T53fixed.towers[0].own && !!T53fixed.towers[0].apps &&
+       T53fixed.towers[0].mau===50000 && T53fixed.towers.filter(t=>t.enabled).length===1});
+  out.push({n:"backfillTowers: explicitly-provided fields are never overwritten by the mkTower() default",
+    exp:"type=AMS, mode=proxy, coverage=24x7, avail=99.9, sla.P1x=60 all preserved from the source JSON",
+    got:JSON.stringify({type:T53fixed.towers[0].type,mode:T53fixed.towers[0].mode,coverage:T53fixed.towers[0].coverage,
+                         avail:T53fixed.towers[0].avail,P1x:T53fixed.towers[0].sla.P1x}),
+    ok:T53fixed.towers[0].type==="AMS" && T53fixed.towers[0].mode==="proxy" && T53fixed.towers[0].coverage==="24x7" &&
+       T53fixed.towers[0].avail===99.9 && T53fixed.towers[0].sla.P1x===60});
+  const r53fixed=runEngine(T53fixed,{}), r53good=runEngine(T53g,{});
+  out.push({n:"backfillTowers: Y1 FTE after the fix reflects real demand, not just the governance baseline",
+    exp:"fixed tower's Y1 FTE is much larger than the governance-only ~0.3 the live bug produced, same order of magnitude as a normal AMS tower",
+    got:"fixedY1="+r53fixed.years[0].total.toFixed(1)+", normalTowerY1="+r53good.years[0].total.toFixed(1),
+    ok:r53fixed.years[0].total>3});
 
   return out;
 }
@@ -3716,8 +3768,11 @@ document.addEventListener("click",e=>{
         rd.readAsText(f); };
       i.click(); break; }
     case "btnIntakeJsonApply":{
-      try{ S=seedRoles(deepMergeState(defaults(),JSON.parse($("#intakeJson").value))); hideIntake(); refresh(true); }
-      catch(err){ alert("That doesn't look like valid Claude-prepared JSON input."); }
+      try{
+        const merged=deepMergeState(defaults(),JSON.parse($("#intakeJson").value));
+        merged.towers=backfillTowers(merged.towers);
+        S=seedRoles(merged); hideIntake(); refresh(true);
+      }catch(err){ alert("That doesn't look like valid Claude-prepared JSON input."); }
       break; }
     case "btnAIExtract":{
       const status=$("#aiExtractStatus"); status.textContent="Extracting\u2026";
