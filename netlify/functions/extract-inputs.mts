@@ -104,6 +104,10 @@ function extractJson(raw: string): unknown {
   return JSON.parse(fenced ? fenced[1] : trimmed);
 }
 
+// Everything before this marker in the streamed body is just keep-alive filler
+// (the frontend discards it); everything after is the one JSON result payload.
+const RESULT_MARKER = "\n__DAMO_RESULT__";
+
 export default async (req: Request, context: Context) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
@@ -134,41 +138,65 @@ export default async (req: Request, context: Context) => {
     );
   }
 
-  try {
-    const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 4000,
-      messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
-    });
+  // A real multi-page RFP (confirmed live: 23 pages / ~32K chars) can push
+  // Claude's response time past Netlify's proxy inactivity timeout - a 504
+  // "Inactivity Timeout... too much time has passed without sending any data"
+  // after ~30s, even though the function itself was still working. That's an
+  // IDLE-connection timeout, not a hard duration cap, so the fix is to keep
+  // bytes flowing to the client throughout the generation rather than
+  // buffering the whole response before sending anything. The stream body is
+  // plain keep-alive filler up to RESULT_MARKER, then one JSON payload.
+  const encoder = new TextEncoder();
+  const client = new Anthropic({ apiKey });
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return new Response(JSON.stringify({ error: "Model returned no text output" }), { status: 502 });
-    }
+  const responseStream = new ReadableStream({
+    async start(controller) {
+      const finish = (payload: object) => {
+        controller.enqueue(encoder.encode(RESULT_MARKER + JSON.stringify(payload)));
+        controller.close();
+      };
+      try {
+        const anthropicStream = client.messages.stream({
+          model: "claude-sonnet-5",
+          max_tokens: 6000,
+          messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
+        });
+        for await (const event of anthropicStream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            controller.enqueue(encoder.encode(".")); // keep-alive only, not parsed by the client
+          }
+        }
+        const finalMessage = await anthropicStream.finalMessage();
 
-    let parsed: unknown;
-    try {
-      parsed = extractJson(textBlock.text);
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "Model response wasn't valid JSON", raw: textBlock.text.slice(0, 500) }),
-        { status: 502 },
-      );
-    }
+        const textBlock = finalMessage.content.find((b) => b.type === "text");
+        if (!textBlock || textBlock.type !== "text") {
+          finish({ error: "Model returned no text output" });
+          return;
+        }
 
-    return new Response(
-      JSON.stringify({
-        json: sanitizeExtraction(parsed),
-        usage: {
-          input_tokens: response.usage.input_tokens,
-          output_tokens: response.usage.output_tokens,
-        },
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Extraction failed";
-    return new Response(JSON.stringify({ error: message }), { status: 502 });
-  }
+        let parsed: unknown;
+        try {
+          parsed = extractJson(textBlock.text);
+        } catch {
+          finish({ error: "Model response wasn't valid JSON", raw: textBlock.text.slice(0, 500) });
+          return;
+        }
+
+        finish({
+          json: sanitizeExtraction(parsed),
+          usage: {
+            input_tokens: finalMessage.usage.input_tokens,
+            output_tokens: finalMessage.usage.output_tokens,
+          },
+        });
+      } catch (err) {
+        finish({ error: err instanceof Error ? err.message : "Extraction failed" });
+      }
+    },
+  });
+
+  return new Response(responseStream, {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
 };

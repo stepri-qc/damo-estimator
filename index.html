@@ -3723,15 +3723,37 @@ document.addEventListener("click",e=>{
       const status=$("#aiExtractStatus"); status.textContent="Extracting\u2026";
       const pw=$("#aiExtractPassphrase").value;
       try{ localStorage.setItem("aiExtractPassphrase",pw); }catch(e){}
-      fetch("/.netlify/functions/extract-inputs",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text:combinedIntakeText(),passphrase:pw})})
-        .then(r=>r.json().then(d=>({ok:r.ok,d})))
-        .then(({ok,d})=>{
-          if(!ok) throw new Error(d.error||"Extraction failed");
+      // The function streams its response (plain keep-alive bytes up to a marker,
+      // then one JSON payload) so a slow generation on a large document keeps the
+      // connection active rather than sitting idle - a real multi-page RFP was
+      // confirmed to trip Netlify's proxy inactivity timeout when the response
+      // was buffered and sent all at once. Fast-fail errors (bad passphrase, no
+      // text, etc.) still come back as a single application/json response.
+      (async()=>{
+        try{
+          const r=await fetch("/.netlify/functions/extract-inputs",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({text:combinedIntakeText(),passphrase:pw})});
+          if((r.headers.get("Content-Type")||"").indexOf("application/json")>=0){
+            const d=await r.json();
+            throw new Error(d.error||"Extraction failed");
+          }
+          const reader=r.body.getReader(), decoder=new TextDecoder();
+          let buf="", received=0;
+          while(true){
+            const {done,value}=await reader.read();
+            if(done) break;
+            buf+=decoder.decode(value,{stream:true});
+            received+=value.length;
+            status.textContent="Extracting\u2026 ("+received+" bytes received)";
+          }
+          const marker="__DAMO_RESULT__", idx=buf.indexOf(marker);
+          if(idx<0) throw new Error("Stream ended without a result");
+          const d=JSON.parse(buf.slice(idx+marker.length));
+          if(d.error) throw new Error(d.error);
           $("#intakeJson").value=JSON.stringify(d.json,null,2);
           status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens). Review the JSON below, then click Apply prepared inputs.";
-        })
-        .catch(err=>{ status.textContent="Error: "+err.message; });
+        }catch(err){ status.textContent="Error: "+err.message; }
+      })();
       break; }
     case "btnCopy":{ const t=$("#regText"); t.select(); document.execCommand("copy");
       b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1400); break; }
