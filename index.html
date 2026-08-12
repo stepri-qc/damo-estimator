@@ -2443,9 +2443,12 @@ function renderIntake(){
       '<button class="btn primary" type="button" id="btnIntakeDetect">Detect inputs</button>'+
     '</div>'+
     sec("intakeImport","Import Claude-prepared inputs (real AI summary)",
-      '<p class="hint">Pattern-matching above is automatic but it is not comprehension. For a genuine narrative summary, hand the document '+
-      'text to Claude in a fresh chat and ask it to read it and return a prefilled input JSON. Click below to copy a ready-to-paste prompt '+
-      '\u2014 instructions, the target schema and the document text you\u2019ve entered above \u2014 to your clipboard.</p>'+
+      '<p class="hint">Pattern-matching above is automatic but it is not comprehension. For a genuine narrative summary, either '+
+      'click \u201cExtract with AI now\u201d below (calls Claude directly from this deployment), or hand the document text to Claude in a '+
+      'fresh chat yourself and paste its JSON reply back in.</p>'+
+      '<div class="field"><label>Passphrase (if set by the operator)</label><input type="password" id="aiExtractPassphrase"></div>'+
+      '<div class="btnrow"><button class="btn primary" type="button" id="btnAIExtract">Extract with AI now</button></div>'+
+      '<span class="hint" id="aiExtractStatus"></span>'+
       '<div class="btnrow"><button class="btn primary" type="button" id="btnCopyClaudePrompt">Copy prompt for Claude</button></div>'+
       '<textarea id="claudePromptText" readonly style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"></textarea>'+
       '<div class="field"><label>Prepared JSON (paste Claude\u2019s response here)</label><textarea class="reg" id="intakeJson" placeholder="{\u2026}" style="min-height:120px"></textarea></div>'+
@@ -2456,6 +2459,7 @@ function renderIntake(){
   '</div>';
   $("#intake").innerHTML=h;
   renderIntakeDocs();
+  try{ const pw=localStorage.getItem("aiExtractPassphrase"); if(pw) $("#aiExtractPassphrase").value=pw; }catch(e){}
 }
 function renderIntakeDocs(){
   const h=INTAKE_DOCS.map((d,i)=>
@@ -3714,6 +3718,20 @@ document.addEventListener("click",e=>{
     case "btnIntakeJsonApply":{
       try{ S=seedRoles(deepMergeState(defaults(),JSON.parse($("#intakeJson").value))); hideIntake(); refresh(true); }
       catch(err){ alert("That doesn't look like valid Claude-prepared JSON input."); }
+      break; }
+    case "btnAIExtract":{
+      const status=$("#aiExtractStatus"); status.textContent="Extracting\u2026";
+      const pw=$("#aiExtractPassphrase").value;
+      try{ localStorage.setItem("aiExtractPassphrase",pw); }catch(e){}
+      fetch("/.netlify/functions/extract-inputs",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:combinedIntakeText(),passphrase:pw})})
+        .then(r=>r.json().then(d=>({ok:r.ok,d})))
+        .then(({ok,d})=>{
+          if(!ok) throw new Error(d.error||"Extraction failed");
+          $("#intakeJson").value=JSON.stringify(d.json,null,2);
+          status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens). Review the JSON below, then click Apply prepared inputs.";
+        })
+        .catch(err=>{ status.textContent="Error: "+err.message; });
       break; }
     case "btnCopy":{ const t=$("#regText"); t.select(); document.execCommand("copy");
       b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1400); break; }
