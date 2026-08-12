@@ -8,63 +8,74 @@ import Anthropic from "@anthropic-ai/sdk";
 // anything it can't find evidence for, and stripNulls() below removes those nulls
 // before responding, so deepMergeState leaves unfound fields at their app default
 // - the same "omit what's unknown" contract the manual copy-paste flow already has.
-const nStr = { type: ["string", "null"] } as const;
-const nInt = { type: ["integer", "null"] } as const;
-const nNum = { type: ["number", "null"] } as const;
-const nBool = { type: ["boolean", "null"] } as const;
+// Nullable leaves use anyOf[type, null] rather than a type:[...,"null"] array -
+// Anthropic's structured-outputs schema validator rejects an enum whose values
+// are checked against an array-form "type" (confirmed live: 400 invalid_request_error,
+// "Enum value 'low' does not match declared type ['string','null']"). anyOf is the
+// documented-supported combinator and sidesteps that validator path entirely.
+const nStr = { anyOf: [{ type: "string" }, { type: "null" }] } as const;
+const nInt = { anyOf: [{ type: "integer" }, { type: "null" }] } as const;
+const nNum = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
+const nBool = { anyOf: [{ type: "boolean" }, { type: "null" }] } as const;
+const nEnum = (values: string[]) =>
+  ({ anyOf: [{ type: "string", enum: values }, { type: "null" }] }) as const;
 
-const mixSchema = {
-  type: ["object", "null"],
+const mixObj = {
+  type: "object",
   properties: { P1: nInt, P2: nInt, P3: nInt, P4: nInt },
   required: ["P1", "P2", "P3", "P4"],
   additionalProperties: false,
-};
-const slaSchema = {
-  type: ["object", "null"],
+} as const;
+const mixSchema = { anyOf: [mixObj, { type: "null" }] } as const;
+const slaObj = {
+  type: "object",
   properties: {
     P1r: nInt, P1x: nInt, P2r: nInt, P2x: nInt,
     P3r: nInt, P3x: nInt, P4r: nInt, P4x: nInt,
   },
   required: ["P1r", "P1x", "P2r", "P2x", "P3r", "P3x", "P4r", "P4x"],
   additionalProperties: false,
-};
-const ownSchema = {
-  type: ["object", "null"],
+} as const;
+const slaSchema = { anyOf: [slaObj, { type: "null" }] } as const;
+const ownObj = {
+  type: "object",
   properties: { L1: nStr, L2: nStr, L3: nStr },
   required: ["L1", "L2", "L3"],
   additionalProperties: false,
-};
+} as const;
+const ownSchema = { anyOf: [ownObj, { type: "null" }] } as const;
 const towerSchema = {
   type: "object",
   properties: {
-    type: { type: ["string", "null"], enum: ["AMS", "IMS", "DMS", null] },
-    mode: { type: ["string", "null"], enum: ["history", "proxy", "mau", null] },
+    type: nEnum(["AMS", "IMS", "DMS"]),
+    mode: nEnum(["history", "proxy", "mau"]),
     inc: nInt, sr: nInt,
     mix: mixSchema, sla: slaSchema,
     avail: nNum,
-    coverage: { type: ["string", "null"], enum: ["8x5", "16x5", "24x5", "24x7", null] },
+    coverage: nEnum(["8x5", "16x5", "24x5", "24x7"]),
     mau: nInt, own: ownSchema,
   },
   required: ["type", "mode", "inc", "sr", "mix", "sla", "avail", "coverage", "mau", "own"],
   additionalProperties: false,
 };
+const engObj = {
+  type: "object",
+  properties: {
+    term: nInt,
+    aiMaturity: nEnum(["low", "moderate"]),
+    volumetrics: nEnum(["available", "unavailable"]),
+    aiops: nBool,
+    estate: nEnum(["modern", "legacy"]),
+    region: nEnum(["ime", "eu", "apac", "na"]),
+  },
+  required: ["term", "aiMaturity", "volumetrics", "aiops", "estate", "region"],
+  additionalProperties: false,
+} as const;
 const schema = {
   type: "object",
   properties: {
     docSummary: nStr,
-    eng: {
-      type: ["object", "null"],
-      properties: {
-        term: nInt,
-        aiMaturity: { type: ["string", "null"], enum: ["low", "moderate", null] },
-        volumetrics: { type: ["string", "null"], enum: ["available", "unavailable", null] },
-        aiops: nBool,
-        estate: { type: ["string", "null"], enum: ["modern", "legacy", null] },
-        region: { type: ["string", "null"], enum: ["ime", "eu", "apac", "na", null] },
-      },
-      required: ["term", "aiMaturity", "volumetrics", "aiops", "estate", "region"],
-      additionalProperties: false,
-    },
+    eng: { anyOf: [engObj, { type: "null" }] },
     towers: { type: "array", items: towerSchema },
   },
   required: ["docSummary", "eng", "towers"],
