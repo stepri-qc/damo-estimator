@@ -1,24 +1,16 @@
 import type { Context } from "@netlify/functions";
 import Anthropic from "@anthropic-ai/sdk";
+import { getStore } from "@netlify/blobs";
 
-// Target shape matches buildClaudePrompt()'s schema in damo-estimator.html exactly,
-// so a successful response here is already valid input to the app's existing
-// deepMergeState(defaults(), json) apply path - no new merge logic needed there.
-//
-// This deliberately does NOT use output_config.format (structured outputs).
-// Two things were tried and rejected live before landing here:
-//   1. type:["string","null"] + enum -> 400 "Enum value does not match declared type"
-//   2. anyOf[{type,enum},{type:"null"}] per leaf, to make every field individually
-//      omittable -> 400 "too many parameters with union types (33, limit 16) -
-//      exponential compilation cost"
-// The full schema (eng's 6 fields + towers[]'s ~19 fields across type/mode/mix/
-// sla/own) needs more independently-nullable leaves than that budget allows.
-// Rather than collapse nullability to coarse object-level only (which would force
-// the model to guess values for individual fields it isn't sure about whenever it
-// includes an object at all), this uses the same plain-prompt approach the
-// existing manual copy-paste flow (buildClaudePrompt()) already relies on: prose
-// instructions asking for JSON with per-field omission, parsed server-side. No
-// schema union-count limit applies to plain prompting.
+// Background function (15-min execution limit, vs. the standard synchronous
+// limit that killed the first two attempts at this feature). A real 23-page
+// RFP (~32K chars) needed longer than that ceiling regardless of keep-alive
+// bytes - a heartbeat only prevents an IDLE-connection timeout, it can't
+// extend a hard duration cap. Background functions return 202 immediately and
+// their return value is ignored, so there is no synchronous response channel
+// back to the caller at all: every outcome (success or error) is written to a
+// Blobs job record instead, and the frontend (extract-status.mts) polls for it.
+
 const SCHEMA_EXAMPLE = {
   docSummary: "2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
   eng: { term: 3, aiMaturity: "low", volumetrics: "available", aiops: true, estate: "modern", region: "ime" },
@@ -104,103 +96,75 @@ function extractJson(raw: string): unknown {
   return JSON.parse(fenced ? fenced[1] : trimmed);
 }
 
-// Everything before this marker in the streamed body is just keep-alive filler
-// (the frontend discards it); everything after is the one JSON result payload.
-const RESULT_MARKER = "\n__DAMO_RESULT__";
+function jobStore() {
+  return getStore({ name: "damo-extraction-jobs", consistency: "strong" });
+}
 
 export default async (req: Request, context: Context) => {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
-  }
-
-  let body: { text?: string; passphrase?: string };
+  let body: { jobId?: string; text?: string; passphrase?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
+    return; // no jobId to report against; nothing more we can do
   }
+
+  const jobId = body.jobId;
+  if (!jobId) return;
+  const store = jobStore();
 
   const configuredPassphrase = Netlify.env.get("INTAKE_PASSPHRASE");
   if (configuredPassphrase && body.passphrase !== configuredPassphrase) {
-    return new Response(JSON.stringify({ error: "Incorrect passphrase" }), { status: 401 });
+    await store.setJSON(jobId, { status: "error", error: "Incorrect passphrase" });
+    return;
   }
 
   const text = (body.text || "").trim();
   if (!text) {
-    return new Response(JSON.stringify({ error: "No document text provided" }), { status: 400 });
+    await store.setJSON(jobId, { status: "error", error: "No document text provided" });
+    return;
   }
 
   const apiKey = Netlify.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "Server is not configured with an Anthropic API key" }),
-      { status: 500 },
-    );
+    await store.setJSON(jobId, { status: "error", error: "Server is not configured with an Anthropic API key" });
+    return;
   }
 
-  // A real multi-page RFP (confirmed live: 23 pages / ~32K chars) can push
-  // Claude's response time past Netlify's proxy inactivity timeout - a 504
-  // "Inactivity Timeout... too much time has passed without sending any data"
-  // after ~30s, even though the function itself was still working. That's an
-  // IDLE-connection timeout, not a hard duration cap, so the fix is to keep
-  // bytes flowing to the client throughout the generation. A first attempt
-  // relied on forwarding each text_delta stream event as a keep-alive byte,
-  // but Sonnet 5's adaptive thinking (on by default here) can spend the whole
-  // window in a silent thinking phase before any text_delta fires - with
-  // thinking.display left at its "omitted" default, that phase produces no
-  // visible stream events at all, so the same timeout reproduced exactly.
-  // A plain time-based heartbeat sidesteps that entirely: it doesn't care what
-  // the model is doing internally, only that the client keeps seeing bytes.
-  const encoder = new TextEncoder();
-  const client = new Anthropic({ apiKey });
+  try {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 6000,
+      messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
+    });
 
-  const responseStream = new ReadableStream({
-    async start(controller) {
-      const heartbeat = setInterval(() => {
-        try { controller.enqueue(encoder.encode(".")); } catch { /* stream already closed */ }
-      }, 4000);
-      const finish = (payload: object) => {
-        clearInterval(heartbeat);
-        controller.enqueue(encoder.encode(RESULT_MARKER + JSON.stringify(payload)));
-        controller.close();
-      };
-      try {
-        const anthropicStream = client.messages.stream({
-          model: "claude-sonnet-5",
-          max_tokens: 6000,
-          messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
-        });
-        const finalMessage = await anthropicStream.finalMessage();
+    const textBlock = response.content.find((b) => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      await store.setJSON(jobId, { status: "error", error: "Model returned no text output" });
+      return;
+    }
 
-        const textBlock = finalMessage.content.find((b) => b.type === "text");
-        if (!textBlock || textBlock.type !== "text") {
-          finish({ error: "Model returned no text output" });
-          return;
-        }
+    let parsed: unknown;
+    try {
+      parsed = extractJson(textBlock.text);
+    } catch {
+      await store.setJSON(jobId, {
+        status: "error",
+        error: "Model response wasn't valid JSON",
+        raw: textBlock.text.slice(0, 500),
+      });
+      return;
+    }
 
-        let parsed: unknown;
-        try {
-          parsed = extractJson(textBlock.text);
-        } catch {
-          finish({ error: "Model response wasn't valid JSON", raw: textBlock.text.slice(0, 500) });
-          return;
-        }
-
-        finish({
-          json: sanitizeExtraction(parsed),
-          usage: {
-            input_tokens: finalMessage.usage.input_tokens,
-            output_tokens: finalMessage.usage.output_tokens,
-          },
-        });
-      } catch (err) {
-        finish({ error: err instanceof Error ? err.message : "Extraction failed" });
-      }
-    },
-  });
-
-  return new Response(responseStream, {
-    status: 200,
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+    await store.setJSON(jobId, {
+      status: "done",
+      json: sanitizeExtraction(parsed),
+      usage: {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+      },
+    });
+  } catch (err) {
+    await store.setJSON(jobId, { status: "error", error: err instanceof Error ? err.message : "Extraction failed" });
+  }
 };

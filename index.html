@@ -3723,35 +3723,33 @@ document.addEventListener("click",e=>{
       const status=$("#aiExtractStatus"); status.textContent="Extracting\u2026";
       const pw=$("#aiExtractPassphrase").value;
       try{ localStorage.setItem("aiExtractPassphrase",pw); }catch(e){}
-      // The function streams its response (plain keep-alive bytes up to a marker,
-      // then one JSON payload) so a slow generation on a large document keeps the
-      // connection active rather than sitting idle - a real multi-page RFP was
-      // confirmed to trip Netlify's proxy inactivity timeout when the response
-      // was buffered and sent all at once. Fast-fail errors (bad passphrase, no
-      // text, etc.) still come back as a single application/json response.
+      // Kicks off a Background Function (15-min execution limit) rather than
+      // waiting on one request/response - a real 23-page RFP needed longer than
+      // even a streamed-keep-alive synchronous function's hard duration cap
+      // allows. The background function has no response channel back to us
+      // (its return value is discarded), so it writes every outcome - success
+      // or error - to a Blobs job record, and this polls extract-status for it.
       (async()=>{
         try{
-          const r=await fetch("/.netlify/functions/extract-inputs",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({text:combinedIntakeText(),passphrase:pw})});
-          if((r.headers.get("Content-Type")||"").indexOf("application/json")>=0){
-            const d=await r.json();
-            throw new Error(d.error||"Extraction failed");
+          const jobId=Date.now()+"-"+Math.random().toString(36).slice(2);
+          await fetch("/.netlify/functions/extract-inputs-background",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({jobId:jobId,text:combinedIntakeText(),passphrase:pw})});
+          const started=Date.now();
+          let d=null;
+          for(let attempt=0;attempt<90;attempt++){ // ~3 minutes at 2s/poll
+            await new Promise(res=>setTimeout(res,2000));
+            const elapsed=Math.round((Date.now()-started)/1000);
+            status.textContent="Extracting\u2026 ("+elapsed+"s)";
+            const r=await fetch("/.netlify/functions/extract-status?jobId="+encodeURIComponent(jobId));
+            d=await r.json();
+            if(d.status==="pending") continue;
+            if(d.status==="error") throw new Error(d.error||"Extraction failed");
+            $("#intakeJson").value=JSON.stringify(d.json,null,2);
+            status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens, "+elapsed+"s). Review the JSON below, then click Apply prepared inputs.";
+            d=null; // signal success below without re-throwing
+            break;
           }
-          const reader=r.body.getReader(), decoder=new TextDecoder();
-          let buf="", received=0;
-          while(true){
-            const {done,value}=await reader.read();
-            if(done) break;
-            buf+=decoder.decode(value,{stream:true});
-            received+=value.length;
-            status.textContent="Extracting\u2026 ("+received+" bytes received)";
-          }
-          const marker="__DAMO_RESULT__", idx=buf.indexOf(marker);
-          if(idx<0) throw new Error("Stream ended without a result");
-          const d=JSON.parse(buf.slice(idx+marker.length));
-          if(d.error) throw new Error(d.error);
-          $("#intakeJson").value=JSON.stringify(d.json,null,2);
-          status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens). Review the JSON below, then click Apply prepared inputs.";
+          if(d&&d.status==="pending") throw new Error("Extraction is taking longer than expected \u2014 try again with a shorter document.");
         }catch(err){ status.textContent="Error: "+err.message; }
       })();
       break; }
