@@ -4,109 +4,50 @@ import Anthropic from "@anthropic-ai/sdk";
 // Target shape matches buildClaudePrompt()'s schema in damo-estimator.html exactly,
 // so a successful response here is already valid input to the app's existing
 // deepMergeState(defaults(), json) apply path - no new merge logic needed there.
-// Every leaf is nullable: the model is instructed to use null (never a guess) for
-// anything it can't find evidence for, and stripNulls() below removes those nulls
-// before responding, so deepMergeState leaves unfound fields at their app default
-// - the same "omit what's unknown" contract the manual copy-paste flow already has.
-// Nullable leaves use anyOf[type, null] rather than a type:[...,"null"] array -
-// Anthropic's structured-outputs schema validator rejects an enum whose values
-// are checked against an array-form "type" (confirmed live: 400 invalid_request_error,
-// "Enum value 'low' does not match declared type ['string','null']"). anyOf is the
-// documented-supported combinator and sidesteps that validator path entirely.
-const nStr = { anyOf: [{ type: "string" }, { type: "null" }] } as const;
-const nInt = { anyOf: [{ type: "integer" }, { type: "null" }] } as const;
-const nNum = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
-const nBool = { anyOf: [{ type: "boolean" }, { type: "null" }] } as const;
-const nEnum = (values: string[]) =>
-  ({ anyOf: [{ type: "string", enum: values }, { type: "null" }] }) as const;
-
-const mixObj = {
-  type: "object",
-  properties: { P1: nInt, P2: nInt, P3: nInt, P4: nInt },
-  required: ["P1", "P2", "P3", "P4"],
-  additionalProperties: false,
-} as const;
-const mixSchema = { anyOf: [mixObj, { type: "null" }] } as const;
-const slaObj = {
-  type: "object",
-  properties: {
-    P1r: nInt, P1x: nInt, P2r: nInt, P2x: nInt,
-    P3r: nInt, P3x: nInt, P4r: nInt, P4x: nInt,
-  },
-  required: ["P1r", "P1x", "P2r", "P2x", "P3r", "P3x", "P4r", "P4x"],
-  additionalProperties: false,
-} as const;
-const slaSchema = { anyOf: [slaObj, { type: "null" }] } as const;
-const ownObj = {
-  type: "object",
-  properties: { L1: nStr, L2: nStr, L3: nStr },
-  required: ["L1", "L2", "L3"],
-  additionalProperties: false,
-} as const;
-const ownSchema = { anyOf: [ownObj, { type: "null" }] } as const;
-const towerSchema = {
-  type: "object",
-  properties: {
-    type: nEnum(["AMS", "IMS", "DMS"]),
-    mode: nEnum(["history", "proxy", "mau"]),
-    inc: nInt, sr: nInt,
-    mix: mixSchema, sla: slaSchema,
-    avail: nNum,
-    coverage: nEnum(["8x5", "16x5", "24x5", "24x7"]),
-    mau: nInt, own: ownSchema,
-  },
-  required: ["type", "mode", "inc", "sr", "mix", "sla", "avail", "coverage", "mau", "own"],
-  additionalProperties: false,
-};
-const engObj = {
-  type: "object",
-  properties: {
-    term: nInt,
-    aiMaturity: nEnum(["low", "moderate"]),
-    volumetrics: nEnum(["available", "unavailable"]),
-    aiops: nBool,
-    estate: nEnum(["modern", "legacy"]),
-    region: nEnum(["ime", "eu", "apac", "na"]),
-  },
-  required: ["term", "aiMaturity", "volumetrics", "aiops", "estate", "region"],
-  additionalProperties: false,
-} as const;
-const schema = {
-  type: "object",
-  properties: {
-    docSummary: nStr,
-    eng: { anyOf: [engObj, { type: "null" }] },
-    towers: { type: "array", items: towerSchema },
-  },
-  required: ["docSummary", "eng", "towers"],
-  additionalProperties: false,
+//
+// This deliberately does NOT use output_config.format (structured outputs).
+// Two things were tried and rejected live before landing here:
+//   1. type:["string","null"] + enum -> 400 "Enum value does not match declared type"
+//   2. anyOf[{type,enum},{type:"null"}] per leaf, to make every field individually
+//      omittable -> 400 "too many parameters with union types (33, limit 16) -
+//      exponential compilation cost"
+// The full schema (eng's 6 fields + towers[]'s ~19 fields across type/mode/mix/
+// sla/own) needs more independently-nullable leaves than that budget allows.
+// Rather than collapse nullability to coarse object-level only (which would force
+// the model to guess values for individual fields it isn't sure about whenever it
+// includes an object at all), this uses the same plain-prompt approach the
+// existing manual copy-paste flow (buildClaudePrompt()) already relies on: prose
+// instructions asking for JSON with per-field omission, parsed server-side. No
+// schema union-count limit applies to plain prompting.
+const SCHEMA_EXAMPLE = {
+  docSummary: "2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
+  eng: { term: 3, aiMaturity: "low", volumetrics: "available", aiops: true, estate: "modern", region: "ime" },
+  towers: [{
+    type: "AMS", mode: "history", inc: 180, sr: 70,
+    mix: { P1: 4, P2: 16, P3: 50, P4: 30 },
+    sla: { P1r: 15, P1x: 120, P2r: 30, P2x: 480, P3r: 240, P3x: 2880, P4r: 480, P4x: 5760 },
+    avail: 99.5, coverage: "16x5", mau: 50000, own: { L1: "us", L2: "us", L3: "us" },
+  }],
 };
 
-// Recursively drop null leaves and empty/all-null containers, so the response
-// only ever carries fields the model actually found evidence for.
-function stripNulls(v: unknown): unknown {
-  if (Array.isArray(v)) {
-    const out = v.map(stripNulls).filter((x) => x !== undefined);
-    return out.length ? out : undefined;
-  }
-  if (v !== null && typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      const s = stripNulls(val);
-      if (s !== undefined) out[k] = s;
-    }
-    return Object.keys(out).length ? out : undefined;
-  }
-  return v === null ? undefined : v;
+function buildPrompt(text: string): string {
+  return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
+    "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you " +
+    "can't find evidence for rather than guessing - never invent a plausible-sounding value. towers[] entries must be COMPLETE " +
+    "objects (every field shown in the example), one per service tower actually described (type is one of AMS/IMS/DMS); if no " +
+    "towers are described, omit the towers key entirely. docSummary should be a short narrative in your own words, not copied " +
+    "verbatim from the source; omit it if the text gives nothing to summarize.\n\n" +
+    "Target schema (example values, not the answer):\n" + JSON.stringify(SCHEMA_EXAMPLE, null, 2) + "\n\n" +
+    "Document text:\n" + text;
 }
 
-const PROMPT_INSTRUCTIONS =
-  "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and " +
-  "extract only what it actually supports. Use null for any field you can't find evidence for - never guess " +
-  "or invent a plausible-sounding value. towers: one entry per service tower actually described " +
-  "(type is one of AMS/IMS/DMS); if no towers are described, return an empty array. docSummary should be a " +
-  "2-4 sentence narrative in your own words (scope, client context, what's being asked for), not copied " +
-  "verbatim from the source - null if the text gives nothing to summarize.\n\nDocument text:\n";
+// Model replies are occasionally wrapped in ```json fences despite the "no
+// markdown fences" instruction - strip them before parsing rather than failing.
+function extractJson(raw: string): unknown {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  return JSON.parse(fenced ? fenced[1] : trimmed);
+}
 
 export default async (req: Request, context: Context) => {
   if (req.method !== "POST") {
@@ -143,8 +84,7 @@ export default async (req: Request, context: Context) => {
     const response = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 4000,
-      output_config: { format: { type: "json_schema", schema } },
-      messages: [{ role: "user", content: PROMPT_INSTRUCTIONS + text.slice(0, 200000) }],
+      messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
@@ -152,12 +92,19 @@ export default async (req: Request, context: Context) => {
       return new Response(JSON.stringify({ error: "Model returned no text output" }), { status: 502 });
     }
 
-    const parsed = JSON.parse(textBlock.text);
-    const cleaned = stripNulls(parsed) ?? {};
+    let parsed: unknown;
+    try {
+      parsed = extractJson(textBlock.text);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Model response wasn't valid JSON", raw: textBlock.text.slice(0, 500) }),
+        { status: 502 },
+      );
+    }
 
     return new Response(
       JSON.stringify({
-        json: cleaned,
+        json: parsed,
         usage: {
           input_tokens: response.usage.input_tokens,
           output_tokens: response.usage.output_tokens,
