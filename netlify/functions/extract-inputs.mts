@@ -30,15 +30,70 @@ const SCHEMA_EXAMPLE = {
   }],
 };
 
+// Several fields are closed enums in the app's own UI (segmented controls with
+// exactly these options, e.g. seg("eng.aiMaturity",[["low",...],["moderate",...]])
+// at damo-estimator.html:2566) - a value outside this set has no selected button
+// to render and can break string-compare logic downstream (scenarioOf(), etc).
+// A single example value in the schema isn't enough to keep the model inside that
+// set (confirmed live: "AI/automation heavily" produced aiMaturity:"high", which
+// the app doesn't recognize) - each constrained field's full allowed set is
+// spelled out explicitly below rather than relying on the example to imply it.
+const ALLOWED_VALUES =
+  "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language, e.g. " +
+  "\"aggressive automation\" or \"heavy AI use\", onto the nearest allowed value rather than inventing a new one like \"high\"):\n" +
+  "- eng.term: 1, 3, or 5 (years) - round to the nearest of these\n" +
+  "- eng.aiMaturity: \"low\" or \"moderate\" only\n" +
+  "- eng.volumetrics: \"available\" or \"unavailable\"\n" +
+  "- eng.estate: \"modern\" or \"legacy\"\n" +
+  "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n" +
+  "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n" +
+  "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n" +
+  "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", or \"24x7\"\n";
+
 function buildPrompt(text: string): string {
   return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
     "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you " +
-    "can't find evidence for rather than guessing - never invent a plausible-sounding value. towers[] entries must be COMPLETE " +
-    "objects (every field shown in the example), one per service tower actually described (type is one of AMS/IMS/DMS); if no " +
-    "towers are described, omit the towers key entirely. docSummary should be a short narrative in your own words, not copied " +
-    "verbatim from the source; omit it if the text gives nothing to summarize.\n\n" +
+    "can't find evidence for rather than guessing - never invent a plausible-sounding value, and never use a value outside an " +
+    "allowed set (below) even if the text suggests something more specific. towers[] entries must be COMPLETE objects (every " +
+    "field shown in the example), one per service tower actually described; if no towers are described, omit the towers key " +
+    "entirely. docSummary should be a short narrative in your own words, not copied verbatim from the source; omit it if the " +
+    "text gives nothing to summarize.\n\n" +
     "Target schema (example values, not the answer):\n" + JSON.stringify(SCHEMA_EXAMPLE, null, 2) + "\n\n" +
+    ALLOWED_VALUES + "\n" +
     "Document text:\n" + text;
+}
+
+// Defense-in-depth beyond the prompt instructions above: drop any enum field
+// that still lands outside the app's actual allowed set (rather than reject the
+// whole response) so a single model slip degrades to "field omitted, app default
+// kept" instead of a bad value flowing silently into deepMergeState.
+const ENUM_FIELDS: Record<string, readonly string[]> = {
+  aiMaturity: ["low", "moderate"],
+  volumetrics: ["available", "unavailable"],
+  estate: ["modern", "legacy"],
+  region: ["ime", "eu", "apac", "na"],
+  type: ["AMS", "IMS", "DMS"],
+  mode: ["history", "proxy", "mau"],
+  coverage: ["8x5", "16x5", "24x5", "24x7"],
+};
+function sanitizeExtraction(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sanitizeExtraction);
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (k === "term" && typeof val === "number") {
+        out.term = [1, 3, 5].reduce((best, t) => (Math.abs(t - val) < Math.abs(best - val) ? t : best));
+        continue;
+      }
+      if (k in ENUM_FIELDS) {
+        if (typeof val === "string" && (ENUM_FIELDS[k] as string[]).includes(val)) out[k] = val;
+        continue; // invalid enum value -> field omitted, app default kept
+      }
+      out[k] = sanitizeExtraction(val);
+    }
+    return out;
+  }
+  return v;
 }
 
 // Model replies are occasionally wrapped in ```json fences despite the "no
@@ -104,7 +159,7 @@ export default async (req: Request, context: Context) => {
 
     return new Response(
       JSON.stringify({
-        json: parsed,
+        json: sanitizeExtraction(parsed),
         usage: {
           input_tokens: response.usage.input_tokens,
           output_tokens: response.usage.output_tokens,
