@@ -143,15 +143,24 @@ export default async (req: Request, context: Context) => {
   // "Inactivity Timeout... too much time has passed without sending any data"
   // after ~30s, even though the function itself was still working. That's an
   // IDLE-connection timeout, not a hard duration cap, so the fix is to keep
-  // bytes flowing to the client throughout the generation rather than
-  // buffering the whole response before sending anything. The stream body is
-  // plain keep-alive filler up to RESULT_MARKER, then one JSON payload.
+  // bytes flowing to the client throughout the generation. A first attempt
+  // relied on forwarding each text_delta stream event as a keep-alive byte,
+  // but Sonnet 5's adaptive thinking (on by default here) can spend the whole
+  // window in a silent thinking phase before any text_delta fires - with
+  // thinking.display left at its "omitted" default, that phase produces no
+  // visible stream events at all, so the same timeout reproduced exactly.
+  // A plain time-based heartbeat sidesteps that entirely: it doesn't care what
+  // the model is doing internally, only that the client keeps seeing bytes.
   const encoder = new TextEncoder();
   const client = new Anthropic({ apiKey });
 
   const responseStream = new ReadableStream({
     async start(controller) {
+      const heartbeat = setInterval(() => {
+        try { controller.enqueue(encoder.encode(".")); } catch { /* stream already closed */ }
+      }, 4000);
       const finish = (payload: object) => {
+        clearInterval(heartbeat);
         controller.enqueue(encoder.encode(RESULT_MARKER + JSON.stringify(payload)));
         controller.close();
       };
@@ -161,11 +170,6 @@ export default async (req: Request, context: Context) => {
           max_tokens: 6000,
           messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
         });
-        for await (const event of anthropicStream) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            controller.enqueue(encoder.encode(".")); // keep-alive only, not parsed by the client
-          }
-        }
         const finalMessage = await anthropicStream.finalMessage();
 
         const textBlock = finalMessage.content.find((b) => b.type === "text");
