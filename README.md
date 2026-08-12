@@ -6,6 +6,8 @@ An interactive RFP sizing tool for the DAMO managed-services line. It takes enga
 
 - **Live tool:** https://claude.ai/code/artifact/6182d787-5523-4e96-8b2b-ef126a234fc4
 - **Interactive user guide:** https://claude.ai/code/artifact/dceb2605-9693-471c-a5c2-0b4481ed07cd  (source: `damo-estimator-guide.html`)
+- **FAQ:** https://claude.ai/code/artifact/b7183a26-6cb6-4c98-bdbc-8352bccd4c3e  (source: `damo-estimator-faq.html`)
+- **Netlify deployment (with live AI-powered RFP intake, §2a):** https://damo-estimator.netlify.app
 - **Source:** `damo-estimator.html` — a single self-contained file, no build step, no network calls
 
 ---

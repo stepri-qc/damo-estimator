@@ -152,7 +152,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <h1>How to size a managed-services bid with the DAMO Estimator</h1>
     <p>A working guide to the tool: what each input drives, how the framework's arithmetic actually behaves, and the four places where a careless estimate goes wrong. The demos below are live &mdash; drag them.</p>
     <div class="btns">
-      <a class="btn primary" href="/">Open the estimator</a>
+      <a class="btn primary" href="https://claude.ai/code/artifact/6182d787-5523-4e96-8b2b-ef126a234fc4">Open the estimator</a>
       <button class="btn" type="button" id="btnTheme">Switch theme</button>
     </div>
   </div>
@@ -182,7 +182,8 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <h2>Start here</h2>
     <p class="lede">Six steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
     <div class="steps">
-      <div class="step"><div><h4>Set the engagement</h4><p>Term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out. These four choices alone select the scenario &mdash; and with it your contingency, team shape, AIOps timing and savings target.</p></div></div>
+      <div class="step"><div><h4>Set the engagement</h4><p>Term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, delivery region (IME/EU/APAC/NA), and engagement type. The first four choices alone select the scenario &mdash; and with it your contingency, team shape, AIOps timing and savings target.</p></div></div>
+      <div class="step"><div><h4>Say whether it&rsquo;s greenfield or brownfield</h4><p>Built and run by us from day one, or an existing estate we&rsquo;re taking over? Brownfield is the conservative default &mdash; it auto-seeds four confidence/risk sliders lower <em>and</em> adds a direct Y1 FTE uplift (default +20%, tapering to zero by Y3) on top, since taking over an unfamiliar system genuinely costs more in the first year than the framework&rsquo;s sliders alone capture.</p></div></div>
       <div class="step"><div><h4>Pick the service mix</h4><p>Click <b>AMS</b>, <b>IMS</b> and/or <b>DMS</b> at the top of Service towers to say what you are proposing &mdash; any combination works. Use <b>+ Add another tower</b> only when one line needs more than one tower, such as separate estates on different SLAs. Then set who provides L1, L2 and L3 for each.</p></div></div>
       <div class="step"><div><h4>Enter demand</h4><p>Incident history if you have it. If you do not, switch the tower to <b>Complexity</b> (apps by S/M/L/XL/XXL) or <b>MAU</b>. The tool handles all four scenarios, not just the ones with data.</p></div></div>
       <div class="step"><div><h4>Set SLAs and coverage</h4><p>P1 response under 15 minutes adds 25% to L2/L3 staffing. Coverage window sets a headcount <em>floor</em> through the shift maths &mdash; often the binding constraint, not the ticket volume.</p></div></div>
@@ -208,8 +209,10 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <h3>Incident-history spreadsheets are read as tables, not prose</h3>
     <p>A cell reading <code>P1, 20, 15, 120</code> does not match a sentence-shaped regex. Upload an incident-history workbook and the tool instead looks for a header row (a priority/severity column plus incident-count and response/resolution-SLA columns) and reads the data rows directly &mdash; aggregate volume, per-priority SLA in minutes, a derived mix. When both a spreadsheet and prose text mention the same field, the tabular figure wins: structured data beats a regex guess.</p>
 
-    <h3>For a real AI summary, hand it to Claude</h3>
-    <p>The intake screen's <b>Import Claude-prepared inputs</b> panel has a <b>Copy prompt for Claude</b> button. One click copies instructions, the target JSON schema and the document text you have entered into your clipboard &mdash; paste that into a fresh Claude conversation, and you get back a genuine narrative summary plus the same structured fields, written by an actual model reading the actual document. Paste the JSON it returns into the box below and hit <b>Apply prepared inputs</b>. The summary lands as a <b>Document Summary</b> card at the top of the dashboard, and flows into the exported register and the printed SA report.</p>
+    <h3>For a real AI summary: one click on Netlify, or hand it to Claude yourself</h3>
+    <p>On <code>damo-estimator.netlify.app</code>, the <b>Import Claude-prepared inputs</b> panel has an <b>Extract with AI now</b> button. One click sends your document text to a real backend that calls Claude directly and writes the structured JSON straight into the box below &mdash; no copy-paste, no second chat window. It typically finishes in 10&ndash;15 seconds; a status line shows live progress and the token usage once done.</p>
+    <p>This is Netlify-only &mdash; a published Artifact has no way to call an external server, so on the Artifact (and everywhere else) the same panel instead offers <b>Copy prompt for Claude</b>. One click copies instructions, the target JSON schema and the document text you have entered into your clipboard &mdash; paste that into a fresh Claude conversation, and you get back a genuine narrative summary plus the same structured fields, written by an actual model reading the actual document. Paste the JSON it returns into the box below.</p>
+    <p>Either path ends the same way: hit <b>Apply prepared inputs</b>. The summary lands as a <b>Document Summary</b> card at the top of the dashboard, and flows into the exported register and the printed SA report.</p>
   </section>
 
   <section id="cascade">
@@ -301,6 +304,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Client AI maturity</td><td>Half of scenario selection. Sets AIOps ratio (1:4 low, 1:8 moderate) and whether AIOps starts in Y1 or Y2.</td><td>[F] Part 2</td></tr>
         <tr><td>Volumetrics</td><td>The other half. Available &rarr; bottom-up sizing and higher confidence; not available &rarr; proxy sizing and maximum contingency.</td><td>[F] Part 2</td></tr>
         <tr><td>Estate profile</td><td>Non-ticketing B-factor: 20&ndash;25% for modern custom/SaaS, 30&ndash;35% for complex legacy.</td><td>[F] 1.1</td></tr>
+        <tr><td>Engagement type</td><td>Greenfield or brownfield &mdash; who built and knows the system, distinct from Estate profile's tech-modernity axis. Auto-seeds four confidence/risk sliders (brownfield lower) and applies a direct Y1 FTE uplift (default +20%, tapering to 0 by Y3) that estate profile does not.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Demand basis</td><td>History, complexity proxy (3&ndash;5 to 40&ndash;60 tickets/app/month by size), or MAU &times; 0.5&ndash;2%.</td><td>[F] Sc.1 Steps 1&ndash;2</td></tr>
         <tr><td>Severity mix</td><td>Through the P1&ndash;P4 matrix, where volume <em>enters</em> the stack. P1 mostly bypasses L1 into L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>SLA response / restore</td><td>P1 response &le;15 min adds 25% to L2/L3 effort; &le;30 min adds 12%. P1 restore &le;2 h adds 10% on L3. Capped at +40%.</td><td>[F] Sc.3 Step 2</td></tr>
@@ -313,7 +317,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Role weights</td><td>How tier headcount is distributed across whichever roles you have switched on.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>SRE is the objective</td><td>IMS towers only. Off: SRE is not a candidate at all. On: SRE and Infrastructure Engineer both staff IMS L3, weighted 1.8&times; / 0.5&times;.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
-        <tr><td>Delivery region</td><td>IME: shown as 100% India. Europe: unlocks the onshore/nearshore/offshore mix, applied uniformly to every role's headcount.</td><td>Engagement design</td></tr>
+        <tr><td>Delivery region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently.</td><td>Engagement design</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -330,13 +334,13 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Traditional vs AI-driven</td><td>The break-even callout. It tells you whether the savings story survives contact with the AIOps ratio.</td></tr>
         <tr><td>Team shape</td><td>The progression pyramid &rarr; diamond &rarr; inverted across years, and the AIOps band in violet.</td></tr>
         <tr><td>Role &amp; grade staffing plan</td><td>Lead share by year. This is the seniority narrative in your own grade ladder.</td></tr>
-        <tr><td>Delivery location mix</td><td>The onshore/nearshore/offshore split for Europe deals &mdash; who sits where, for team-loading. IME just confirms India.</td></tr>
+        <tr><td>Delivery location mix</td><td>Who sits where, for team-loading &mdash; the split for whichever region is active (EU/APAC/NA). IME just confirms India.</td></tr>
         <tr><td>O1 portfolio</td><td>Which AIOps use cases are funded in which year, and what did <em>not</em> make the capacity cut.</td></tr>
         <tr><td>O2 rostering</td><td>Rostered FTE against the analytic lower bound. A gap means rounding waste from unshareable time blocks.</td></tr>
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>26 checks reproducing worked examples from the source documents. Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>67 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -408,25 +412,32 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
   <section id="location">
     <h2>Delivery location</h2>
     <p class="lede">A third split, independent of role and grade &mdash; <b>where</b> the team sits. Purely informational: it never changes total FTE, role selection or grade mix.</p>
-    <p>Set <b>Region</b> under Engagement:</p>
+    <p>Set <b>Region</b> under Engagement &mdash; four options, each with its own location catalogue. <code>locMix</code> is stored per region, so switching between them to compare never loses what you already entered elsewhere:</p>
     <div class="tablewrap"><table class="ref">
       <thead><tr><th>Region</th><th>Behaviour</th></tr></thead>
       <tbody>
         <tr><td>IME</td><td>The whole team is shown as delivered from <b>India</b>. No further configuration &mdash; the Delivery location mix card just states it.</td></tr>
-        <tr><td>Europe</td><td>A percentage table appears: <b>Onshore (Europe)</b> / <b>Nearshore (Romania)</b> / <b>Offshore (India)</b>, entered as location and percentage in two columns.</td></tr>
+        <tr><td>EU</td><td>A percentage table appears: <b>Onshore (Europe)</b> / <b>Nearshore (Romania)</b> / <b>Offshore (India)</b>.</td></tr>
+        <tr><td>APAC</td><td>Two peer locations, <b>China</b> and <b>Australia</b> &mdash; no onshore/nearshore/offshore hierarchy, since APAC has none relative to India the way EU/NA do.</td></tr>
+        <tr><td>NA</td><td>Two locations, <b>Nearshore (LATAM/Ecuador)</b> and <b>Offshore (India)</b>.</td></tr>
       </tbody>
     </table></div>
-    <h3>Four quick presets for Europe</h3>
+    <h3>Presets</h3>
     <div class="tablewrap"><table class="ref">
-      <thead><tr><th>Preset</th><th>Onshore</th><th>Nearshore</th><th>Offshore</th></tr></thead>
+      <thead><tr><th>Region</th><th>Preset</th><th>Split</th></tr></thead>
       <tbody>
-        <tr><td>Offshore only</td><td>0%</td><td>0%</td><td>100%</td></tr>
-        <tr><td>Nearshore + Offshore</td><td>0%</td><td>40%</td><td>60%</td></tr>
-        <tr><td>Onshore + Offshore</td><td>30%</td><td>0%</td><td>70%</td></tr>
-        <tr><td>Onshore + Nearshore + Offshore</td><td>20%</td><td>30%</td><td>50%</td></tr>
+        <tr><td rowspan="4">EU</td><td>Offshore only</td><td>0 / 0 / 100</td></tr>
+        <tr><td>Nearshore + Offshore</td><td>0 / 40 / 60</td></tr>
+        <tr><td>Onshore + Offshore</td><td>30 / 0 / 70</td></tr>
+        <tr><td>Onshore + Nearshore + Offshore</td><td>20 / 30 / 50</td></tr>
+        <tr><td rowspan="3">APAC <span class="pill warn">proposed</span></td><td>China only</td><td>100 / 0</td></tr>
+        <tr><td>Australia only</td><td>0 / 100</td></tr>
+        <tr><td>Even split</td><td>50 / 50</td></tr>
+        <tr><td rowspan="2">NA <span class="pill warn">proposed</span></td><td>Offshore only</td><td>0 / 100</td></tr>
+        <tr><td>Nearshore + Offshore</td><td>40 / 60</td></tr>
       </tbody>
     </table></div>
-    <p>Type directly into the percentage cells for anything else. A live hint flags when the three don't sum to 100% &mdash; the split still <b>normalises proportionally</b> rather than dropping or inventing headcount, so the numbers stay correct mid-edit, but a clean 100% is what makes the exported register read well.</p>
+    <p>Only EU's presets trace to real usage &mdash; APAC and NA are proposed guesses with no framework or client data behind them yet, flagged accordingly. Type directly into the percentage cells for anything else. A live hint flags when a region's locations don't sum to 100% &mdash; the split still <b>normalises proportionally</b> rather than dropping or inventing headcount, so the numbers stay correct mid-edit, but a clean 100% is what makes the exported register read well.</p>
     <div class="callout warn">
       <p><b>The split is uniform, not per-role.</b> Every role's Year 1 FTE gets the same percentage split &mdash; a Developer at 20/30/50 lands at those same three shares, and so does everyone else. It does not pin specific roles to specific locations. A "Developers from Romania, everyone else from India" pattern is achieved by shaping the overall percentages to roughly match that mix, not by assigning Developer to nearshore directly. If you need true per-role location pinning, that's a follow-up, not something the current mix does.</p>
     </div>

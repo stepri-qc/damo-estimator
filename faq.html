@@ -1,0 +1,252 @@
+<title>DAMO Estimator &mdash; FAQ</title>
+<style>
+:root{
+  --paper:#EDEEEA; --surface:#F6F7F4; --sunken:#E3E5DF;
+  --ink:#171A1F; --ink-2:#464C55; --ink-3:#6E747E;
+  --rule:#CBCEC6; --rule-2:#DCDED7;
+  --accent:#1F5C8B; --accent-soft:#DCE6EE; --accent-ink:#12405F;
+  --compute:#6D5BD0; --compute-soft:#E5E1F7; --compute-ink:#4A3B9B;
+  --display:"Iowan Old Style",Charter,"Palatino Linotype",Palatino,Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#101317; --surface:#171B20; --sunken:#0B0E11;
+  --ink:#E4E6E3; --ink-2:#A2A8B0; --ink-3:#767D87;
+  --rule:#2A3037; --rule-2:#212730;
+  --accent:#6FA8D4; --accent-soft:#1A2A38; --accent-ink:#9CC6E6;
+  --compute:#A594F0; --compute-soft:#241F3D; --compute-ink:#BFB2FA;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#101317; --surface:#171B20; --sunken:#0B0E11;
+  --ink:#E4E6E3; --ink-2:#A2A8B0; --ink-3:#767D87;
+  --rule:#2A3037; --rule-2:#212730;
+  --accent:#6FA8D4; --accent-soft:#1A2A38; --accent-ink:#9CC6E6;
+  --compute:#A594F0; --compute-soft:#241F3D; --compute-ink:#BFB2FA;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --paper:#EDEEEA; --surface:#F6F7F4; --sunken:#E3E5DF;
+  --ink:#171A1F; --ink-2:#464C55; --ink-3:#6E747E;
+  --rule:#CBCEC6; --rule-2:#DCDED7;
+  --accent:#1F5C8B; --accent-soft:#DCE6EE; --accent-ink:#12405F;
+  --compute:#6D5BD0; --compute-soft:#E5E1F7; --compute-ink:#4A3B9B;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance;letter-spacing:-.01em}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px 120px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:56px;align-items:start}
+@media (max-width:880px){.wrap{grid-template-columns:1fr;gap:0}}
+
+.hero{border-bottom:1px solid var(--rule);background:var(--surface)}
+.hero .inner{max-width:1180px;margin:0 auto;padding:52px 28px 38px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+.hero h1{font-size:clamp(30px,4.6vw,44px);line-height:1.08}
+.hero .sub{max-width:62ch;color:var(--ink-2);font-size:17px;margin:16px 0 0;font-style:italic}
+
+nav.toc{position:sticky;top:28px;font-size:13px;line-height:1.5}
+@media (max-width:880px){nav.toc{position:static;padding:20px 28px 0;margin-bottom:8px}}
+nav.toc .t{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+nav.toc a{display:block;padding:5px 0 5px 12px;border-left:2px solid var(--rule-2);color:var(--ink-2);text-decoration:none}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+nav.toc .count{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:16px;padding-top:14px;border-top:1px solid var(--rule-2)}
+
+main{min-width:0;padding-top:44px}
+@media (max-width:880px){main{padding:0 28px}}
+.measure{max-width:70ch}
+section{margin-bottom:46px;scroll-margin-top:26px}
+section h2{font-size:22px;margin-bottom:6px}
+section .cat-note{color:var(--ink-3);font-size:14px;margin:0 0 22px}
+
+.qa{padding:18px 0;border-bottom:1px solid var(--rule-2)}
+.qa:first-of-type{padding-top:6px}
+.qa:last-child{border-bottom:0}
+.q{display:flex;gap:10px;align-items:baseline;margin:0 0 8px}
+.q .tag{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--compute-ink);background:var(--compute-soft);border-radius:3px;padding:1px 6px;flex:none}
+.q .txt{font-weight:650;font-size:16.5px;line-height:1.4}
+.a{display:flex;gap:10px;align-items:flex-start}
+.a .tag{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:1px 6px;flex:none;margin-top:2px}
+.a p{margin:0;color:var(--ink-2);font-size:15.5px;line-height:1.65;max-width:64ch}
+.a ul{margin:8px 0 0;padding-left:18px;max-width:62ch}
+.a li{margin:5px 0;color:var(--ink-2);font-size:15px}
+.a li b{color:var(--ink)}
+</style>
+
+<header class="hero">
+  <div class="inner">
+    <p class="eyebrow">Frequently Asked Questions</p>
+    <h1>DAMO Estimator</h1>
+    <p class="sub">An interactive effort/FTE sizing tool for AMS, IMS and DMS managed-services proposals, with a QUBO optimization layer mapped against studied quantum algorithms.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" id="toc">
+    <p class="t">Categories</p>
+    <a href="#general">General</a>
+    <a href="#using">Using it</a>
+    <a href="#trust">Trusting the numbers</a>
+    <a href="#quantum">Quantum &amp; optimization</a>
+    <a href="#limits">Limitations &amp; roadmap</a>
+    <p class="count">30 questions</p>
+  </nav>
+
+  <main>
+    <div class="measure">
+
+    <section id="general">
+      <h2>General</h2>
+      <p class="cat-note">What the tool is and isn't.</p>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What is this tool, in one sentence?</span></div>
+        <div class="a"><span class="tag">A</span><p>An interactive RFP-sizing tool for DAMO managed services that turns a written estimation framework into a working calculator, producing a year-on-year effort and FTE estimate, a named role-and-grade staffing plan, and an explicit confidence posture.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What does it NOT do?</span></div>
+        <div class="a"><span class="tag">A</span><p>It sizes effort and headcount only. There is no rate card, no margin and no client price anywhere in the tool &mdash; pricing stays in the existing commercial workbook. That was a deliberate scope decision, not an oversight.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What is it built from?</span></div>
+        <div class="a"><span class="tag">A</span><p>Two source documents: the DAMO Solution Estimation Framework (a 30-page PDF) and the AI/Works DAMO Team Pricing Sheet (a 7-sheet workbook). Every mechanic traces to one of the two, tagged <i>[F]</i> or <i>[P]</i> in the code and the interface. Anything not traceable to either is explicitly flagged <i>proposed</i> and listed in the exported register &mdash; a calibration target, not a fact.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Who is it for?</span></div>
+        <div class="a"><span class="tag">A</span><p>Solution architects sizing an AMS/IMS/DMS proposal, and anyone who needs to defend an estimate's arithmetic in front of a client or a deal review.</p></div></div>
+    </section>
+
+    <section id="using">
+      <h2>Using it</h2>
+      <p class="cat-note">Getting from a blank estimate to a defensible number.</p>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">How do I get started?</span></div>
+        <div class="a"><span class="tag">A</span><p>Two ways in. On a fresh visit the tool opens on an intake screen &mdash; add the RFP or any supporting document and let it pre-fill what it can, or click &ldquo;Skip &mdash; set up manually.&rdquo; Either way you land on a dashboard that already loads with a single AMS tower and a worked default, so there are live numbers on screen immediately. From there: pick the service mix, set who provides each support tier, score the confidence and risk drivers, and read the results.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Can I upload the RFP as a file instead of typing everything in?</span></div>
+        <div class="a"><span class="tag">A</span><p>Yes &mdash; <b>.docx</b>, <b>.pdf</b>, <b>.xlsx</b>, <b>.txt</b> and <b>.md</b> are all supported as direct file uploads, no conversion step. Word and Excel are parsed natively in the browser; PDF uses a real bundled parser (pdf.js), since PDF's internal structure genuinely needs one. You can also add more than one document &mdash; the RFP itself, a separate incident-history workbook, an SLA sheet &mdash; and they combine into a single pass rather than needing to be merged by hand first. The intake screen is reachable any time via <b>Start from RFP</b> in the masthead, not just on first load.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Does the intake screen give me an AI-written summary of the RFP?</span></div>
+        <div class="a"><span class="tag">A</span><p>Not automatically on every deployment &mdash; and it says so on screen rather than pretending otherwise. What always runs automatically is a pattern-matcher: known DAMO phrasing (contract term, service towers, incident volume, SLAs, coverage, AIOps intent) gets pre-filled, with the exact source excerpt shown behind every match. That's regex, not comprehension. See the next question for the two ways to get a genuine, model-written summary.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">So how do I get an actual AI-generated summary?</span></div>
+        <div class="a"><span class="tag">A</span><div>
+          <p style="margin-bottom:8px">Depends which deployment you're on:</p>
+          <ul>
+            <li><b>On the Netlify site</b> (damo-estimator.netlify.app): click <b>Extract with AI now</b> in the intake screen's &ldquo;Import Claude-prepared inputs&rdquo; panel. It sends your document text to a real backend function that calls Claude directly and writes the structured JSON straight into the box below &mdash; no copy-paste, no second window. Usually done in 10&ndash;15 seconds, with a live status line showing progress and token usage.</li>
+            <li><b>Everywhere else</b> (including the private Artifact, which has no way to call an external server): use <b>Copy prompt for Claude</b> in the same panel. One click copies instructions, the target schema, and the document text you've entered into your clipboard. Paste that into a fresh Claude conversation, and paste the JSON that comes back into the &ldquo;Prepared JSON&rdquo; box.</li>
+          </ul>
+          <p style="margin-top:10px">Either way, hit <b>Apply prepared inputs</b>. The real summary lands as a <b>Document Summary</b> card at the top of the dashboard, and flows into the exported register and the printed report.</p>
+        </div></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">How do I print or save the estimate as a PDF?</span></div>
+        <div class="a"><span class="tag">A</span><p><b>Print / Save PDF</b> in the masthead shows an SA-only report on screen &mdash; effort, FTE, roles, confidence, the assumptions register, deliberately excluding the optimization/QUBO material a client proposal doesn't need. From there, press <b>Ctrl/Cmd+P</b> and choose &ldquo;Save as PDF&rdquo; as the destination. The button shows the report rather than triggering the print dialog itself, because a published Artifact's sandbox can silently block a scripted print call; your browser's own print shortcut is never subject to that restriction.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What if the client can't give me historical ticket data?</span></div>
+        <div class="a"><span class="tag">A</span><p>Two fallback demand bases: a complexity-point proxy (apps sized S through XXL, each with a benchmark tickets-per-month range) or a MAU-based estimate (monthly active users &times; an industry incident-rate benchmark). The tool auto-selects the right one of four estimation scenarios based on data availability and client AI maturity, and adjusts contingency and confidence accordingly.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">How does &ldquo;service responsibility&rdquo; work?</span></div>
+        <div class="a"><span class="tag">A</span><p>Each tower declares who provides L1, L2 and L3 &mdash; DAMO, the customer, another vendor, or the client's own product team. Tiers not provided by DAMO are not sized at all: no effort, no headcount, no roles &mdash; though ticket volume still cascades through them, because an upstream party's resolution rate still sets the volume DAMO has to handle downstream.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">How do roles get selected?</span></div>
+        <div class="a"><span class="tag">A</span><p>Only nine of the client's 37 named roles are switched on by default &mdash; the ones actually used in practice, not a weighted contest across the full list. Role choice is threshold- and flag-driven where the real staffing heuristic is: a Systems Support Engineer covers AMS L3 below an evolution-effort threshold, a dedicated Developer only above it; SRE is included in the IMS mix only when the client has explicitly named reliability as an objective. Every other role stays available &mdash; switched off, not deleted &mdash; for the deal that genuinely needs it.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What's Engagement type (Greenfield / Brownfield), and does it actually move the number?</span></div>
+        <div class="a"><span class="tag">A</span><p>It says who built and knows the system &mdash; a different axis from Estate profile, which is about how modern the tech stack is, not who built it. <b>Greenfield</b> (built and run by Thoughtworks from the start) is high confidence. <b>Brownfield</b> (an existing build being handed over) is the conservative default, and yes, it genuinely moves the number two ways: it auto-seeds four Annexure 1/2 confidence and risk sliders lower, and it applies a direct Year-1 FTE uplift (default +20%) on top of that, tapering to zero by Year 3 as the team gets a full year to learn a system it didn't build. Switching the toggle always re-seeds the four sliders, even over a manual edit; all four stay freely editable afterward.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What's the delivery-location mix for?</span></div>
+        <div class="a"><span class="tag">A</span><p>Team-loading across four regions: IME, EU, APAC and NA. IME shows the whole team as delivered from India, no configuration needed. EU unlocks an onshore (Europe) / nearshore (Romania) / offshore (India) split; APAC splits across China and Australia; NA splits across nearshore (LATAM/Ecuador) and offshore (India) &mdash; each with its own quick presets. Every region remembers its own mix independently, so switching to compare two regions never loses what you entered in the other. It's applied uniformly across the already-computed role and grade allocation &mdash; a staffing-location layer, not a change to total headcount.</p></div></div>
+    </section>
+
+    <section id="trust">
+      <h2>Trusting the numbers</h2>
+      <p class="cat-note">Why the output isn't a black box.</p>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">How do I know the numbers are actually right?</span></div>
+        <div class="a"><span class="tag">A</span><p>The built-in &ldquo;Verify against framework&rdquo; panel runs 67 checks on every render, most of them worked examples lifted directly from the source documents &mdash; the framework's own page-3 illustration, its Annexure 1 and 2 examples, the shift-coverage maths &mdash; plus synthetic cases for logic that has no source-document analogue, like the intake extraction engine, the document-summary hand-off, and the AI-extracted-tower completeness check described below. A green run means the engine reproduces the document it claims to implement. It's designed to be run live in front of a client as a credibility check, not just a developer test suite.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Did building this find any errors in the framework itself?</span></div>
+        <div class="a"><span class="tag">A</span><p>Yes &mdash; one. The framework's Annexure 2 worked example lists nine weighted risk-drag values that sum to 14.25, but the framework's own total row prints 15.3. The band conclusion (Medium) holds either way, but the tool sums the rows correctly and flags the discrepancy rather than silently matching the typo.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What exactly does the confidence score change?</span></div>
+        <div class="a"><span class="tag">A</span><p>Two things: the contingency and commercial-posture recommendation shown in the results, and &mdash; more substantively &mdash; the width of the Monte Carlo uncertainty bands on the FTE trajectory. A weaker evidence base doesn't just get a lower label, it visibly widens the P80 estimate.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What's still &ldquo;proposed&rdquo; rather than framework-sourced?</span></div>
+        <div class="a"><span class="tag">A</span><p>The P1&ndash;P4 severity-to-tier routing matrix, per-tower ARE multipliers and automation ceilings, the AIOps use-case catalogue's effort and deflection numbers, the role-policy thresholds, the Greenfield/Brownfield slider seeds and FTE-uplift figure, and the APAC/NA location presets. All are editable, all are flagged, and all are listed together in a calibration backlog inside the register export &mdash; the honest list of what needs real engagement data before it should be trusted at face value.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">I applied AI-extracted or hand-pasted JSON and the team size looked much too small. What happened?</span></div>
+        <div class="a"><span class="tag">A</span><p>This was a real bug, now fixed: a partial tower object from an AI extraction (correctly omitting fields it had no evidence for) or a hand-written partial JSON could land in the estimator missing a field like <code>enabled</code> &mdash; and every calculation silently skips a tower that isn't marked enabled, with no error shown. The fix backfills every applied tower against the same complete-tower template a manually-added tower gets, keeping anything the source JSON actually provided and filling in the rest. If you're still seeing this on an old saved link, the fix hasn't reached that bookmarked hash yet &mdash; see the next section.</p></div></div>
+    </section>
+
+    <section id="quantum">
+      <h2>The quantum &amp; optimization layer</h2>
+      <p class="cat-note">Where the quantum-computing study actually connects.</p>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Where does quantum computing actually show up?</span></div>
+        <div class="a"><span class="tag">A</span><p>Four genuinely combinatorial sub-problems inside the estimation process &mdash; which AIOps use cases to fund and when, follow-the-sun shift rostering, team-shape optimization, and uncertainty propagation &mdash; are formulated as QUBOs (Quadratic Unconstrained Binary Optimization problems), the native input format for quantum annealers and QAOA circuits.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">If it's about quantum computing, why does it use classical solvers?</span></div>
+        <div class="a"><span class="tag">A</span><p>Because at DAMO's actual instance sizes &mdash; a handful of AIOps use cases, a few dozen weekly shifts, well under thirty people &mdash; classical exact methods (branch-and-bound, integer programming) solve these in milliseconds, and there is nothing for a quantum device to win. The QUBO formulation is included as a rigorous problem statement and an annealer-ready export, not a performance claim. The tool says this plainly rather than implying an advantage that isn't real at this scale.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Which of the studied algorithms actually apply?</span></div>
+        <div class="a"><span class="tag">A</span><div>
+          <p style="margin-bottom:8px">Three of seven, honestly assessed:</p>
+          <ul>
+            <li><b>QAOA and quantum annealing</b> &mdash; best fit, attach directly to the three QUBO problems with no reformulation needed.</li>
+            <li><b>Quantum Amplitude Estimation</b> &mdash; best theoretical fit for the uncertainty-propagation problem; the estimate genuinely is E[f(X)], and QAE's O(1/&epsilon;) sample complexity beats classical Monte Carlo's O(1/&epsilon;&sup2;) in principle.</li>
+            <li><b>VQE</b> &mdash; works but degenerates into QAOA, since the Hamiltonian here is diagonal.</li>
+            <li><b>Grover</b> &mdash; technically applicable, practically irrelevant: quadratic speedup on a search space of a few hundred configurations a classical machine enumerates instantly.</li>
+            <li><b>HHL and quantum walks</b> &mdash; no natural fit. No sparse linear system of meaningful size, no graph-traversal problem of meaningful size.</li>
+          </ul>
+        </div></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What's a QUBO, in plain terms?</span></div>
+        <div class="a"><span class="tag">A</span><p>A way of stating an optimization problem as: choose a set of yes/no decisions (binary variables) to minimize a score, where the score is built from single-decision terms and pairwise-interaction terms between decisions. Constraints get encoded as penalty terms large enough that violating them can never look cheaper than obeying them. It's the standard input format quantum annealers and QAOA circuits actually accept.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Can I export the QUBO and run it on real quantum hardware?</span></div>
+        <div class="a"><span class="tag">A</span><p>Yes &mdash; the QUBO inspector panel exports the Q matrix as JSON, ready to hand to an annealer or a QAOA toolchain. The panel also shows variable count, matrix sparsity, and the penalty-weight reasoning, so the encoding is auditable rather than a black box.</p></div></div>
+    </section>
+
+    <section id="limits">
+      <h2>Limitations &amp; roadmap</h2>
+      <p class="cat-note">What's next, and what this deliberately doesn't do.</p>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Can this tool price a deal?</span></div>
+        <div class="a"><span class="tag">A</span><p>No, by design. It stops at effort and headcount. Turning that into a price is a separate step in the existing commercial workbook, deliberately kept out of scope so the estimate stays defensible independent of margin decisions.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Why can't a published tool like this just call an AI model directly?</span></div>
+        <div class="a"><span class="tag">A</span><p>The private Artifact genuinely can't &mdash; checked, not assumed, against the platform's own capability list, which covers only file downloads and calling the viewer's connected tools, nothing that can generate or summarize text. That's still true for the Artifact and is exactly why it offers the copy-to-Claude hand-off instead. The Netlify deployment is a real web server, though, so it's a different case: it runs an actual serverless function that calls Claude with a server-held API key, which is what powers the one-click <b>Extract with AI now</b> button there (see &ldquo;So how do I get an actual AI-generated summary?&rdquo; above). The two deployments genuinely differ on this point &mdash; it isn't a limitation of the page itself, only of a page with no backend behind it.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Who pays for the AI extraction calls on the Netlify site, and is my document text safe?</span></div>
+        <div class="a"><span class="tag">A</span><p>The site owner's own Anthropic API key, held as a server-side environment variable the browser never sees and this repository never contains. An optional shared passphrase can gate the extraction endpoint so a stranger who finds the URL can't spend the owner's credits &mdash; that's an abuse guard, not a login system. Your document text is sent to Anthropic's API to generate the extraction and is not stored anywhere by the tool itself; nothing is written to a database, since the whole tool still has none &mdash; every estimate lives only in your own browser's URL.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">I reloaded a bookmarked estimate and a feature I know shipped doesn't seem to be there. What's going on?</span></div>
+        <div class="a"><span class="tag">A</span><p>Almost always a stale saved link, not a bug. Every estimate lives entirely in the URL's <code>#hash</code>, captured at whatever version of the tool you were using when you last edited it &mdash; so an old bookmark can carry a state object from before a newer field existed. A same-URL hard reload doesn't clear this, because the hash travels with the URL. Opening the bare URL with no <code>#fragment</code>, or clicking <b>Reset</b>, will.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">Does the document intake handle scanned or image-only PDFs?</span></div>
+        <div class="a"><span class="tag">A</span><p>No &mdash; it reads the text layer a normal PDF export already has, not pixels. A scanned document with no embedded text layer won't yield anything, because that would need OCR, which is out of scope. If a PDF isn't extracting cleanly, paste the text in directly instead.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What would it take to run this on real quantum hardware?</span></div>
+        <div class="a"><span class="tag">A</span><p>Problem sizes that don't exist yet at DAMO's scale. The honest answer, and the one in the tool, is that classical solvers win outright today &mdash; the value of the QUBO layer right now is the rigor of the formulation and the optionality it creates, not a live performance advantage.</p></div></div>
+
+      <div class="qa"><div class="q"><span class="tag">Q</span><span class="txt">What's the single highest-value thing to calibrate next?</span></div>
+        <div class="a"><span class="tag">A</span><p>The AIOps use-case catalogue's effort and deflection estimates &mdash; they drive both the portfolio-optimization funding decisions and the whole year-on-year productivity narrative, and right now they're the tool's own best guess rather than data from real engagements.</p></div></div>
+    </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+var links=[].slice.call(document.querySelectorAll("nav.toc a"));
+var secs=links.map(function(a){return document.querySelector(a.getAttribute("href"));});
+function spy(){
+  var best=0;
+  secs.forEach(function(s,i){ if(s && s.getBoundingClientRect().top<=140) best=i; });
+  links.forEach(function(a,i){ a.classList.toggle("on",i===best); });
+}
+addEventListener("scroll",spy,{passive:true}); spy();
+</script>
