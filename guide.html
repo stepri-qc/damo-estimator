@@ -171,6 +171,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#resp">Who provides what</a>
     <a href="#roles">Roles &amp; grades</a>
     <a href="#policy">Role policy</a>
+    <a href="#structcpx">Structural complexity</a>
     <a href="#location">Delivery location</a>
     <a href="#gotchas">Five traps</a>
     <a href="#glossary">Glossary</a>
@@ -318,6 +319,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>SRE is the objective</td><td>IMS towers only. Off: SRE is not a candidate at all. On: SRE and Infrastructure Engineer both staff IMS L3, weighted 1.8&times; / 0.5&times;.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Delivery region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently.</td><td>Engagement design</td></tr>
+        <tr><td>Structural complexity</td><td>IMS/DMS only. Environments/hostings/databases/security (IMS) or data products/platform/integrations/upstreams/downstreams (DMS) compute a Low/Medium/High tier, bumping B-factor 0/10/20% and gating Information Security Engineer or Data Architect/Data Strategist eligibility at High.</td><td><span class="pill warn">proposed</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -340,7 +342,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>67 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>81 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -407,6 +409,33 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <p>Data Engineer is the one role that spans <b>both</b> the L2 and L3 headcount pools for DMS, reflecting "we use Data Engineer for L2/L3" &mdash; every other on-by-default role draws from exactly one tier.</p>
     <p>A mixed AMS+IMS deal loads both towers' roles independently and at the same time &mdash; SSE from the AMS slice, Infrastructure Support Engineer from the IMS slice &mdash; since each tower resolves against its own headcount share, not a deal-wide blend.</p>
     <p class="mini">SDM ratio defaults to 1:8, the manual-estimation convention, replacing the framework's vaguer 1:8&ndash;10 range.</p>
+  </section>
+
+  <section id="structcpx">
+    <h2>Structural complexity &mdash; IMS &amp; DMS</h2>
+    <p class="lede">A second complexity axis, independent of demand basis. Demand basis says how many tickets a tower will generate; structural complexity says how hard the estate itself is to run &mdash; more environments, hosting targets, databases and integrations mean more non-ticketing overhead, regardless of ticket volume. AMS is untouched &mdash; its existing incident-history/complexity-proxy inputs already cover it.</p>
+
+    <h3>What you enter</h3>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Tower</th><th>Inputs</th></tr></thead>
+      <tbody>
+        <tr><td>IMS</td><td>Environments supported, hostings supported, databases supported, non-production environments, and a &ldquo;security-related aspects in scope&rdquo; checkbox.</td></tr>
+        <tr><td>DMS</td><td>Data products supported, data platform built on (Databricks / Snowflake / Synapse / BigQuery / Redshift / Other), integrations, upstream systems, downstream systems.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>What it does</h3>
+    <p>Each tower's inputs feed a weighted score, banded into <b>Low / Medium / High</b> &mdash; shown live as a badge on the tower card. Two effects follow, both new, neither touching AMS:</p>
+    <ul>
+      <li><b>Effort.</b> The tier bumps the tower's B-factor (non-ticketing effort) &mdash; 0% Low, +10% Medium, +20% High by default &mdash; stacking with the existing modern/legacy estate B-factor. A third lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower FTE); none of the three double-count.</li>
+      <li><b>Roles.</b> At <b>High</b> only, two off-by-default roles become eligible: <b>Information Security Engineer</b> on IMS, gated directly by the security checkbox &mdash; exactly like the SRE checkbox already gates SRE. <b>Data Architect</b> and <b>Data Strategist</b> on DMS, standing in for a DataOps Architect and a Data Quality/Governance Lead. Either way, the role must <em>also</em> be switched on in <b>Roles &amp; grades</b> &mdash; a High tier alone never auto-enables it, matching how SRE and the AMS evolution threshold already work.</li>
+    </ul>
+
+    <div class="callout">
+      <p><b>The proposed defaults land at Medium on purpose.</b> A freshly-added IMS or DMS tower's own field defaults score right in the middle of the Low/Medium/High bands &mdash; a deliberate &ldquo;typical mid-size deal&rdquo; anchor, not an artificially low or high starting point. Push the counts up or down to match the actual estate.</p>
+    </div>
+
+    <p class="mini">Every weight, cut-point and bump percentage here is editable in the Benchmarks panel, and is a proposed calibration &mdash; grounded in a supplied Data Managed Services deck's complexity-tier framing, not in <code>[F]</code>/<code>[P]</code>.</p>
   </section>
 
   <section id="location">

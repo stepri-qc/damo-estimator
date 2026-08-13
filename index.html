@@ -398,6 +398,14 @@ function defaults(){return{
     },
     // [F Sc.3 Step 2] stringent SLA (P1<15min) -> +20-30% on L2/L3. Graduated, capped.
     sla:{resp15:0.25,resp30:0.12,restore2h:0.10,avail999:0.10,cap:0.40},
+    // PROPOSED - IMS/DMS structural-complexity index. Grounded in the supplied
+    // Data Managed Services deck's complexity-tier framing, but weights, flat
+    // adds and cut-points are this estimator's own calibration, not [F]/[P].
+    structCpx:{
+      ims:{wEnv:1, wHost:1.5, wDb:1, secFlat:3, loMed:8, medHigh:16},
+      dms:{wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3, loMed:10, medHigh:20},
+      bump:{low:0, medium:0.10, high:0.20}   // multiplies B-factor; see runEngine
+    },
     govBase:40, govPerTower:8,          // PROPOSED governance & reporting hrs/month
     handoffPct:0.04,                    // PROPOSED coordination uplift per ownership boundary
     hypercareMonths:4, hypercareMult:3, // [F G4] 3-6 months at ~3x steady-state
@@ -498,11 +506,18 @@ function mkTower(type){
     // is minor enhancement, on top of the regular run - AMS-only. Both gate role
     // ELIGIBILITY, not just weight - see roleEligible().
     sre:false, evolution:0,
+    // PROPOSED - IMS/DMS structural-complexity inputs, feeding structCpxTier().
+    // AMS ignores these entirely (structCpxTier returns null for AMS); they
+    // exist on every tower only because mkTower() uses one shared shape, same
+    // convention as sre/evolution above.
+    envCount:4, hostCount:2, dbCount:3, nonProdCount:2, security:false,               // IMS
+    dataProducts:5, platform:"Snowflake", integrations:6, upstreams:4, downstreams:3, // DMS
     // who provides each tier of service. Only tiers owned by "us" are sized.
     own:{L1:"us",L2:"us",L3:"us"},
     coverage:"16x5", ftePerShift:2, active:{L1:true,L2:true,L3:false}
   };
 }
+const DMS_PLATFORMS=["Databricks","Snowflake","Synapse","BigQuery","Redshift","Other"];
 const PARTIES={us:"DAMO (us)",customer:"Customer",vendor:"Other vendor",product:"Product team"};
 const RESP_PRESETS=[
   {id:"full", n:"Full stack L1-L3",        own:{L1:"us",L2:"us",L3:"us"}},
@@ -752,6 +767,28 @@ function slaMod(t,B){
   const l3extra=(+t.sla.P1x<=120)?s.restore2h:0;
   return {l2:Math.min(base,s.cap), l3:Math.min(base+l3extra,s.cap)};
 }
+/* PROPOSED - structural-complexity index for IMS/DMS, grounded in the supplied
+   Data Managed Services deck's complexity-tier framing but with weights/cut-
+   points chosen here, not sourced from [F]/[P]. AMS is untouched - returns
+   null so every caller (B-factor bump, role gating, UI badge) can skip it
+   cleanly with a single falsy check. Deliberate +x||0 / !!x coercion: a tower
+   missing these fields entirely (a raw legacy hash/Import that bypasses
+   backfillTowers) degrades safely to "low", same as sre/evolution already do. */
+function structCpxTier(t,B){
+  if(!t || (t.type!=="IMS" && t.type!=="DMS")) return null;
+  const cx=B.structCpx;
+  if(t.type==="IMS"){
+    const c=cx.ims;
+    const score = c.wEnv*((+t.envCount||0)+(+t.nonProdCount||0)) + c.wHost*(+t.hostCount||0) +
+                  c.wDb*(+t.dbCount||0) + (t.security ? c.secFlat : 0);
+    return score<c.loMed ? "low" : (score<c.medHigh ? "medium" : "high");
+  }
+  const c=cx.dms;
+  const score = c.wDp*(+t.dataProducts||0) + c.wInt*(+t.integrations||0) +
+                c.wUp*(+t.upstreams||0) + c.wDown*(+t.downstreams||0) +
+                (t.platform==="Other" ? c.platformOtherFlat : 0);
+  return score<c.loMed ? "low" : (score<c.medHigh ? "medium" : "high");
+}
 /* [F 1.4 + p3 illustration] Tiering is a CASCADE, not a partition.
    The framework's own worked example: 100 arrive at L1, 30 are resolved there
    (0.25h each = 7.5h), 70 pass through to L2 (3h each = 210h, counted for all
@@ -843,13 +880,22 @@ function runEngine(S,opts){
       const handoff=bnd*(B.handoffPct||0);           // coordination cost of split ownership
       const a=raw/B.util*(1+handoff);                // [F 1.1] utilisation, not 100%
       const bf=(e.estate==="legacy")?tw.bLegacy:tw.bModern;
-      const b=a*bf;                                  // [F 1.1] non-ticketing effort
+      // PROPOSED - structural complexity is non-ticketing operational overhead
+      // (more surfaces to patch/monitor/coordinate), exactly what B represents.
+      // AMS untouched (structCpxTier null there, cpxBump always 0). Independent
+      // of SLA-mod (bumps raw L2/L3 hours above) and Brownfield uplift (bumps
+      // whole pre-FTE below) - three distinct levers on three distinct
+      // quantities, not double-counting one another.
+      const cpxTier=structCpxTier(t,B);
+      const cpxBump=cpxTier ? (B.structCpx.bump[cpxTier]||0) : 0;
+      const b=a*bf*(1+cpxBump);                      // [F 1.1] non-ticketing effort
       const g=B.govPerTower;
       A+=a; Bh+=b; G+=g; vol+=v;
       tk=[tk[0]+t1,tk[1]+t2,tk[2]+t3];
       const fte=(a+b+g)/B.hoursMonth;
       baseFTE+=fte;
       rows.push({id:t.id,type:t.type,vol:v,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,A:a,B:b,G:g,fte:fte,sla:sm,
+                 cpxTier:cpxTier,cpxBump:cpxBump,
                  own:{L1:ownerOf(t,"L1"),L2:ownerOf(t,"L2"),L3:ownerOf(t,"L3")},bnd:bnd,handoff:handoff});
     });
     baseFTE += B.govBase/B.hoursMonth;
@@ -951,10 +997,15 @@ function shapeIndex(key){
 function roleEligible(r,t,T,S){
   if(!t) return true;
   if(r.id==="sre") return !!t.sre;
+  if(r.id==="ise") return !!t.security;          // mirrors sre exactly
   const thr=(S&&S.bench&&S.bench.evoThreshold!=null)?S.bench.evoThreshold:30;
   const evo=+((t&&t.evolution)||0);
   if(r.id==="dev") return evo>=thr;
   if(r.id==="sse" && T==="L3") return evo<thr;
+  // DMS-only, High-tier gate. Does not auto-toggle S.roles[id] - rolePlan()'s
+  // candidate filter already requires S.roles[r.id] true separately; this
+  // only adds "and tier is High" on top once the client turns it on.
+  if(r.id==="dar"||r.id==="dst") return structCpxTier(t,S&&S.bench)==="high";
   return true;
 }
 function rolePolicy(r,t,S){
@@ -2423,6 +2474,129 @@ function selfTests(){
     got:"fixedY1="+r53fixed.years[0].total.toFixed(1)+", normalTowerY1="+r53good.years[0].total.toFixed(1),
     ok:r53fixed.years[0].total>3});
 
+  // 54. IMS/DMS structural-complexity index (grounded in the supplied Data
+  //     Managed Services deck; weights/cut-points are this estimator's own
+  //     calibration, not [F]/[P]). score = wEnv*(env+nonProd)+wHost*host+
+  //     wDb*db+(security?secFlat:0) for IMS; wDp*dp+wInt*int+wUp*up+
+  //     wDown*down+(platform==="Other"?flat:0) for DMS.
+  const T68=seedRoles(defaults()); T68.towers=[mkTower("IMS")];
+  Object.assign(T68.towers[0],{envCount:1,nonProdCount:0,hostCount:1,dbCount:1,security:false}); // score 3.5
+  out.push({n:"IMS structural complexity: low-input tower scores Low",
+    exp:"low (score 3.5 < loMed 8)",got:String(structCpxTier(T68.towers[0],T68.bench)),
+    ok:structCpxTier(T68.towers[0],T68.bench)==="low"});
+
+  const T69=seedRoles(defaults()); T69.towers=[mkTower("IMS")]; // proposed defaults: score 12
+  out.push({n:"IMS structural complexity: proposed tower defaults score Medium",
+    exp:"medium (score 12, 8<=12<16)",got:String(structCpxTier(T69.towers[0],T69.bench)),
+    ok:structCpxTier(T69.towers[0],T69.bench)==="medium"});
+
+  const T70=seedRoles(defaults()); T70.towers=[mkTower("IMS")];
+  Object.assign(T70.towers[0],{envCount:6,nonProdCount:4,hostCount:4,dbCount:6,security:true}); // score 25
+  out.push({n:"IMS structural complexity: high-input tower scores High",
+    exp:"high (score 25 >= medHigh 16)",got:String(structCpxTier(T70.towers[0],T70.bench)),
+    ok:structCpxTier(T70.towers[0],T70.bench)==="high"});
+
+  const T71=seedRoles(defaults()); T71.towers=[mkTower("DMS")];
+  Object.assign(T71.towers[0],{dataProducts:1,integrations:1,upstreams:1,downstreams:1,platform:"Databricks"}); // score 3.5
+  out.push({n:"DMS structural complexity: low-input tower scores Low",
+    exp:"low (score 3.5 < loMed 10)",got:String(structCpxTier(T71.towers[0],T71.bench)),
+    ok:structCpxTier(T71.towers[0],T71.bench)==="low"});
+
+  const T72=seedRoles(defaults()); T72.towers=[mkTower("DMS")]; // proposed defaults: score 16.25
+  out.push({n:"DMS structural complexity: proposed tower defaults score Medium",
+    exp:"medium (score 16.25, 10<=16.25<20)",got:String(structCpxTier(T72.towers[0],T72.bench)),
+    ok:structCpxTier(T72.towers[0],T72.bench)==="medium"});
+
+  const T73=seedRoles(defaults()); T73.towers=[mkTower("DMS")];
+  Object.assign(T73.towers[0],{dataProducts:10,integrations:12,upstreams:8,downstreams:8,platform:"Other"}); // score 37
+  out.push({n:"DMS structural complexity: high-input tower with 'Other' platform scores High",
+    exp:"high (score 37 >= medHigh 20)",got:String(structCpxTier(T73.towers[0],T73.bench)),
+    ok:structCpxTier(T73.towers[0],T73.bench)==="high"});
+
+  const T74=seedRoles(defaults()); T74.towers=[mkTower("AMS")];
+  Object.assign(T74.towers[0],{envCount:99,hostCount:99,dbCount:99,nonProdCount:99,security:true,
+    dataProducts:99,integrations:99,upstreams:99,downstreams:99,platform:"Other"});
+  out.push({n:"structCpxTier returns null for AMS regardless of field values",
+    exp:"null",got:String(structCpxTier(T74.towers[0],T74.bench)),
+    ok:structCpxTier(T74.towers[0],T74.bench)==null});
+
+  // 55. B-factor bump: applies only the tier bump (demand/SLA/estate identical
+  //     between the two towers, so any ratio deviation isolates the bump).
+  const T75lo=seedRoles(defaults()); T75lo.towers=[mkTower("IMS")];
+  Object.assign(T75lo.towers[0],{envCount:1,nonProdCount:0,hostCount:1,dbCount:1,security:false});
+  const T75hi=seedRoles(defaults()); T75hi.towers=[mkTower("IMS")];
+  Object.assign(T75hi.towers[0],{envCount:6,nonProdCount:4,hostCount:4,dbCount:6,security:true});
+  const b75lo=runEngine(T75lo,{}).years[0].rows[0].B, b75hi=runEngine(T75hi,{}).years[0].rows[0].B;
+  out.push({n:"B-factor bump applies the tier bump only (low vs high, otherwise-identical towers)",
+    exp:"ratio 1.20 (high bump 20% vs low bump 0%)",got:"ratio="+r1(b75hi/b75lo),
+    ok:Math.abs(b75hi/b75lo-1.20)<0.005});
+  const T75ams=seedRoles(defaults()); T75ams.towers=[mkTower("AMS")];
+  Object.assign(T75ams.towers[0],{envCount:99,hostCount:99,dbCount:99,nonProdCount:99,security:true});
+  const r75ams=runEngine(T75ams,{}).years[0].rows[0];
+  out.push({n:"AMS B-factor is never bumped, even with contrived complexity-field values",
+    exp:"cpxTier null, cpxBump 0",got:"cpxTier="+String(r75ams.cpxTier)+", cpxBump="+r75ams.cpxBump,
+    ok:r75ams.cpxTier==null && r75ams.cpxBump===0});
+
+  // 56. Information Security Engineer eligibility mirrors t.security exactly,
+  //     the same way SRE eligibility already mirrors t.sre.
+  const T76a=seedRoles(defaults()); T76a.towers=[mkTower("IMS")]; T76a.roles.ise=true; T76a.towers[0].security=false;
+  const T76b=seedRoles(defaults()); T76b.towers=[mkTower("IMS")]; T76b.roles.ise=true; T76b.towers[0].security=true;
+  const p76a=rolePlan(T76a,runEngine(T76a,{}))[0], p76b=rolePlan(T76b,runEngine(T76b,{}))[0];
+  out.push({n:"Information Security Engineer is included in IMS L3 only when security is checked",
+    exp:"0 unchecked, >0 checked",
+    got:"unchecked ISE="+r1(p76a.alloc["ise"]||0)+" / checked ISE="+r1(p76b.alloc["ise"]||0),
+    ok:!((p76a.alloc["ise"]||0)>0.001) && (p76b.alloc["ise"]||0)>0.001});
+
+  // 57. Data Architect / Data Strategist require BOTH S.roles[id] on AND tier
+  //     High - does not auto-toggle the role switch from the complexity calc.
+  const T77lo=seedRoles(defaults()); T77lo.towers=[mkTower("DMS")];
+  Object.assign(T77lo.towers[0],{dataProducts:1,integrations:1,upstreams:1,downstreams:1,platform:"Databricks"});
+  T77lo.roles.dar=true; T77lo.roles.dst=true;
+  const T77hi=seedRoles(defaults()); T77hi.towers=[mkTower("DMS")];
+  Object.assign(T77hi.towers[0],{dataProducts:10,integrations:12,upstreams:8,downstreams:8,platform:"Other"});
+  T77hi.roles.dar=true; T77hi.roles.dst=true;
+  const p77lo=rolePlan(T77lo,runEngine(T77lo,{}))[0], p77hi=rolePlan(T77hi,runEngine(T77hi,{}))[0];
+  out.push({n:"Data Architect / Data Strategist need both the role switched on and tier High",
+    exp:"0 at Low tier even with roles on; >0 at High tier with roles on",
+    got:"low-tier dar="+r1(p77lo.alloc["dar"]||0)+" dst="+r1(p77lo.alloc["dst"]||0)+
+        " / high-tier dar="+r1(p77hi.alloc["dar"]||0)+" dst="+r1(p77hi.alloc["dst"]||0),
+    ok:!((p77lo.alloc["dar"]||0)>0.001) && !((p77lo.alloc["dst"]||0)>0.001) &&
+       (p77hi.alloc["dar"]||0)>0.001 && (p77hi.alloc["dst"]||0)>0.001});
+
+  // 58. backfillTowers() legacy path: an old IMS tower object missing the new
+  //     fields entirely backfills to mkTower()'s defaults (score 12 -> Medium).
+  const partialTower78={type:"IMS",mode:"history",inc:100,sr:50,sre:false};
+  const T78fixed=backfillTowers([partialTower78])[0];
+  out.push({n:"backfillTowers backfills the new IMS structural-complexity fields to mkTower() defaults",
+    exp:"envCount=4, hostCount=2, dbCount=3, nonProdCount=2, security=false, tier=medium",
+    got:JSON.stringify({env:T78fixed.envCount,host:T78fixed.hostCount,db:T78fixed.dbCount,nonProd:T78fixed.nonProdCount,sec:T78fixed.security})+
+        ", tier="+structCpxTier(T78fixed,defaults().bench),
+    ok:T78fixed.envCount===4 && T78fixed.hostCount===2 && T78fixed.dbCount===3 && T78fixed.nonProdCount===2 &&
+       T78fixed.security===false && structCpxTier(T78fixed,defaults().bench)==="medium"});
+
+  // 59. Raw legacy hash/Import path (bypasses backfillTowers, same as sre/
+  //     evolution already do): structCpxTier must not throw on a tower object
+  //     genuinely missing the fields, and must degrade safely to "low".
+  const rawLegacyTower79={type:"IMS",mode:"history",inc:100,sr:50,sre:false,
+    mix:{P1:4,P2:16,P3:50,P4:30},sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
+    avail:99.5,own:{L1:"us",L2:"us",L3:"us"},coverage:"16x5",ftePerShift:2,active:{L1:true,L2:true,L3:false}};
+  let threw79=false, tier79=null;
+  try{ tier79=structCpxTier(rawLegacyTower79,defaults().bench); }catch(e){ threw79=true; }
+  out.push({n:"structCpxTier does not throw on a raw legacy tower missing the new fields, degrades to Low",
+    exp:"no throw, tier=low",got:"threw="+threw79+", tier="+String(tier79),
+    ok:!threw79 && tier79==="low"});
+
+  // 60. seedRoles() bench backfill covers the new structCpx sub-object for an
+  //     old saved hash/import predating this feature - same shallow top-level
+  //     Object.assign pattern already relied on for brownfieldUplift.
+  const oldBench80=Object.assign({},defaults().bench); delete oldBench80.structCpx;
+  const legacy80=Object.assign(defaults(),{eng:defaults().eng,bench:oldBench80});
+  const migrated80=seedRoles(legacy80);
+  out.push({n:"seedRoles backfills the entire bench.structCpx sub-object missing from an old saved hash",
+    exp:JSON.stringify(defaults().bench.structCpx),
+    got:JSON.stringify(migrated80.bench.structCpx),
+    ok:JSON.stringify(migrated80.bench.structCpx)===JSON.stringify(defaults().bench.structCpx)});
+
   return out;
 }
 
@@ -2449,6 +2623,18 @@ function ownSel(p,tier,t){
   return '<select data-p="'+p+'.own.'+tier+'" data-struct="1" class="ownsel'+(cur==="us"?" ours":"")+'">'+
     Object.keys(PARTIES).map(k=>'<option value="'+k+'" '+(cur===k?"selected":"")+'>'+esc(PARTIES[k])+'</option>').join("")+
     '</select>';
+}
+function structCpxBadge(t){
+  const tier=structCpxTier(t,S.bench);
+  if(!tier) return "";
+  const cls=tier==="high"?"crit":(tier==="medium"?"warn":"good");
+  const bump=Math.round((S.bench.structCpx.bump[tier]||0)*100);
+  const hint=tier==="high"
+    ? (t.type==="IMS" ? " Consider enabling Information Security Engineer in Roles &amp; grades if security is in scope."
+                       : " Consider enabling Data Architect / Data Strategist in Roles &amp; grades.")
+    : "";
+  return '<p class="hint"><span class="pill '+cls+'">'+tier.toUpperCase()+' STRUCTURAL COMPLEXITY</span>'+
+    (bump?' &mdash; +'+bump+'% B-factor bump applied.':' &mdash; no B-factor bump at this tier.')+hint+'</p>';
 }
 function renderLocMix(){
   const region=S.eng.region, cat=LOC_CATALOG[region]||[];
@@ -2672,10 +2858,27 @@ function renderRail(){
             chk(p+".sre","SRE is the client's named capability objective")+
             '<p class="hint">SRE is only included in the mix when this is checked &mdash; it is IMS-only and off by default, not just down-weighted.</p></div>'
         : '')+
+      (t.type==="IMS"
+        ? '<div class="field"><label>Structural complexity inputs <span class="flag">proposed</span></label>'+
+            '<div class="row c2">'+num(p+".envCount","Environments supported")+num(p+".hostCount","Hostings supported")+'</div>'+
+            '<div class="row c2">'+num(p+".dbCount","Databases supported")+num(p+".nonProdCount","Non-prod environments")+'</div>'+
+            chk(p+".security","Security-related aspects in scope")+
+            structCpxBadge(t)+
+          '</div>'
+        : '')+
       (t.type==="AMS"
         ? '<div class="field"><label>Delivery profile</label>'+
             num(p+".evolution","Evolution work expected, %",1,'min="0" max="100"')+
             '<p class="hint">Minor enhancements on top of the regular run. Below '+S.bench.evoThreshold+'%, Systems Support Engineer covers L3 as well as L2. At or above it, Developer takes over L3.</p></div>'
+        : '')+
+      (t.type==="DMS"
+        ? '<div class="field"><label>Structural complexity inputs <span class="flag">proposed</span></label>'+
+            num(p+".dataProducts","Data products supported")+
+            '<div class="field"><label>Data platform built on</label><select data-p="'+p+'.platform" style="width:auto">'+
+              DMS_PLATFORMS.map(o=>'<option value="'+o+'" '+(t.platform===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div>'+
+            '<div class="row c3">'+num(p+".integrations","Integrations")+num(p+".upstreams","Upstream systems")+num(p+".downstreams","Downstream systems")+'</div>'+
+            structCpxBadge(t)+
+          '</div>'
         : '')+
       '<div class="field"><label>Service responsibility</label>'+
         '<div class="ownrow"><span class="k">L1</span>'+ownSel(p,"L1",t)+'</div>'+
@@ -2778,6 +2981,19 @@ function renderRail(){
         rt("bench.tower."+k+".l1")+rt("bench.tower."+k+".l23")+rt("bench.tower."+k+".bModern")+
         rt("bench.tower."+k+".bLegacy")+rt("bench.tower."+k+".ceiling")+'</tr>').join("")+
       '</tbody></table></div></div>'+
+    '<div class="field"><label>Structural complexity &mdash; IMS/DMS <span class="flag">proposed</span></label>'+
+      '<p class="hint">Grounded in the supplied Data Managed Services deck\'s complexity-tier framing; weights, flat adds and cut-points below are this estimator\'s own calibration, not sourced from [F]/[P].</p>'+
+      '<div class="tablewrap bench-tbl"><table><thead><tr><th>IMS weight</th><th>Env+non-prod</th><th>Hosting</th><th>DB</th><th>Security add</th></tr></thead><tbody>'+
+      '<tr><td></td>'+rt("bench.structCpx.ims.wEnv")+rt("bench.structCpx.ims.wHost")+rt("bench.structCpx.ims.wDb")+rt("bench.structCpx.ims.secFlat")+'</tr>'+
+      '</tbody></table></div>'+
+      '<div class="row c2">'+num("bench.structCpx.ims.loMed","IMS Low-Medium cut-point")+num("bench.structCpx.ims.medHigh","IMS Medium-High cut-point")+'</div>'+
+      '<div class="tablewrap bench-tbl"><table><thead><tr><th>DMS weight</th><th>Data products</th><th>Integrations</th><th>Upstreams</th><th>Downstreams</th><th>"Other" platform add</th></tr></thead><tbody>'+
+      '<tr><td></td>'+rt("bench.structCpx.dms.wDp")+rt("bench.structCpx.dms.wInt")+rt("bench.structCpx.dms.wUp")+rt("bench.structCpx.dms.wDown")+rt("bench.structCpx.dms.platformOtherFlat")+'</tr>'+
+      '</tbody></table></div>'+
+      '<div class="row c2">'+num("bench.structCpx.dms.loMed","DMS Low-Medium cut-point")+num("bench.structCpx.dms.medHigh","DMS Medium-High cut-point")+'</div>'+
+      '<div class="field"><label>B-factor bump by tier</label><div class="row c3">'+
+      num("bench.structCpx.bump.low","Low",0.01)+num("bench.structCpx.bump.medium","Medium",0.01)+num("bench.structCpx.bump.high","High",0.01)+'</div>'+
+      '<p class="hint">Multiplies the tower\'s non-ticketing effort (B) &mdash; same lever as legacy/modern estate, stacks multiplicatively.</p></div>'+
     '<div class="row c2">'+num("bench.govBase","Governance hrs/mo (deal)",5)+num("bench.govPerTower","Governance hrs/mo (tower)",1)+'</div>'+
     '<div class="field">'+num("bench.handoffPct","Coordination uplift per interface",0.01)+'<p class="hint">Applied to our ticketing effort for each adjacent tier pair under different ownership. <span class="flag">proposed</span></p></div>'+
     '<div class="row c2">'+num("bench.hypercareMonths","Hypercare months")+num("bench.hypercareMult","Hypercare volume x",0.5)+'</div>'+
@@ -2977,16 +3193,27 @@ function buildRegister(base,mc,o1,rp){
   L.push("");
   var imsT=S.towers.filter(function(t){return t.enabled && t.type==="IMS";});
   var amsT=S.towers.filter(function(t){return t.enabled && t.type==="AMS";});
-  if(imsT.length || amsT.length){
+  var dmsT=S.towers.filter(function(t){return t.enabled && t.type==="DMS";});
+  if(imsT.length || amsT.length || dmsT.length){
     L.push("## Delivery profile");
     imsT.forEach(function(t){
       L.push("- IMS: SRE named as the client's key objective \u2014 "+(t.sre?"**yes** (SRE is included in the L3 mix)":"no (SRE is not included; Infrastructure Engineer leads L3)")+".");
+      var tier=structCpxTier(t,B);
+      L.push("- IMS structural complexity ("+t.envCount+" environments incl. "+t.nonProdCount+" non-prod, "+t.hostCount+" hostings, "+t.dbCount+" databases, security in scope: "+(t.security?"yes":"no")+") \u2014 **"+tier+"**"+
+        (B.structCpx.bump[tier] ? ", +"+Math.round(B.structCpx.bump[tier]*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
+        (tier==="high" ? " Consider enabling Information Security Engineer in Roles & grades if not already." : ""));
     });
     amsT.forEach(function(t){
       var ev=+t.evolution||0, over=ev>=B.evoThreshold;
       L.push("- AMS: evolution work expected \u2014 **"+ev+"%**, "+
         (over ? "at or above the "+B.evoThreshold+"% threshold, so Developer leads L3."
               : "below the "+B.evoThreshold+"% threshold, so Systems Support Engineer covers L3 as well as L2."));
+    });
+    dmsT.forEach(function(t){
+      var tier=structCpxTier(t,B);
+      L.push("- DMS structural complexity ("+t.dataProducts+" data products on "+t.platform+", "+t.integrations+" integrations, "+t.upstreams+" upstreams, "+t.downstreams+" downstreams) \u2014 **"+tier+"**"+
+        (B.structCpx.bump[tier] ? ", +"+Math.round(B.structCpx.bump[tier]*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
+        (tier==="high" ? " Consider enabling Data Architect / Data Strategist in Roles & grades if not already." : ""));
     });
     L.push("");
   }
@@ -3441,13 +3668,20 @@ function renderCanvas(){
     '<span class="note">Tier headcount distributed across in-scope roles, then split Lead / Senior / Consultant, target ratio 1:2:4.</span></header><div class="cardbody">';
   const imsTowers=S.towers.filter(t=>t.enabled && t.type==="IMS");
   const amsTowers=S.towers.filter(t=>t.enabled && t.type==="AMS");
-  if(imsTowers.length || amsTowers.length){
+  const dmsTowers=S.towers.filter(t=>t.enabled && t.type==="DMS");
+  if(imsTowers.length || amsTowers.length || dmsTowers.length){
     h+='<div class="tablewrap"><table style="margin-bottom:14px"><thead><tr><th>Tower</th><th>Delivery profile</th></tr></thead><tbody>'+
-       imsTowers.map(t=>'<tr><td>IMS</td><td>'+(t.sre?'<b>SRE included</b> \u2014 SRE leads L3':'<span class="sub-td">SRE not included \u2014 Infrastructure Engineer leads L3</span>')+'</td></tr>').join("")+
+       imsTowers.map(t=>{const tier=structCpxTier(t,B);
+         return '<tr><td>IMS</td><td>'+(t.sre?'<b>SRE included</b> \u2014 SRE leads L3':'<span class="sub-td">SRE not included \u2014 Infrastructure Engineer leads L3</span>')+
+           '<br><span class="sub-td">Structural complexity: <b>'+tier+'</b> ('+t.envCount+' env incl. '+t.nonProdCount+' non-prod, '+t.hostCount+' hostings, '+t.dbCount+' DBs, security '+(t.security?'yes':'no')+')'+
+           (tier==="high"?' \u2014 consider enabling Information Security Engineer.':'')+'</span></td></tr>';}).join("")+
        amsTowers.map(t=>{const ev=+t.evolution||0, over=ev>=B.evoThreshold;
          return '<tr><td>AMS</td><td>'+(over
            ? '<b>'+ev+'% evolution</b> \u2014 above the '+B.evoThreshold+'% threshold, Developer leads L3'
            : '<span class="sub-td">'+ev+'% evolution \u2014 below the '+B.evoThreshold+'% threshold, Systems Support Engineer covers L3</span>')+'</td></tr>';}).join("")+
+       dmsTowers.map(t=>{const tier=structCpxTier(t,B);
+         return '<tr><td>DMS</td><td><span class="sub-td">Structural complexity: <b>'+tier+'</b> ('+t.dataProducts+' data products on '+t.platform+', '+t.integrations+' integrations, '+t.upstreams+' upstreams, '+t.downstreams+' downstreams)'+
+           (tier==="high"?' \u2014 consider enabling Data Architect / Data Strategist.':'')+'</span></td></tr>';}).join("")+
        '</tbody></table></div>';
   }
   if(!shown.length){

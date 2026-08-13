@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 67 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic.
+7. Hit **Verify against framework** at the bottom — 81 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -213,6 +213,31 @@ Two things worth knowing about how the seeding and the uplift are wired, because
 - **Hash-restore and JSON Import never re-seed.** A returning user's own saved `conf`/`risk` values — even ones that happen to differ from what the current seed table would produce — are trusted as-is. Only a missing `engagementType` field gets backfilled (to `"brownfield"`, via the same `seedRoles` migration choke point used for the region/locMix legacy migration); the arrays next to it are left untouched. The FTE uplift, by contrast, is recomputed from whatever `engagementType` the state carries every time `runEngine` runs — there's nothing to migrate for it specifically.
 - **`seedRoles` now also backfills missing `bench` fields, not just `eng` ones.** `loadHash()`/JSON Import do `Object.assign(defaults(), parsed)` — a *shallow* merge, so a saved state's top-level `bench` key wholesale-replaces `defaults().bench` rather than merging into it. Any bookmarked link, shared URL, or browser tab still carrying a `#hash` saved before `bench.brownfieldUplift` existed would otherwise silently load with the uplift permanently zeroed — indistinguishable from "brownfield doesn't affect FTE" even after this fix shipped. `seedRoles` now does `st.bench=Object.assign({},defaults().bench,st.bench||{})`, the same shallow-backfill pattern already used for `eng.locMix`, so any bench field missing from an old saved state picks up the current default instead of silently disappearing. **This is the most likely explanation if engagement type or any Benchmarks-panel field ever appears to have "stopped working" after a change that was actually deployed** — it means the browser has an old `#hash` in the address bar. A hard reload of the *same* URL doesn't clear it (the hash travels with the URL); navigating to the bare URL with no `#fragment`, or opening the Reset button, does.
 
+### 3.11 Structural complexity — IMS / DMS
+
+A new per-tower complexity model, **IMS- and DMS-only** (AMS is untouched — its existing incident-history/complexity-proxy demand inputs already cover it fully). It answers a different question than demand basis does: demand basis says *how many tickets* a tower will generate; structural complexity says *how operationally complex the estate itself is to run* — more environments, hosting targets, databases, integrations and dependencies mean more non-ticketing overhead (patching, monitoring, coordination) regardless of ticket volume. Grounded in a supplied Thoughtworks "Data Managed Services — Approach" deck, which frames complexity via technical/operational factors and ties a computed Low/Medium/High tier directly to team shape — not sourced from `[F]`/`[P]`, so every number here is flagged `proposed`.
+
+**New per-tower inputs** (only rendered on the matching tower type):
+
+| Tower | Inputs |
+|---|---|
+| IMS | Environments supported, hostings supported, databases supported, non-production environments, and a "security-related aspects in scope" checkbox |
+| DMS | Data products supported, data platform built on (dropdown: Databricks / Snowflake / Synapse / BigQuery / Redshift / Other), integrations, upstream systems, downstream systems |
+
+**Scoring.** `structCpxTier(t,B)` computes a weighted composite score per tower and bands it against two cut-points into `low`/`medium`/`high`:
+- IMS: `wEnv×(environments+non-prod) + wHost×hostings + wDb×databases + (security ? secFlat : 0)`, defaults `wEnv:1, wHost:1.5, wDb:1, secFlat:3`, bands at 8/16.
+- DMS: `wDp×data products + wInt×integrations + wUp×upstreams + wDown×downstreams + (platform==="Other" ? flat : 0)`, defaults `wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3`, bands at 10/20.
+
+All weights and cut-points are editable in the Benchmarks panel, calibrated so a freshly-added IMS or DMS tower's own proposed field defaults land at **Medium** — a deliberate "typical mid-size deal" anchor rather than an artificial Low or High.
+
+**Two effects, both new, neither touching AMS:**
+1. **Effort.** The computed tier multiplies the tower's B-factor (non-ticketing effort) by a tier-driven bump — 0% Low, +10% Medium, +20% High by default — stacking multiplicatively with the existing legacy/modern B-factor. This is a third, independent lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower pre-deflection FTE) — three levers on three distinct quantities, none double-counting the others.
+2. **Roles.** At the **High** tier only, two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox (mirroring exactly how the existing SRE checkbox already gates the SRE role); **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing SRE/evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
+
+A live badge on each IMS/DMS tower card shows the computed tier, the bump applied, and — at High — a one-line reminder to enable the relevant role(s). The register export and print report both narrate the same information per tower.
+
+The deck's five DMS AIOps use cases (Automated RCA, Intelligent Alerting, Self-Healing, Predictive Capacity Planning, Anomaly Detection & Security) needed **no catalogue change** — `USECASES` is already tower-agnostic, gated only by which tier a deal owns, and already contains near-1:1 matches (`rc`, `ia`, `sh`, `ps`, `ad`) that apply to DMS exactly as they do to AMS/IMS.
+
 ---
 
 ## 5. The optimization layer
@@ -266,7 +291,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 67 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 81 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -328,6 +353,16 @@ The **Verify against framework** card runs 67 checks on every render. Each is a 
 65. The same partial tower is complete (`enabled:true`, `own`/`apps`/`mau` present) and included in the engine after `backfillTowers()`
 66. `backfillTowers()` never overwrites fields the source JSON actually provided — `type`/`mode`/`coverage`/`avail`/`sla.P1x` all survive untouched
 67. Y1 FTE for the backfilled tower reflects real demand (well above the ~0.3 governance-only baseline the live bug produced), not just the tower being present
+68–70. IMS structural-complexity tier bands: hand-picked low/high inputs, and the tower's own proposed defaults (score 12) land at Medium
+71–73. DMS structural-complexity tier bands: same pattern, including an "Other" platform pushing a high-input tower over the High threshold
+74. `structCpxTier` returns `null` for AMS regardless of field values, even contrived large ones
+75. B-factor bump ratio between an otherwise-identical low- and high-tier IMS tower is exactly 1.20 (20% high bump vs 0% low bump)
+76. AMS's B-factor is never bumped, even with contrived complexity-field values sitting unused on the shared tower shape
+77. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked — mirrors the existing SRE gate exactly
+78. Data Architect / Data Strategist need both the role switched on in Roles & grades *and* the tower's tier at High — neither alone is sufficient
+79. `backfillTowers()` backfills the new IMS structural-complexity fields on a legacy partial tower to `mkTower()`'s defaults, landing at Medium tier
+80. `structCpxTier` does not throw and degrades safely to Low on a raw legacy tower object missing the new fields entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
+81. `seedRoles` backfills the entire `bench.structCpx` sub-object for an old saved hash/import predating this feature — same shallow top-level pattern already relied on for `brownfieldUplift`
 
 ---
 
@@ -343,6 +378,7 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - Delivery location presets for APAC and NA (proposed guesses — China/Australia and LATAM-Ecuador/India splits with no framework or client data behind them yet, unlike EU's presets); the split is applied uniformly to every role, not per role — if specific roles need to be pinned to specific locations, that's a follow-up, not something the current mix does
 - Governance load, hypercare duration and multiplier
 - AIOps use-case catalogue: build effort, deflection benefit and prerequisites
+- IMS/DMS structural-complexity weights, cut-points and B-factor bumps (§3.11) — grounded in the supplied deck's tier framing, not `[F]`/`[P]`; the weights, thresholds and default field values all need calibration against real IMS/DMS engagements
 
 The highest-value calibration is the **AIOps use-case effort and deflection numbers**, because they drive O1's funding decisions and the whole savings narrative.
 
