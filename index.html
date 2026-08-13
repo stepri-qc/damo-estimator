@@ -777,17 +777,25 @@ function slaMod(t,B){
    cleanly with a single falsy check. Deliberate +x||0 / !!x coercion: a tower
    missing these fields entirely (a raw legacy hash/Import that bypasses
    backfillTowers) degrades safely to "low", same as sre/evolution already do. */
+/* Non-negative, sanity-bounded count coercion for the structural-complexity
+   fields. Clamping here (not just via the input's HTML min/max, which a
+   hand-edited hash/Import/devtools can bypass entirely) is the fix that
+   actually matters: without it a typed or imported negative count survives
+   +x||0 (since a negative number is truthy) and drives the weighted score,
+   and therefore the B-factor bump, negative - silently REDUCING effort below
+   baseline for a "more complex" input, the opposite of the intent. */
+function cpxCount(v){ return clamp(+v||0,0,100000); }
 function structCpxScore(t,B){
   if(!t || (t.type!=="IMS" && t.type!=="DMS")) return null;
   const cx=B.structCpx;
   if(t.type==="IMS"){
     const c=cx.ims;
-    return c.wEnv*((+t.envCount||0)+(+t.nonProdCount||0)) + c.wHost*(+t.hostCount||0) +
-           c.wDb*(+t.dbCount||0) + (t.security ? c.secFlat : 0);
+    return c.wEnv*(cpxCount(t.envCount)+cpxCount(t.nonProdCount)) + c.wHost*cpxCount(t.hostCount) +
+           c.wDb*cpxCount(t.dbCount) + (t.security ? c.secFlat : 0);
   }
   const c=cx.dms;
-  return c.wDp*(+t.dataProducts||0) + c.wInt*(+t.integrations||0) +
-         c.wUp*(+t.upstreams||0) + c.wDown*(+t.downstreams||0) +
+  return c.wDp*cpxCount(t.dataProducts) + c.wInt*cpxCount(t.integrations) +
+         c.wUp*cpxCount(t.upstreams) + c.wDown*cpxCount(t.downstreams) +
          (t.platform==="Other" ? c.platformOtherFlat : 0);
 }
 function structCpxTier(t,B){
@@ -2657,6 +2665,51 @@ function selfTests(){
     got:JSON.stringify(migrated80.bench.structCpx),
     ok:JSON.stringify(migrated80.bench.structCpx)===JSON.stringify(defaults().bench.structCpx)});
 
+  // 61. Input validation: a negative structural-complexity field (typed past
+  //     the HTML min="0", e.g. via a hand-edited hash/Import, since HTML
+  //     attributes are not a real defense) must not drive the score - and
+  //     therefore the bump - negative. Reported gap: +x||0 alone lets a
+  //     negative number through (it's truthy), which would REDUCE B-factor
+  //     below baseline for a nominally "more complex" input.
+  const T81a=seedRoles(defaults()); T81a.towers=[mkTower("IMS")];
+  Object.assign(T81a.towers[0],{envCount:-50,hostCount:0,dbCount:0,nonProdCount:0,security:false});
+  const T81b=seedRoles(defaults()); T81b.towers=[mkTower("IMS")];
+  Object.assign(T81b.towers[0],{envCount:0,hostCount:0,dbCount:0,nonProdCount:0,security:false});
+  out.push({n:"IMS: a negative envCount clamps to zero contribution, never goes negative",
+    exp:"score(-50)===score(0)===0, bump>=0",
+    got:"score(-50)="+structCpxScore(T81a.towers[0],T81a.bench)+", score(0)="+structCpxScore(T81b.towers[0],T81b.bench)+
+        ", bump(-50)="+structCpxBump(T81a.towers[0],T81a.bench),
+    ok:structCpxScore(T81a.towers[0],T81a.bench)===0 && structCpxScore(T81b.towers[0],T81b.bench)===0 &&
+       structCpxBump(T81a.towers[0],T81a.bench)===0});
+
+  const T81c=seedRoles(defaults()); T81c.towers=[mkTower("DMS")];
+  Object.assign(T81c.towers[0],{dataProducts:-10,integrations:-5,upstreams:0,downstreams:0,platform:"Databricks"});
+  out.push({n:"DMS: negative data-product/integration counts clamp to zero contribution, never go negative",
+    exp:"score===0, bump===0",
+    got:"score="+structCpxScore(T81c.towers[0],T81c.bench)+", bump="+structCpxBump(T81c.towers[0],T81c.bench),
+    ok:structCpxScore(T81c.towers[0],T81c.bench)===0 && structCpxBump(T81c.towers[0],T81c.bench)===0});
+
+  // 62. A negative field mixed with genuinely positive ones only drops its
+  //     own (clamped-to-zero) contribution - it must not cancel or reduce
+  //     the score contributed by the tower's other, valid fields.
+  const T81d=seedRoles(defaults()); T81d.towers=[mkTower("IMS")];
+  Object.assign(T81d.towers[0],{envCount:-99,hostCount:4,dbCount:0,nonProdCount:0,security:false}); // wHost*4 = 6
+  out.push({n:"A negative field never cancels or reduces another field's valid, positive contribution",
+    exp:"score === wHost*4 = 6 (the negative envCount contributes exactly 0, not -99)",
+    got:"score="+structCpxScore(T81d.towers[0],T81d.bench),
+    ok:structCpxScore(T81d.towers[0],T81d.bench)===6});
+
+  // 63. Non-numeric / garbage input (a raw string that fails Number coercion)
+  //     degrades to zero contribution rather than throwing or producing NaN,
+  //     which would otherwise NaN-poison every downstream FTE calculation.
+  const T81e=seedRoles(defaults()); T81e.towers=[mkTower("IMS")];
+  Object.assign(T81e.towers[0],{envCount:"not-a-number",hostCount:2,dbCount:0,nonProdCount:0,security:false});
+  const score81e=structCpxScore(T81e.towers[0],T81e.bench);
+  out.push({n:"Non-numeric garbage in a structural-complexity field degrades to zero, never NaN",
+    exp:"score is a finite number (wHost*2 = 3), not NaN",
+    got:"score="+String(score81e)+", isNaN="+Number.isNaN(score81e),
+    ok:!Number.isNaN(score81e) && score81e===3});
+
   return out;
 }
 
@@ -2920,10 +2973,10 @@ function renderRail(){
         : '')+
       (t.type==="IMS"
         ? '<div class="field"><label>Structural complexity inputs <span class="flag">proposed</span></label>'+
-            '<div class="row c2">'+num(p+".envCount","Environments supported")+num(p+".hostCount","Hostings supported")+'</div>'+
-            '<div class="row c2">'+num(p+".dbCount","Databases supported")+num(p+".nonProdCount","Non-prod environments")+'</div>'+
+            '<div class="row c2">'+num(p+".envCount","Environments supported",1,'min="0" max="100"')+num(p+".hostCount","Hostings supported",1,'min="0" max="50"')+'</div>'+
+            '<div class="row c2">'+num(p+".dbCount","Databases supported",1,'min="0" max="500"')+num(p+".nonProdCount","Non-prod environments",1,'min="0" max="100"')+'</div>'+
             chk(p+".security","Security-related aspects in scope")+
-            structCpxBadge(t)+
+            '<div id="cpxbadge-'+i+'">'+structCpxBadge(t)+'</div>'+
           '</div>'
         : '')+
       (t.type==="AMS"
@@ -2933,11 +2986,11 @@ function renderRail(){
         : '')+
       (t.type==="DMS"
         ? '<div class="field"><label>Structural complexity inputs <span class="flag">proposed</span></label>'+
-            num(p+".dataProducts","Data products supported")+
+            num(p+".dataProducts","Data products supported",1,'min="0" max="500"')+
             '<div class="field"><label>Data platform built on</label><select data-p="'+p+'.platform" style="width:auto">'+
               DMS_PLATFORMS.map(o=>'<option value="'+o+'" '+(t.platform===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div>'+
-            '<div class="row c3">'+num(p+".integrations","Integrations")+num(p+".upstreams","Upstream systems")+num(p+".downstreams","Downstream systems")+'</div>'+
-            structCpxBadge(t)+
+            '<div class="row c3">'+num(p+".integrations","Integrations",1,'min="0" max="500"')+num(p+".upstreams","Upstream systems",1,'min="0" max="200"')+num(p+".downstreams","Downstream systems",1,'min="0" max="200"')+'</div>'+
+            '<div id="cpxbadge-'+i+'">'+structCpxBadge(t)+'</div>'+
           '</div>'
         : '')+
       '<div class="field"><label>Service responsibility</label>'+
@@ -3980,6 +4033,18 @@ function coerce(el,cur){
   if(el.type==="number"||el.type==="range"){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
   return el.value;
 }
+// The rail is deliberately NOT re-rendered on every keystroke (refresh(false)
+// only touches the canvas, so an actively-focused input never loses focus) -
+// but that leaves any live-computed hint that lives IN the rail stale until
+// the next structural refresh, same problem eng.locMix's sum hint already
+// solved with a targeted DOM patch below. The structural-complexity badge
+// needs the identical fix, or it visibly lags the real score while typing.
+const CPX_FIELD_RE=/^towers\.(\d+)\.(envCount|hostCount|dbCount|nonProdCount|security|dataProducts|integrations|upstreams|downstreams|platform)$/;
+function syncCpxBadge(path){
+  const m=CPX_FIELD_RE.exec(path); if(!m) return;
+  const t=S.towers[+m[1]], el=document.getElementById("cpxbadge-"+m[1]);
+  if(t && el) el.innerHTML=structCpxBadge(t);
+}
 document.addEventListener("input",e=>{
   const el=e.target;
   if(el.dataset && el.dataset.p){
@@ -3991,13 +4056,16 @@ document.addEventListener("input",e=>{
       const hint=document.getElementById("locSumHint");
       if(hint){ const s_=locMixSum(S); hint.style.color=s_===100?"":"var(--warn)"; hint.textContent=locSumText(s_); }
     }
+    syncCpxBadge(el.dataset.p);
     refresh(false);
   }
 });
 document.addEventListener("change",e=>{
   const el=e.target;
   if(el.dataset && el.dataset.p && (el.tagName==="SELECT"||el.type==="checkbox")){
-    sp(S,el.dataset.p,coerce(el)); refresh(!!el.dataset.struct||el.type==="checkbox");
+    sp(S,el.dataset.p,coerce(el));
+    syncCpxBadge(el.dataset.p);
+    refresh(!!el.dataset.struct||el.type==="checkbox");
   }
 });
 document.addEventListener("click",e=>{
