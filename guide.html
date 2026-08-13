@@ -319,7 +319,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>SRE is the objective</td><td>IMS towers only. Off: SRE is not a candidate at all. On: SRE and Infrastructure Engineer both staff IMS L3, weighted 1.8&times; / 0.5&times;.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Delivery region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently.</td><td>Engagement design</td></tr>
-        <tr><td>Structural complexity</td><td>IMS/DMS only. Environments/hostings/databases/security (IMS) or data products/platform/integrations/upstreams/downstreams (DMS) compute a Low/Medium/High tier, bumping B-factor 0/10/20% and gating Information Security Engineer or Data Architect/Data Strategist eligibility at High.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Structural complexity</td><td>IMS/DMS only. Environments/hostings/databases/security (IMS) or data products/platform/integrations/upstreams/downstreams (DMS) compute a score that continuously bumps B-factor (10% at the Low/Medium cut-point, 20% at Medium/High, still climbing beyond) and, via the same score's discrete Low/Medium/High label, gates Information Security Engineer or Data Architect/Data Strategist eligibility at High.</td><td><span class="pill warn">proposed</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -342,7 +342,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>81 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>86 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -427,7 +427,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <h3>What it does</h3>
     <p>Each tower's inputs feed a weighted score, banded into <b>Low / Medium / High</b> &mdash; shown live as a badge on the tower card. Two effects follow, both new, neither touching AMS:</p>
     <ul>
-      <li><b>Effort.</b> The tier bumps the tower's B-factor (non-ticketing effort) &mdash; 0% Low, +10% Medium, +20% High by default &mdash; stacking with the existing modern/legacy estate B-factor. A third lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower FTE); none of the three double-count.</li>
+      <li><b>Effort.</b> The underlying score bumps the tower's B-factor (non-ticketing effort) <b>continuously</b>, not in three flat steps &mdash; the bump equals score &times; a per-point rate, calibrated so it lands on 10% right at the Low/Medium threshold and 20% right at Medium/High, then keeps climbing past that. A tower with 100 environments genuinely costs more than one with 10; it doesn't flatline the moment it crosses into High. Capped at a high sanity ceiling (default 200%) only against adversarial input. Stacks with the existing modern/legacy estate B-factor &mdash; a third lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower FTE); none of the three double-count.</li>
       <li><b>Roles.</b> At <b>High</b> only, two off-by-default roles become eligible: <b>Information Security Engineer</b> on IMS, gated directly by the security checkbox &mdash; exactly like the SRE checkbox already gates SRE. <b>Data Architect</b> and <b>Data Strategist</b> on DMS, standing in for a DataOps Architect and a Data Quality/Governance Lead. Either way, the role must <em>also</em> be switched on in <b>Roles &amp; grades</b> &mdash; a High tier alone never auto-enables it, matching how SRE and the AMS evolution threshold already work.</li>
     </ul>
 

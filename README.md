@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 81 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 86 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -231,8 +231,8 @@ A new per-tower complexity model, **IMS- and DMS-only** (AMS is untouched — it
 All weights and cut-points are editable in the Benchmarks panel, calibrated so a freshly-added IMS or DMS tower's own proposed field defaults land at **Medium** — a deliberate "typical mid-size deal" anchor rather than an artificial Low or High.
 
 **Two effects, both new, neither touching AMS:**
-1. **Effort.** The computed tier multiplies the tower's B-factor (non-ticketing effort) by a tier-driven bump — 0% Low, +10% Medium, +20% High by default — stacking multiplicatively with the existing legacy/modern B-factor. This is a third, independent lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower pre-deflection FTE) — three levers on three distinct quantities, none double-counting the others.
-2. **Roles.** At the **High** tier only, two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox (mirroring exactly how the existing SRE checkbox already gates the SRE role); **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing SRE/evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
+1. **Effort.** `structCpxBump(t,B)` multiplies the tower's B-factor (non-ticketing effort) by `score × bumpPerPoint`, capped at `bench.structCpx.maxBump` — a **continuous** function of the same composite score that drives the tier label, not a 3-step lookup. `bumpPerPoint` is calibrated so the bump exactly equals the old flat tier values right at the cut-points (score = loMed → +10%, score = medHigh → +20%), then keeps climbing past them. This matters in practice: a tower with 100 environments must keep costing meaningfully more than one with 10, not flatline the moment it crosses into "High" — an earlier flat-per-tier version of this had exactly that defect, reported and fixed. The cap (default 200%, i.e. B-factor can at most triple) exists only as a sanity ceiling against adversarial input, not something a realistic estate reaches. Stacks multiplicatively with the existing legacy/modern B-factor, and is a third, independent lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower pre-deflection FTE) — three levers on three distinct quantities, none double-counting the others.
+2. **Roles.** At the **High** tier only (the same discrete Low/Medium/High label, unaffected by the continuous-bump fix above), two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox (mirroring exactly how the existing SRE checkbox already gates the SRE role); **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing SRE/evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
 
 A live badge on each IMS/DMS tower card shows the computed tier, the bump applied, and — at High — a one-line reminder to enable the relevant role(s). The register export and print report both narrate the same information per tower.
 
@@ -291,7 +291,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 81 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 86 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -356,13 +356,18 @@ The **Verify against framework** card runs 81 checks on every render. Each is a 
 68–70. IMS structural-complexity tier bands: hand-picked low/high inputs, and the tower's own proposed defaults (score 12) land at Medium
 71–73. DMS structural-complexity tier bands: same pattern, including an "Other" platform pushing a high-input tower over the High threshold
 74. `structCpxTier` returns `null` for AMS regardless of field values, even contrived large ones
-75. B-factor bump ratio between an otherwise-identical low- and high-tier IMS tower is exactly 1.20 (20% high bump vs 0% low bump)
-76. AMS's B-factor is never bumped, even with contrived complexity-field values sitting unused on the shared tower shape
-77. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked — mirrors the existing SRE gate exactly
-78. Data Architect / Data Strategist need both the role switched on in Roles & grades *and* the tower's tier at High — neither alone is sufficient
-79. `backfillTowers()` backfills the new IMS structural-complexity fields on a legacy partial tower to `mkTower()`'s defaults, landing at Medium tier
-80. `structCpxTier` does not throw and degrades safely to Low on a raw legacy tower object missing the new fields entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
-81. `seedRoles` backfills the entire `bench.structCpx` sub-object for an old saved hash/import predating this feature — same shallow top-level pattern already relied on for `brownfieldUplift`
+75. IMS B-factor bump strictly increases across escalating environment counts (1, 10, 50, 100) well past the High cut-point — the regression test for a real reported defect where the earlier flat-per-tier bump silently stopped moving the FTE once a tower crossed into "high," no matter how much higher the inputs went afterward
+76. IMS B-factor bump matches the exact `score × bumpPerPoint` formula below the cap
+77. IMS B-factor bump is capped at `bench.structCpx.maxBump` only for a genuinely extreme, adversarial input
+78. DMS B-factor bump strictly increases across escalating data-product counts (1, 10, 50, 100) — same no-plateau regression test as IMS
+79. DMS B-factor bump matches the exact `score × bumpPerPoint` formula below the cap
+80. DMS B-factor bump is capped at `bench.structCpx.maxBump` only for a genuinely extreme, adversarial input
+81. AMS's B-factor is never bumped, even with contrived complexity-field values sitting unused on the shared tower shape
+82. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked — mirrors the existing SRE gate exactly
+83. Data Architect / Data Strategist need both the role switched on in Roles & grades *and* the tower's tier at High — neither alone is sufficient
+84. `backfillTowers()` backfills the new IMS structural-complexity fields on a legacy partial tower to `mkTower()`'s defaults, landing at Medium tier
+85. `structCpxTier` does not throw and degrades safely to Low on a raw legacy tower object missing the new fields entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
+86. `seedRoles` backfills the entire `bench.structCpx` sub-object for an old saved hash/import predating this feature — same shallow top-level pattern already relied on for `brownfieldUplift`
 
 ---
 

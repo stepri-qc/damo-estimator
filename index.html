@@ -402,9 +402,12 @@ function defaults(){return{
     // Data Managed Services deck's complexity-tier framing, but weights, flat
     // adds and cut-points are this estimator's own calibration, not [F]/[P].
     structCpx:{
-      ims:{wEnv:1, wHost:1.5, wDb:1, secFlat:3, loMed:8, medHigh:16},
-      dms:{wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3, loMed:10, medHigh:20},
-      bump:{low:0, medium:0.10, high:0.20}   // multiplies B-factor; see runEngine
+      // bumpPerPoint calibrated so score===loMed gives a 10% bump and
+      // score===medHigh gives 20%, matching the tier labels, then keeps
+      // climbing continuously past medHigh instead of flatlining there.
+      ims:{wEnv:1, wHost:1.5, wDb:1, secFlat:3, loMed:8, medHigh:16, bumpPerPoint:0.0125},
+      dms:{wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3, loMed:10, medHigh:20, bumpPerPoint:0.01},
+      maxBump:2.00   // sanity ceiling only - triples B-factor at most; see structCpxBump
     },
     govBase:40, govPerTower:8,          // PROPOSED governance & reporting hrs/month
     handoffPct:0.04,                    // PROPOSED coordination uplift per ownership boundary
@@ -774,20 +777,38 @@ function slaMod(t,B){
    cleanly with a single falsy check. Deliberate +x||0 / !!x coercion: a tower
    missing these fields entirely (a raw legacy hash/Import that bypasses
    backfillTowers) degrades safely to "low", same as sre/evolution already do. */
-function structCpxTier(t,B){
+function structCpxScore(t,B){
   if(!t || (t.type!=="IMS" && t.type!=="DMS")) return null;
   const cx=B.structCpx;
   if(t.type==="IMS"){
     const c=cx.ims;
-    const score = c.wEnv*((+t.envCount||0)+(+t.nonProdCount||0)) + c.wHost*(+t.hostCount||0) +
-                  c.wDb*(+t.dbCount||0) + (t.security ? c.secFlat : 0);
-    return score<c.loMed ? "low" : (score<c.medHigh ? "medium" : "high");
+    return c.wEnv*((+t.envCount||0)+(+t.nonProdCount||0)) + c.wHost*(+t.hostCount||0) +
+           c.wDb*(+t.dbCount||0) + (t.security ? c.secFlat : 0);
   }
   const c=cx.dms;
-  const score = c.wDp*(+t.dataProducts||0) + c.wInt*(+t.integrations||0) +
-                c.wUp*(+t.upstreams||0) + c.wDown*(+t.downstreams||0) +
-                (t.platform==="Other" ? c.platformOtherFlat : 0);
+  return c.wDp*(+t.dataProducts||0) + c.wInt*(+t.integrations||0) +
+         c.wUp*(+t.upstreams||0) + c.wDown*(+t.downstreams||0) +
+         (t.platform==="Other" ? c.platformOtherFlat : 0);
+}
+function structCpxTier(t,B){
+  const score=structCpxScore(t,B);
+  if(score==null) return null;
+  const c=t.type==="IMS"?B.structCpx.ims:B.structCpx.dms;
   return score<c.loMed ? "low" : (score<c.medHigh ? "medium" : "high");
+}
+/* The tier label above is a discrete Low/Medium/High badge (and drives the
+   High-only role eligibility gate), but the FTE-facing effort bump is
+   deliberately CONTINUOUS in the underlying score, not a 3-step lookup - a
+   tower with 100 environments must keep costing more than one with 10, not
+   plateau the instant it crosses into "high". bumpPerPoint is calibrated so
+   the bump exactly equals the old flat tier values (10%/20%) right at the
+   loMed/medHigh cut-points, then keeps climbing past them, capped at
+   structCpx.maxBump purely as a sanity ceiling against adversarial input. */
+function structCpxBump(t,B){
+  const score=structCpxScore(t,B);
+  if(score==null) return 0;
+  const c=t.type==="IMS"?B.structCpx.ims:B.structCpx.dms;
+  return Math.min(B.structCpx.maxBump, score*c.bumpPerPoint);
 }
 /* [F 1.4 + p3 illustration] Tiering is a CASCADE, not a partition.
    The framework's own worked example: 100 arrive at L1, 30 are resolved there
@@ -887,7 +908,7 @@ function runEngine(S,opts){
       // whole pre-FTE below) - three distinct levers on three distinct
       // quantities, not double-counting one another.
       const cpxTier=structCpxTier(t,B);
-      const cpxBump=cpxTier ? (B.structCpx.bump[cpxTier]||0) : 0;
+      const cpxBump=structCpxBump(t,B);
       const b=a*bf*(1+cpxBump);                      // [F 1.1] non-ticketing effort
       const g=B.govPerTower;
       A+=a; Bh+=b; G+=g; vol+=v;
@@ -2520,16 +2541,55 @@ function selfTests(){
     exp:"null",got:String(structCpxTier(T74.towers[0],T74.bench)),
     ok:structCpxTier(T74.towers[0],T74.bench)==null});
 
-  // 55. B-factor bump: applies only the tier bump (demand/SLA/estate identical
-  //     between the two towers, so any ratio deviation isolates the bump).
-  const T75lo=seedRoles(defaults()); T75lo.towers=[mkTower("IMS")];
-  Object.assign(T75lo.towers[0],{envCount:1,nonProdCount:0,hostCount:1,dbCount:1,security:false});
-  const T75hi=seedRoles(defaults()); T75hi.towers=[mkTower("IMS")];
-  Object.assign(T75hi.towers[0],{envCount:6,nonProdCount:4,hostCount:4,dbCount:6,security:true});
-  const b75lo=runEngine(T75lo,{}).years[0].rows[0].B, b75hi=runEngine(T75hi,{}).years[0].rows[0].B;
-  out.push({n:"B-factor bump applies the tier bump only (low vs high, otherwise-identical towers)",
-    exp:"ratio 1.20 (high bump 20% vs low bump 0%)",got:"ratio="+r1(b75hi/b75lo),
-    ok:Math.abs(b75hi/b75lo-1.20)<0.005});
+  // 55. B-factor bump is CONTINUOUS in the structural-complexity score, not a
+  //     3-step tier lookup - a real defect the flat version had: once a tower
+  //     crossed into "high" every further increase (e.g. 100 environments)
+  //     produced literally zero additional FTE movement. Assert (a) the bump
+  //     keeps strictly increasing across escalating inputs well past the High
+  //     cut-point, (b) the exact formula at an uncapped point, and (c) the cap
+  //     only bites at a genuinely extreme, adversarial input.
+  const imsAt=(env)=>{ const S=seedRoles(defaults()); S.towers=[mkTower("IMS")]; S.towers[0].envCount=env; return S; };
+  const imsBumps=[1,10,50,100].map(env=>{ const S=imsAt(env); return structCpxBump(S.towers[0],S.bench); });
+  out.push({n:"IMS B-factor bump keeps increasing with environment count well past the High threshold (no plateau)",
+    exp:"strictly increasing across 1, 10, 50, 100 environments",
+    got:"bumps="+imsBumps.map(b=>r1(b*100)+"%").join(", "),
+    ok:imsBumps[0]<imsBumps[1] && imsBumps[1]<imsBumps[2] && imsBumps[2]<imsBumps[3]});
+
+  const T75=seedRoles(defaults()); T75.towers=[mkTower("IMS")];
+  Object.assign(T75.towers[0],{envCount:1,nonProdCount:0,hostCount:1,dbCount:1,security:false}); // score 3.5
+  const got75=structCpxBump(T75.towers[0],T75.bench);
+  out.push({n:"IMS B-factor bump matches the exact score x bumpPerPoint formula below the cap",
+    exp:"3.5 * 0.0125 = 0.04375",got:String(got75),
+    ok:Math.abs(got75-0.04375)<1e-9});
+
+  const T75cap=seedRoles(defaults()); T75cap.towers=[mkTower("IMS")];
+  Object.assign(T75cap.towers[0],{envCount:1000,hostCount:1000,dbCount:1000,nonProdCount:1000,security:true});
+  const got75cap=structCpxBump(T75cap.towers[0],T75cap.bench);
+  out.push({n:"IMS B-factor bump is capped at bench.structCpx.maxBump for a genuinely extreme input",
+    exp:String(T75cap.bench.structCpx.maxBump),got:String(got75cap),
+    ok:got75cap===T75cap.bench.structCpx.maxBump});
+
+  const dmsAt=(dp)=>{ const S=seedRoles(defaults()); S.towers=[mkTower("DMS")]; S.towers[0].dataProducts=dp; return S; };
+  const dmsBumps=[1,10,50,100].map(dp=>{ const S=dmsAt(dp); return structCpxBump(S.towers[0],S.bench); });
+  out.push({n:"DMS B-factor bump keeps increasing with data-product count well past the High threshold (no plateau)",
+    exp:"strictly increasing across 1, 10, 50, 100 data products",
+    got:"bumps="+dmsBumps.map(b=>r1(b*100)+"%").join(", "),
+    ok:dmsBumps[0]<dmsBumps[1] && dmsBumps[1]<dmsBumps[2] && dmsBumps[2]<dmsBumps[3]});
+
+  const T75d=seedRoles(defaults()); T75d.towers=[mkTower("DMS")];
+  Object.assign(T75d.towers[0],{dataProducts:1,integrations:1,upstreams:1,downstreams:1,platform:"Databricks"}); // score 3.5
+  const got75d=structCpxBump(T75d.towers[0],T75d.bench);
+  out.push({n:"DMS B-factor bump matches the exact score x bumpPerPoint formula below the cap",
+    exp:"3.5 * 0.01 = 0.035",got:String(got75d),
+    ok:Math.abs(got75d-0.035)<1e-9});
+
+  const T75dcap=seedRoles(defaults()); T75dcap.towers=[mkTower("DMS")];
+  Object.assign(T75dcap.towers[0],{dataProducts:1000,integrations:1000,upstreams:1000,downstreams:1000,platform:"Other"});
+  const got75dcap=structCpxBump(T75dcap.towers[0],T75dcap.bench);
+  out.push({n:"DMS B-factor bump is capped at bench.structCpx.maxBump for a genuinely extreme input",
+    exp:String(T75dcap.bench.structCpx.maxBump),got:String(got75dcap),
+    ok:got75dcap===T75dcap.bench.structCpx.maxBump});
+
   const T75ams=seedRoles(defaults()); T75ams.towers=[mkTower("AMS")];
   Object.assign(T75ams.towers[0],{envCount:99,hostCount:99,dbCount:99,nonProdCount:99,security:true});
   const r75ams=runEngine(T75ams,{}).years[0].rows[0];
@@ -2628,7 +2688,7 @@ function structCpxBadge(t){
   const tier=structCpxTier(t,S.bench);
   if(!tier) return "";
   const cls=tier==="high"?"crit":(tier==="medium"?"warn":"good");
-  const bump=Math.round((S.bench.structCpx.bump[tier]||0)*100);
+  const bump=Math.round(structCpxBump(t,S.bench)*100);
   const hint=tier==="high"
     ? (t.type==="IMS" ? " Consider enabling Information Security Engineer in Roles &amp; grades if security is in scope."
                        : " Consider enabling Data Architect / Data Strategist in Roles &amp; grades.")
@@ -2986,14 +3046,13 @@ function renderRail(){
       '<div class="tablewrap bench-tbl"><table><thead><tr><th>IMS weight</th><th>Env+non-prod</th><th>Hosting</th><th>DB</th><th>Security add</th></tr></thead><tbody>'+
       '<tr><td></td>'+rt("bench.structCpx.ims.wEnv")+rt("bench.structCpx.ims.wHost")+rt("bench.structCpx.ims.wDb")+rt("bench.structCpx.ims.secFlat")+'</tr>'+
       '</tbody></table></div>'+
-      '<div class="row c2">'+num("bench.structCpx.ims.loMed","IMS Low-Medium cut-point")+num("bench.structCpx.ims.medHigh","IMS Medium-High cut-point")+'</div>'+
+      '<div class="row c3">'+num("bench.structCpx.ims.loMed","IMS Low-Medium cut-point")+num("bench.structCpx.ims.medHigh","IMS Medium-High cut-point")+num("bench.structCpx.ims.bumpPerPoint","IMS B-bump per score point",0.001)+'</div>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th>DMS weight</th><th>Data products</th><th>Integrations</th><th>Upstreams</th><th>Downstreams</th><th>"Other" platform add</th></tr></thead><tbody>'+
       '<tr><td></td>'+rt("bench.structCpx.dms.wDp")+rt("bench.structCpx.dms.wInt")+rt("bench.structCpx.dms.wUp")+rt("bench.structCpx.dms.wDown")+rt("bench.structCpx.dms.platformOtherFlat")+'</tr>'+
       '</tbody></table></div>'+
-      '<div class="row c2">'+num("bench.structCpx.dms.loMed","DMS Low-Medium cut-point")+num("bench.structCpx.dms.medHigh","DMS Medium-High cut-point")+'</div>'+
-      '<div class="field"><label>B-factor bump by tier</label><div class="row c3">'+
-      num("bench.structCpx.bump.low","Low",0.01)+num("bench.structCpx.bump.medium","Medium",0.01)+num("bench.structCpx.bump.high","High",0.01)+'</div>'+
-      '<p class="hint">Multiplies the tower\'s non-ticketing effort (B) &mdash; same lever as legacy/modern estate, stacks multiplicatively.</p></div>'+
+      '<div class="row c3">'+num("bench.structCpx.dms.loMed","DMS Low-Medium cut-point")+num("bench.structCpx.dms.medHigh","DMS Medium-High cut-point")+num("bench.structCpx.dms.bumpPerPoint","DMS B-bump per score point",0.001)+'</div>'+
+      '<div class="field">'+num("bench.structCpx.maxBump","Max B-factor bump (sanity cap)",0.05)+
+      '<p class="hint">Score &times; bump-per-point, multiplying the tower\'s non-ticketing effort (B) &mdash; continuous, not a 3-step lookup, so bigger inputs keep moving the FTE past the High threshold instead of flatlining there. Capped here only against adversarial input.</p></div>'+
     '<div class="row c2">'+num("bench.govBase","Governance hrs/mo (deal)",5)+num("bench.govPerTower","Governance hrs/mo (tower)",1)+'</div>'+
     '<div class="field">'+num("bench.handoffPct","Coordination uplift per interface",0.01)+'<p class="hint">Applied to our ticketing effort for each adjacent tier pair under different ownership. <span class="flag">proposed</span></p></div>'+
     '<div class="row c2">'+num("bench.hypercareMonths","Hypercare months")+num("bench.hypercareMult","Hypercare volume x",0.5)+'</div>'+
@@ -3200,7 +3259,7 @@ function buildRegister(base,mc,o1,rp){
       L.push("- IMS: SRE named as the client's key objective \u2014 "+(t.sre?"**yes** (SRE is included in the L3 mix)":"no (SRE is not included; Infrastructure Engineer leads L3)")+".");
       var tier=structCpxTier(t,B);
       L.push("- IMS structural complexity ("+t.envCount+" environments incl. "+t.nonProdCount+" non-prod, "+t.hostCount+" hostings, "+t.dbCount+" databases, security in scope: "+(t.security?"yes":"no")+") \u2014 **"+tier+"**"+
-        (B.structCpx.bump[tier] ? ", +"+Math.round(B.structCpx.bump[tier]*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
+        (structCpxBump(t,B) ? ", +"+Math.round(structCpxBump(t,B)*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
         (tier==="high" ? " Consider enabling Information Security Engineer in Roles & grades if not already." : ""));
     });
     amsT.forEach(function(t){
@@ -3212,7 +3271,7 @@ function buildRegister(base,mc,o1,rp){
     dmsT.forEach(function(t){
       var tier=structCpxTier(t,B);
       L.push("- DMS structural complexity ("+t.dataProducts+" data products on "+t.platform+", "+t.integrations+" integrations, "+t.upstreams+" upstreams, "+t.downstreams+" downstreams) \u2014 **"+tier+"**"+
-        (B.structCpx.bump[tier] ? ", +"+Math.round(B.structCpx.bump[tier]*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
+        (structCpxBump(t,B) ? ", +"+Math.round(structCpxBump(t,B)*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
         (tier==="high" ? " Consider enabling Data Architect / Data Strategist in Roles & grades if not already." : ""));
     });
     L.push("");
