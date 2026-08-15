@@ -63,12 +63,12 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 ## 3. Quick start
 
 1. Open the tool. On a fresh visit it opens on the RFP intake screen (§2, also reachable any time via **Start from RFP**) — add the RFP, an incident-history sheet, or any other supporting document (paste text or upload .docx/.pdf/.xlsx/.txt/.md) and hit Detect, or click **Skip — set up manually** to land directly on the dashboard with a single AMS tower and a worked default so you see live numbers immediately.
-2. Set **Engagement**: term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, and delivery region (IME, EU, APAC or NA). The first four choices select the scenario (1–4) and with it the contingency, team shape, AIOps timing and savings target; region drives the Delivery location mix card.
+2. Set **Engagement**: term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, and Customer Region (IME, EU, APAC or NA). The first four choices select the scenario (1–4) and with it the contingency, team shape, AIOps timing and savings target; region drives the Delivery location mix card, and (for Active-Passive off-hours coverage) which location typically carries on-call.
 3. Pick the **Service mix** — AMS, IMS, DMS or any combination. Click a line to add or drop it. Use **+ Add another tower** only when one line needs more than one tower (separate estates, different SLAs).
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 90 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 107 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -240,6 +240,19 @@ A live badge on each IMS/DMS tower card shows the computed tier, the bump applie
 
 The deck's five DMS AIOps use cases (Automated RCA, Intelligent Alerting, Self-Healing, Predictive Capacity Planning, Anomaly Detection & Security) needed **no catalogue change** — `USECASES` is already tower-agnostic, gated only by which tier a deal owns, and already contains near-1:1 matches (`rc`, `ia`, `sh`, `ps`, `ad`) that apply to DMS exactly as they do to AMS/IMS.
 
+### 3.12 Out-of-office-hours coverage model — Active-Active / Active-Passive
+
+A per-tower choice, shown only when **Coverage window** is anything other than `8x5` (8x5 has no off-hours within the declared window at all). It answers a question the shift-maths floor has always silently assumed: is every declared hour *fully, actively staffed* (**Active-Active**), or is the team actively staffed during business hours and **on-call for P1-critical incidents only** the rest of the time (**Active-Passive**)?
+
+- **Active-Active** reproduces the exact pre-existing floor formula — a hard backward-compatibility requirement, so no legacy saved link silently loses headcount the day this shipped.
+- **Active-Passive** keeps the business-hours portion of the week (`SHIFTS["8x5"]`, 5 shifts) fully staffed, and discounts only the *off-hours delta* to an on-call allowance — a new editable Benchmarks constant, `bench.oohOnCallFactor`, proposed default **15%** of a dedicated shift. This is the real staffing lever: on a low-demand 24x7 tower where coverage is the binding constraint, Active-Passive can cut the coverage floor by roughly two-thirds versus Active-Active for the identical declared window — verified live (17.4 → 6.7 total FTE on a deliberately low-demand test case). A shared roster mixing models across towers correctly sizes to the more demanding (Active-Active) tower, since one physical roster can't split.
+
+**Who typically carries the on-call**, for Active-Passive: `oohLocationFor(S)` auto-attributes a delivery location per the deal's **Customer Region** (renamed from "Delivery region" — same field, same mechanism, just framed honestly as "where's the customer, and therefore which delivery split applies"), via a new proposed table, `bench.oohLocationByRegion` — IME is always India (only one location exists); EU and NA default to Offshore (India); APAC defaults to China. **This is a stated convention, not a computed fact** — the tool has no cost/rate data to derive "cheapest location" from (effort/FTE only), so every entry is editable in the Benchmarks panel and clearly flagged `proposed`. Genuine hour-by-hour follow-the-sun timezone modeling already exists separately as the O2 optimization module; this is a lightweight narrative layer on top of the simple coverage-floor mechanic, not an extension of O2.
+
+Surfaced everywhere the tool already narrates coverage: a live badge on the tower card (updates instantly on every keystroke, the same targeted-DOM-patch technique the structural-complexity badge and the delivery-location sum hint both use), a new `## Coverage` section in the exported register, and a new "Coverage" section in the printed SA report.
+
+**A naming collision was fixed as part of this change.** The register's own scope-exclusion bullet used to read *"...active-active operations..."* meaning infrastructure/HA architecture — an unrelated concept that, sitting next to this feature's own "Active-Active" label in the same document, read as self-contradictory to a client. Now reads "active-active infrastructure/HA architecture" — disambiguated, not weakened.
+
 ---
 
 ## 5. The optimization layer
@@ -293,7 +306,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 90 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 107 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -374,6 +387,20 @@ The **Verify against framework** card runs 90 checks on every render. Each is a 
 88. A negative DMS field clamps to zero contribution the same way
 89. A negative field never cancels or reduces another field's valid, positive contribution to the score
 90. Non-numeric garbage in a structural-complexity field degrades to zero, never `NaN` (which would otherwise poison every downstream FTE calculation for that tower)
+91–94. Active-Active reproduces the exact pre-existing shift count for all four coverage windows (8x5/16x5/24x5/24x7) — the backward-compatibility proof
+95. Active-Passive on 24x7: business hours (5) + off-hours delta (16) × 0.15 = 7.4
+96. Active-Passive is meaningfully cheaper than Active-Active on the same 24x7 window
+97. An 8x5 tower ignores the off-hours model entirely, regardless of its value
+98. Through `runEngine()` end-to-end: Active-Passive's coverage floor is strictly lower than Active-Active's on an identical 24x7 window
+99. A shared roster with mixed off-hours models sizes to the more demanding (Active-Active) tower
+100. `effShiftsPerWeek` degrades safely to Active-Active on a legacy tower missing the off-hours model field entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
+101. The `[F p3]` regression state is unaffected by the off-hours feature — still reproduces 3.3 FTE
+102. `oohLocationFor`: IME is always India (only one location exists)
+103. `oohLocationFor`: EU defaults to Offshore (India)
+104. `oohLocationFor`: APAC defaults to China (proposed — no cost data to derive it from)
+105. `oohLocationFor`: NA defaults to Offshore (India)
+106. `oohLocationFor` honours a Benchmarks override away from the proposed default
+107. `seedRoles` backfills `bench.oohLocationByRegion` and `bench.oohOnCallFactor` missing from an old saved hash
 
 ---
 
@@ -390,6 +417,7 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - Governance load, hypercare duration and multiplier
 - AIOps use-case catalogue: build effort, deflection benefit and prerequisites
 - IMS/DMS structural-complexity weights, cut-points and B-factor bumps (§3.11) — grounded in the supplied deck's tier framing, not `[F]`/`[P]`; the weights, thresholds and default field values all need calibration against real IMS/DMS engagements
+- Off-hours on-call factor (§3.12, default 15% of a dedicated shift) and the off-hours on-call location by region (EU/NA → Offshore, APAC → China) — neither is derived from real cost/rate data, since the tool has none; both are stated conventions pending real engagement data
 
 The highest-value calibration is the **AIOps use-case effort and deflection numbers**, because they drive O1's funding decisions and the whole savings narrative.
 

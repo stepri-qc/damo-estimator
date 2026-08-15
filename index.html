@@ -390,6 +390,11 @@ function defaults(){return{
     util:0.85,                 // [F 1.1] 85%; guardrail G6 says 80-85%
     hoursMonth:160,            // [F p3 illustration]. Scenario 3 Step 1 says 150 - see conflict note.
     shiftsPerFTE:5,            // [F p3]
+    oohOnCallFactor:0.15,      // PROPOSED - on-call off-hours costs ~15% of a dedicated shift
+    // PROPOSED - which delivery location typically carries P1 on-call for
+    // Active-Passive off-hours, per region. Not derived from real cost/rate
+    // data (the tool has none) - a stated convention, editable per deal.
+    oohLocationByRegion:{eu:"offshore", apac:"china", na:"offshore"},
     // PROPOSED per-tower differentiation, anchored on [F] B-factor ranges 20-25% / 30-35%
     tower:{
       AMS:{l1:1.00,l23:1.00,bModern:0.22,bLegacy:0.32,ceiling:0.60},
@@ -517,7 +522,14 @@ function mkTower(type){
     dataProducts:5, platform:"Snowflake", integrations:6, upstreams:4, downstreams:3, // DMS
     // who provides each tier of service. Only tiers owned by "us" are sized.
     own:{L1:"us",L2:"us",L3:"us"},
-    coverage:"16x5", ftePerShift:2, active:{L1:true,L2:true,L3:false}
+    coverage:"16x5", ftePerShift:2,
+    // PROPOSED - off-hours coverage model, only meaningful when coverage!=="8x5".
+    // "active" reproduces today's existing floor formula exactly (backward-compat
+    // default - no legacy saved link should silently lose headcount); "passive"
+    // keeps business hours fully staffed and discounts only the off-hours delta
+    // to an on-call allowance. See effShiftsPerWeek().
+    oohModel:"active",
+    active:{L1:true,L2:true,L3:false}
   };
 }
 const DMS_PLATFORMS=["Databricks","Snowflake","Synapse","BigQuery","Redshift","Other"];
@@ -560,6 +572,19 @@ const LOC_PRESETS={
     {id:"near_off",n:"Nearshore + Offshore",mix:{nearshore:40,offshore:60}, proposed:true}
   ]
 };
+// PROPOSED - which delivery location typically carries P1 on-call for an
+// Active-Passive tower, per the deal's region. Not derived from real cost
+// data (the tool has none - effort/FTE only); a stated convention, editable
+// per deal in the Benchmarks panel. IME has only one location, so it's
+// hardcoded rather than needing a table entry.
+function oohLocationFor(S){
+  const region=S.eng.region;
+  if(region==="ime") return "India";
+  const key=(S.bench.oohLocationByRegion&&S.bench.oohLocationByRegion[region])||null;
+  if(!key) return null;
+  const loc=(LOC_CATALOG[region]||[]).find(l=>l.key===key);
+  return loc?loc.label:null;
+}
 function locMixOf(S){
   const region=S.eng.region;
   if(region==="ime") return {india:100};
@@ -652,6 +677,20 @@ function seedEngagementType(st,v){
 /* [F Step 1, Sc.1] complexity-point proxy: tickets/app/month */
 const CPX={S:[3,5],M:[8,12],L:[15,20],XL:[25,35],XXL:[40,60]};
 const SHIFTS={"8x5":5,"16x5":10,"24x5":15,"24x7":21};
+// PROPOSED - off-hours coverage model. Active-Active (default) returns the
+// declared window's full shift count unchanged - byte-identical to the
+// formula this file has always used, so any tower that never touches
+// oohModel is provably unaffected. Active-Passive keeps business hours
+// (SHIFTS["8x5"]) fully staffed and discounts only the off-hours delta to
+// an on-call allowance - real people carrying a pager on top of their day
+// job, not a second dedicated shift.
+function effShiftsPerWeek(t,B){
+  const full=SHIFTS[t.coverage]||5;
+  if(t.coverage==="8x5" || t.oohModel!=="passive") return full;
+  const biz=SHIFTS["8x5"];
+  const ooh=full-biz;
+  return biz + ooh*(B.oohOnCallFactor||0.15);
+}
 
 /* [F] AIOps use-case catalogue, drawn from the AI-scope lists in Scenarios 1-4.
    effort = build person-weeks; defl = deflection benefit in FTE-% points;
@@ -936,12 +975,12 @@ function runEngine(S,opts){
     let floor=0, floorNote="";
     if(frontline.length){
       if(e.sharedRoster){
-        const sw=Math.max(...frontline.map(t=>SHIFTS[t.coverage]||5));
+        const sw=Math.max(...frontline.map(t=>effShiftsPerWeek(t,B)));
         const fs=Math.max(...frontline.map(t=>+t.ftePerShift||1));
         floor=(sw*fs)/B.shiftsPerFTE;
-        floorNote="shared roster, "+sw+" shifts/wk x "+fs+" per shift / "+B.shiftsPerFTE;
+        floorNote="shared roster, "+r1(sw)+" shifts/wk x "+fs+" per shift / "+B.shiftsPerFTE;
       }else{
-        floor=sum(frontline.map(t=>((SHIFTS[t.coverage]||5)*(+t.ftePerShift||1))/B.shiftsPerFTE));
+        floor=sum(frontline.map(t=>(effShiftsPerWeek(t,B)*(+t.ftePerShift||1))/B.shiftsPerFTE));
         floorNote="per-tower rosters, summed";
       }
     }else if(towers.length){
@@ -2710,6 +2749,101 @@ function selfTests(){
     got:"score="+String(score81e)+", isNaN="+Number.isNaN(score81e),
     ok:!Number.isNaN(score81e) && score81e===3});
 
+  // Off-hours coverage model: Active-Active reproduces the pre-existing SHIFTS
+  // values exactly (backward-compat, provable by construction); Active-Passive
+  // discounts only the off-hours delta to bench.oohOnCallFactor.
+  const T90ams=seedRoles(defaults()); T90ams.towers=[mkTower("AMS")];
+  ["8x5","16x5","24x5","24x7"].forEach(function(cv){
+    T90ams.towers[0].coverage=cv; T90ams.towers[0].oohModel="active";
+    const got=effShiftsPerWeek(T90ams.towers[0],T90ams.bench);
+    out.push({n:"Active-Active reproduces the exact pre-existing shift count for "+cv,
+      exp:String(SHIFTS[cv]),got:String(got),ok:got===SHIFTS[cv]});
+  });
+
+  const T91=seedRoles(defaults()); T91.towers=[mkTower("AMS")];
+  T91.towers[0].coverage="24x7"; T91.towers[0].oohModel="passive";
+  const got91=effShiftsPerWeek(T91.towers[0],T91.bench);
+  out.push({n:"Active-Passive on 24x7: business hours (5) + off-hours delta (16) x 0.15 = 7.4",
+    exp:"7.4",got:r1(got91)+"",ok:Math.abs(got91-7.4)<0.001});
+  out.push({n:"Active-Passive is meaningfully cheaper than Active-Active on the same 24x7 window",
+    exp:"7.4 < 21",got:r1(got91)+" vs "+SHIFTS["24x7"],ok:got91<SHIFTS["24x7"]});
+
+  const T92=seedRoles(defaults()); T92.towers=[mkTower("AMS")];
+  T92.towers[0].coverage="8x5"; T92.towers[0].oohModel="passive";
+  out.push({n:"An 8x5 tower ignores oohModel entirely, regardless of value",
+    exp:"5",got:String(effShiftsPerWeek(T92.towers[0],T92.bench)),
+    ok:effShiftsPerWeek(T92.towers[0],T92.bench)===5});
+
+  // End-to-end through runEngine: two otherwise-identical single-tower deals,
+  // differing only in oohModel, must produce a strictly lower floor for passive.
+  const mkOOHDeal=(model)=>{ const S=seedRoles(defaults()); S.towers=[mkTower("AMS")];
+    Object.assign(S.towers[0],{coverage:"24x7",ftePerShift:2,oohModel:model}); return S; };
+  const floorActive=runEngine(mkOOHDeal("active"),{}).years[0].floor;
+  const floorPassive=runEngine(mkOOHDeal("passive"),{}).years[0].floor;
+  out.push({n:"runEngine: Active-Passive's coverage floor is strictly lower than Active-Active's on an identical 24x7 window",
+    exp:"floor(passive) < floor(active)",got:"passive="+r1(floorPassive)+", active="+r1(floorActive),
+    ok:floorPassive<floorActive});
+
+  // Mixed-model shared roster: the more demanding (Active-Active) tower's
+  // effective shift count wins the max, since one physical roster can't split.
+  const T93=seedRoles(defaults()); T93.eng.sharedRoster=true;
+  T93.towers=[mkTower("IMS"),mkTower("AMS")];
+  Object.assign(T93.towers[0],{coverage:"24x7",ftePerShift:2,oohModel:"active"});
+  Object.assign(T93.towers[1],{coverage:"24x7",ftePerShift:2,oohModel:"passive"});
+  const r93=runEngine(T93,{}).years[0];
+  out.push({n:"Shared roster with mixed OOH models sizes to the more demanding (Active-Active) tower",
+    exp:"floor = (21 x 2) / 5 = 8.4",got:r1(r93.floor)+"",ok:Math.abs(r93.floor-8.4)<0.05});
+
+  // Legacy backfill: a raw tower object missing oohModel entirely (the
+  // loadHash/Import path, which bypasses backfillTowers) must degrade safely
+  // to Active-Active - the exact pre-existing behaviour, not a throw or NaN.
+  const rawLegacyOOH={type:"AMS",mode:"history",inc:100,sr:50,coverage:"24x7",ftePerShift:2};
+  let threwOOH=false, gotOOH=null;
+  try{ gotOOH=effShiftsPerWeek(rawLegacyOOH,defaults().bench); }catch(e){ threwOOH=true; }
+  out.push({n:"effShiftsPerWeek degrades safely to Active-Active on a legacy tower missing oohModel entirely",
+    exp:"no throw, 21 (unchanged from pre-feature behaviour)",
+    got:"threw="+threwOOH+", got="+String(gotOOH),
+    ok:!threwOOH && gotOOH===21});
+
+  // [F p3] regression untouched - T1 never sets oohModel, so it's provably on
+  // the Active-Active path throughout.
+  out.push({n:"[F p3] regression state (T1) is unaffected by the OOH feature - still reproduces 3.3 FTE",
+    exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
+
+  // Off-hours location attribution: proposed per-region defaults, and the
+  // Benchmarks override.
+  const T94=seedRoles(defaults()); T94.eng.region="ime";
+  out.push({n:"oohLocationFor: IME is always India (only one location exists)",
+    exp:"India",got:String(oohLocationFor(T94)),ok:oohLocationFor(T94)==="India"});
+
+  const T95=seedRoles(defaults()); T95.eng.region="eu";
+  out.push({n:"oohLocationFor: EU defaults to Offshore (India)",
+    exp:"Offshore (India)",got:String(oohLocationFor(T95)),ok:oohLocationFor(T95)==="Offshore (India)"});
+
+  const T96=seedRoles(defaults()); T96.eng.region="apac";
+  out.push({n:"oohLocationFor: APAC defaults to China (proposed - no cost data to derive it from)",
+    exp:"China",got:String(oohLocationFor(T96)),ok:oohLocationFor(T96)==="China"});
+
+  const T97=seedRoles(defaults()); T97.eng.region="na";
+  out.push({n:"oohLocationFor: NA defaults to Offshore (India)",
+    exp:"Offshore (India)",got:String(oohLocationFor(T97)),ok:oohLocationFor(T97)==="Offshore (India)"});
+
+  const T98=seedRoles(defaults()); T98.eng.region="eu"; T98.bench.oohLocationByRegion.eu="onshore";
+  out.push({n:"oohLocationFor honours a Benchmarks override away from the proposed default",
+    exp:"Onshore (Europe)",got:String(oohLocationFor(T98)),ok:oohLocationFor(T98)==="Onshore (Europe)"});
+
+  // Legacy backfill: seedRoles's existing shallow top-level bench backfill
+  // (the same pattern already proven for structCpx and brownfieldUplift) must
+  // restore the whole oohLocationByRegion sub-object for an old saved hash
+  // predating this feature.
+  const oldBenchOOH=Object.assign({},defaults().bench); delete oldBenchOOH.oohLocationByRegion; delete oldBenchOOH.oohOnCallFactor;
+  const legacyOOH=seedRoles(Object.assign(defaults(),{bench:oldBenchOOH}));
+  out.push({n:"seedRoles backfills bench.oohLocationByRegion and bench.oohOnCallFactor missing from an old saved hash",
+    exp:JSON.stringify({f:defaults().bench.oohOnCallFactor,l:defaults().bench.oohLocationByRegion}),
+    got:JSON.stringify({f:legacyOOH.bench.oohOnCallFactor,l:legacyOOH.bench.oohLocationByRegion}),
+    ok:legacyOOH.bench.oohOnCallFactor===defaults().bench.oohOnCallFactor &&
+       JSON.stringify(legacyOOH.bench.oohLocationByRegion)===JSON.stringify(defaults().bench.oohLocationByRegion)});
+
   return out;
 }
 
@@ -2926,7 +3060,7 @@ function renderRail(){
       'All five effects stay freely editable afterward.</p></div>'+
     chk("eng.aiops","AIOps in scope")+
     chk("eng.sharedRoster","Shared roster across towers")+
-    '<div class="field"><label>Delivery region</label>'+seg("eng.region",[["ime","IME"],["eu","EU"],["apac","APAC"],["na","NA"]])+
+    '<div class="field"><label>Customer Region</label>'+seg("eng.region",[["ime","IME"],["eu","EU"],["apac","APAC"],["na","NA"]])+
       '<p class="hint">'+(S.eng.region==="ime"
         ? "IME: the whole team is shown as India, no further configuration."
         : "Location mix below.")+'</p></div>'+
@@ -3000,6 +3134,14 @@ function renderRail(){
         '<p class="hint">Only tiers marked <b>DAMO (us)</b> are sized. Others still carry volume through the cascade.</p></div>'+
       '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["16x5","16x5"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
       num(p+".ftePerShift","FTE per shift")+
+      (t.coverage!=="8x5"
+        ? '<div class="field"><label>Out-of-office-hours coverage <span class="flag">proposed</span></label>'+
+            seg(p+".oohModel",[["active","Active-Active"],["passive","Active-Passive"]])+
+            '<p class="hint">'+(t.oohModel==="passive"
+              ? '<b>Active-Passive</b> &mdash; the team works actively during business hours and is on call for critical P1 incidents outside them; P2&ndash;P4 off-hours requests queue until business hours resume. Off-hours headcount is a discounted on-call allowance, not a dedicated shift.'+
+                (oohLocationFor(S) ? ' Typically carried by <b>'+esc(oohLocationFor(S))+'</b>, per the delivery-location mix and standard cost-advantage convention <span class="flag">proposed</span> &mdash; edit in Benchmarks if this deal splits differently.' : '')
+              : '<b>Active-Active</b> &mdash; dedicated people actively staff every hour of the declared window, off-hours included, same as business hours.')+'</p></div>'
+        : '')+
       '</div></div>';
   });
   const mix=mixOf(S);
@@ -3108,6 +3250,15 @@ function renderRail(){
       '<p class="hint">Score &times; bump-per-point, multiplying the tower\'s non-ticketing effort (B) &mdash; continuous, not a 3-step lookup, so bigger inputs keep moving the FTE past the High threshold instead of flatlining there. Capped here only against adversarial input.</p></div>'+
     '<div class="row c2">'+num("bench.govBase","Governance hrs/mo (deal)",5)+num("bench.govPerTower","Governance hrs/mo (tower)",1)+'</div>'+
     '<div class="field">'+num("bench.handoffPct","Coordination uplift per interface",0.01)+'<p class="hint">Applied to our ticketing effort for each adjacent tier pair under different ownership. <span class="flag">proposed</span></p></div>'+
+    '<div class="field">'+num("bench.oohOnCallFactor","Off-hours on-call factor",0.01)+'<p class="hint">Active-Passive discounts off-hours shifts to this fraction of a dedicated shift. <span class="flag">proposed</span></p></div>'+
+    '<div class="field"><label>Off-hours on-call location by region <span class="flag">proposed</span></label>'+
+      '<div class="row c3">'+
+      ["eu","apac","na"].map(function(r){
+        return '<div class="field"><label>'+r.toUpperCase()+'</label><select data-p="bench.oohLocationByRegion.'+r+'">'+
+          LOC_CATALOG[r].map(function(l){return '<option value="'+l.key+'" '+(S.bench.oohLocationByRegion[r]===l.key?"selected":"")+'>'+l.label+'</option>';}).join("")+
+          '</select></div>';
+      }).join("")+
+      '</div><p class="hint">Not derived from cost data (the tool has none) &mdash; a stated convention. IME is always India.</p></div>'+
     '<div class="row c2">'+num("bench.hypercareMonths","Hypercare months")+num("bench.hypercareMult","Hypercare volume x",0.5)+'</div>'+
     '<div class="field">'+num("bench.brownfieldUplift","Brownfield Y1 uplift",0.01)+'<p class="hint">Applied only when Engagement type is Brownfield: Y1 full, Y2 half, Y3+ none. <span class="flag">proposed</span></p></div>'+
     '<div class="row c2">'+num("bench.span","FTE per SDM")+num("bench.qaShare","QA share",0.01)+'</div>'+
@@ -3329,6 +3480,21 @@ function buildRegister(base,mc,o1,rp){
     });
     L.push("");
   }
+  L.push("## Coverage");
+  S.towers.filter(function(t){return t.enabled;}).forEach(function(t){
+    var line="- "+t.type+": **"+t.coverage+"** support window";
+    if(t.coverage!=="8x5"){
+      if(t.oohModel==="passive"){
+        var loc=oohLocationFor(S);
+        line += ", **Active-Passive** off-hours (business hours fully staffed, on-call for P1 only \u2014 P2\u2013P4 off-hours requests queue until business hours resume; a discounted on-call allowance, not a dedicated shift)"+
+          (loc ? ", typically carried by **"+loc+"** per the delivery-location mix and standard cost-advantage convention" : "")+".";
+      } else {
+        line += ", **Active-Active** off-hours (dedicated staff cover every hour of the window, same as business hours).";
+      }
+    } else { line += "."; }
+    L.push(line);
+  });
+  L.push("");
   L.push("## Delivery location");
   if(S.eng.region==="ime"){
     L.push("- Region: **IME**. Entire team delivered from **India**.");
@@ -3360,7 +3526,7 @@ function buildRegister(base,mc,o1,rp){
       ? "Tools, licences, token consumption and hyperscaler AI API costs are borne by the client. TW builds on top of client-funded AI infrastructure [F G5]."
       : "Token and inference costs are absorbed by Thoughtworks \u2014 this departs from framework guardrail G5 and must be priced deliberately."));
   L.push("- Infrastructure and hyperscaler costs are client-paid.");
-  L.push("- Out of scope: portfolio-wide platform engineering, active-active operations, autonomous self-healing beyond the committed AIOps roadmap.");
+  L.push("- Out of scope: portfolio-wide platform engineering, active-active infrastructure/HA architecture, autonomous self-healing beyond the committed AIOps roadmap.");
   L.push("");
   L.push("## Volume band clause");
   const v1=base.years[0].vol;
@@ -3505,6 +3671,15 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
 
   h+='<section><h2>Year by year</h2><table><thead><tr><th>Year</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">Base FTE</th><th class="num">Deflect</th><th class="num">Delivery</th><th class="num">AIOps</th><th class="num">Total FTE</th></tr></thead><tbody>'+
     base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td><td class="num">'+fmt(y.total)+'</td></tr>').join("")+
+    '</tbody></table></section>';
+
+  h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Window</th><th>Off-hours model</th></tr></thead><tbody>'+
+    S.towers.filter(t=>t.enabled).map(t=>{const loc=t.oohModel==="passive"?oohLocationFor(S):null;
+      return '<tr><td>'+t.type+'</td><td>'+t.coverage+'</td><td>'+
+      (t.coverage==="8x5" ? "n/a"
+        : t.oohModel==="passive" ? "Active-Passive (on-call, P1 only"+(loc?", typically "+loc:"")+")"
+        : "Active-Active (dedicated)")+
+      '</td></tr>';}).join("")+
     '</tbody></table></section>';
 
   if(S.eng.aiops){
@@ -3728,6 +3903,17 @@ function renderCanvas(){
     h+='<div class="callout" style="margin-top:12px"><b>Coverage binds.</b> The shift roster ('+esc(base.years[0].floorNote)+
        ') requires more people than the ticket workload does. Headcount is set by the support window, not by demand &mdash; the lever is coverage, not volume.</div>';
   h+='</div></div>';
+
+  /* coverage */
+  h+='<div class="card"><header><h2>Coverage</h2><span class="note">Declared window and off-hours staffing model, per tower.</span></header><div class="cardbody">'+
+    '<div class="tablewrap"><table><thead><tr><th>Tower</th><th>Window</th><th>Off-hours model</th></tr></thead><tbody>'+
+    S.towers.filter(t=>t.enabled).map(t=>{const loc=t.oohModel==="passive"?oohLocationFor(S):null;
+      return '<tr><td>'+t.type+'</td><td>'+t.coverage+'</td><td>'+
+      (t.coverage==="8x5" ? '<span class="sub-td">n/a</span>'
+        : t.oohModel==="passive" ? '<b>Active-Passive</b> <span class="sub-td">(on-call, P1 only'+(loc?', typically '+loc:'')+')</span>'
+        : 'Active-Active <span class="sub-td">(dedicated)</span>')+
+      '</td></tr>';}).join("")+
+    '</tbody></table></div></div></div>';
 
   /* trajectory */
   h+='<div class="card"><header><h2>FTE trajectory</h2><span class="note">'+
