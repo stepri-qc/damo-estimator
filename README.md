@@ -253,6 +253,8 @@ Surfaced everywhere the tool already narrates coverage: a live badge on the towe
 
 **A naming collision was fixed as part of this change.** The register's own scope-exclusion bullet used to read *"...active-active operations..."* meaning infrastructure/HA architecture — an unrelated concept that, sitting next to this feature's own "Active-Active" label in the same document, read as self-contradictory to a client. Now reads "active-active infrastructure/HA architecture" — disambiguated, not weakened.
 
+**`mkTower()`'s default demand was lowered from `inc:180, sr:70` to `inc:40, sr:15` as part of shipping this feature.** Reported gap: at the tool's old default demand, a single AMS tower's ticket volume alone (~14 base FTE) always dwarfed even the most demanding possible coverage floor (24×7 Active-Active, 8.4 FTE) — so neither the pre-existing Coverage window control nor this new Active-Active/Passive toggle could ever visibly move the number on an untouched default tower, which is exactly what a fresh user testing either control would hit. Verified the new default (~55 tickets/month) puts base FTE (≈3.3) right below the default 16×5 window's floor (4), so the coverage floor binds out of the box, and escalating the window or switching to Active-Passive now visibly moves Y1 FTE with zero other inputs touched (confirmed live via real UI clicks: 8.4 → 17.4 FTE across the coverage windows, 17.4 → 7.3 FTE switching to Active-Passive at 24×7). Confirmed harmless to the `[F p3]` regression test, which hand-builds its own tower fixture with explicit `inc`/`sr` values rather than relying on this default.
+
 ---
 
 ## 5. The optimization layer

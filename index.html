@@ -503,7 +503,13 @@ function seedRoles(st){
 function mkTower(type){
   return {id:uid(),type:type,enabled:true,
     mode:"history",                 // history | proxy | mau
-    inc:180, sr:70,
+    // PROPOSED - a modest starting demand (55 tickets/mo) chosen so a fresh
+    // default tower's own coverage floor genuinely binds at the default 16x5
+    // window (verified: base FTE ~3.3 vs a 4.0 floor) - a first-time user
+    // toggling Coverage window or the Active-Active/Passive control sees the
+    // number move immediately, rather than the floor being invisibly
+    // dominated by demand as the previous 180/70 default always was.
+    inc:40, sr:15,
     mix:{P1:4,P2:16,P3:50,P4:30},
     sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
     avail:99.5,
