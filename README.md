@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 107 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 122 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -255,6 +255,18 @@ Surfaced everywhere the tool already narrates coverage: a live badge on the towe
 
 **`mkTower()`'s default demand was lowered from `inc:180, sr:70` to `inc:40, sr:15` as part of shipping this feature.** Reported gap: at the tool's old default demand, a single AMS tower's ticket volume alone (~14 base FTE) always dwarfed even the most demanding possible coverage floor (24×7 Active-Active, 8.4 FTE) — so neither the pre-existing Coverage window control nor this new Active-Active/Passive toggle could ever visibly move the number on an untouched default tower, which is exactly what a fresh user testing either control would hit. Verified the new default (~55 tickets/month) puts base FTE (≈3.3) right below the default 16×5 window's floor (4), so the coverage floor binds out of the box, and escalating the window or switching to Active-Passive now visibly moves Y1 FTE with zero other inputs touched (confirmed live via real UI clicks: 8.4 → 17.4 FTE across the coverage windows, 17.4 → 7.3 FTE switching to Active-Passive at 24×7). Confirmed harmless to the `[F p3]` regression test, which hand-builds its own tower fixture with explicit `inc`/`sr` values rather than relying on this default.
 
+### 3.13 Structural-complexity demand proxy, Availability Class, and Service Tier presets
+
+Three related gaps surfaced from actually mapping a real RFP (50Hertz Transmission GmbH / Elia Group, an infrastructure-and-platform-operation Lot dominated by IMS) onto the tool's inputs.
+
+**1. Complexity-mode demand for IMS/DMS is now derived from structural complexity, not a generic apps table.** Before this change, an IMS/DMS tower's "Complexity" demand basis reused AMS's own apps-by-T-shirt-size proxy (`apps:{S,M,L,XL,XXL}`) — completely disconnected from the structural-complexity fields (environments/hostings/databases/security for IMS; data products/integrations/upstreams/downstreams for DMS) sitting right below it on the same card, and a poor conceptual fit besides (an infrastructure or data-platform team isn't naturally sized by "how many apps"). `rawVolume()` now branches by tower type: AMS keeps the apps table, unchanged; IMS/DMS instead compute `structCpxScore(t,B) × ticketsPerPoint`, a new editable Benchmarks constant per tower type (proposed defaults `4.5` for IMS, `3.4` for DMS, calibrated so the towers' own proposed field defaults land near the same ~55 tickets/month ballpark the AMS default already anchors to). History and MAU demand modes are untouched for every tower type. The rail shows the derived figure live ("score 12.0 × 4.5 tickets/mo per point ≈ 54 tickets/mo") instead of the now-irrelevant apps-count fields, and the register/print report narrate it alongside the existing structural-complexity tier line.
+
+**2. Availability Class (A–E)**, a labelled preset over the existing raw `Availability target %` field — grounded in a real client RFP's own named scheme (95% / 99% / 99.5% / 99.9% / 99.95%), not sourced from `[F]`/`[P]`, so flagged `proposed`. Picking a class writes the same `t.avail` number `slaMod()` has always read (nothing about the SLA-stringency engine changed); picking "Custom" leaves the raw percentage field as the source of truth, exactly as before this existed. A tower's `availClass` is a label only, shown in the rail hint and in the register/print report ("Class D - Very High (99.9%)") instead of a bare, unattributed number.
+
+**3. Service Tier presets (Gold / Silver / Bronze)**, a per-tower button row that bundles Coverage window, off-hours model, Availability Class, and all eight SLA fields into one click — because that is how real MSA/RFP documents (the 50Hertz one included) are actually structured, rather than four fields an SA sets separately and keeps consistent by hand. The three presets are generic, illustrative defaults, not any specific client's actual numbers, and every field stays fully editable afterward — clicking a preset doesn't lock anything, and a subsequent manual edit doesn't reset the tier label (the same non-strict convention the existing delivery-location presets already use).
+
+All three ship as `applyAvailClass(t,v)` and `applyServiceTier(t,prId)` — small, directly self-tested functions shared between the click handlers and the test suite, rather than logic living only inline in a DOM event listener.
+
 ---
 
 ## 5. The optimization layer
@@ -308,7 +320,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 107 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 122 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -403,6 +415,17 @@ The **Verify against framework** card runs 107 checks on every render. Each is a
 105. `oohLocationFor`: NA defaults to Offshore (India)
 106. `oohLocationFor` honours a Benchmarks override away from the proposed default
 107. `seedRoles` backfills `bench.oohLocationByRegion` and `bench.oohOnCallFactor` missing from an old saved hash
+108. AMS's Complexity-mode demand is unaffected by this feature — still the apps-by-size table, not the structural-complexity score
+109. IMS Complexity-mode demand equals `structCpxScore × ticketsPerPoint`, not an apps-by-size table
+110. DMS Complexity-mode demand equals `structCpxScore × ticketsPerPoint`, not an apps-by-size table
+111. An IMS tower in History mode ignores its structural-complexity fields entirely, same as before this feature
+112. A DMS tower in MAU mode ignores its structural-complexity fields entirely, same as before this feature
+113–117. `applyAvailClass` sets `t.avail` to the correct percentage for each of Classes A–E
+118. `applyAvailClass('custom')` leaves `t.avail` untouched — a hand-typed value survives switching to Custom
+119. `applyServiceTier('gold')` sets coverage, off-hours model, Availability Class, `avail`, and every SLA field at once
+120. `applyServiceTier('bronze')` sets a different coverage/availability than Gold, proving the presets are genuinely distinct, not just relabeled
+121. `mkTower()` defaults `availClass` and `serviceTier` to `'custom'` — no preset is silently applied to a fresh tower
+122. The `[F p3]` regression state is unaffected by this feature — still reproduces 3.3 FTE
 
 ---
 
@@ -420,6 +443,8 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - AIOps use-case catalogue: build effort, deflection benefit and prerequisites
 - IMS/DMS structural-complexity weights, cut-points and B-factor bumps (§3.11) — grounded in the supplied deck's tier framing, not `[F]`/`[P]`; the weights, thresholds and default field values all need calibration against real IMS/DMS engagements
 - Off-hours on-call factor (§3.12, default 15% of a dedicated shift) and the off-hours on-call location by region (EU/NA → Offshore, APAC → China) — neither is derived from real cost/rate data, since the tool has none; both are stated conventions pending real engagement data
+- IMS/DMS complexity-proxy `ticketsPerPoint` (§3.13, default 4.5 for IMS, 3.4 for DMS) — calibrated only so a fresh tower's own field defaults land near the AMS default's ~55 tickets/month, not against any real engagement's actual ticket volume
+- Availability Class percentages and Service Tier preset coverage/SLA numbers (§3.13) — a generic, illustrative A–E/Gold-Silver-Bronze scheme grounded in one real client RFP, not calibrated as a house standard; treat the tier presets as a starting point to edit per deal, not a target to match
 
 The highest-value calibration is the **AIOps use-case effort and deflection numbers**, because they drive O1's funding decisions and the whole savings narrative.
 

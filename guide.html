@@ -306,10 +306,11 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Volumetrics</td><td>The other half. Available &rarr; bottom-up sizing and higher confidence; not available &rarr; proxy sizing and maximum contingency.</td><td>[F] Part 2</td></tr>
         <tr><td>Estate profile</td><td>Non-ticketing B-factor: 20&ndash;25% for modern custom/SaaS, 30&ndash;35% for complex legacy.</td><td>[F] 1.1</td></tr>
         <tr><td>Engagement type</td><td>Greenfield or brownfield &mdash; who built and knows the system, distinct from Estate profile's tech-modernity axis. Auto-seeds four confidence/risk sliders (brownfield lower) and applies a direct Y1 FTE uplift (default +20%, tapering to 0 by Y3) that estate profile does not.</td><td><span class="pill warn">proposed</span></td></tr>
-        <tr><td>Demand basis</td><td>History, complexity proxy (3&ndash;5 to 40&ndash;60 tickets/app/month by size), or MAU &times; 0.5&ndash;2%.</td><td>[F] Sc.1 Steps 1&ndash;2</td></tr>
+        <tr><td>Demand basis</td><td>History, complexity proxy, or MAU &times; 0.5&ndash;2%. The complexity proxy differs by tower: AMS uses apps by T-shirt size (3&ndash;5 to 40&ndash;60 tickets/app/month); IMS/DMS instead derive volume directly from the structural-complexity score below (score &times; tickets-per-point, proposed default 4.5 for IMS / 3.4 for DMS) &mdash; the same inputs driving the B-factor bump also drive demand, instead of an unrelated apps count.</td><td>[F] Sc.1 Steps 1&ndash;2 (AMS); <span class="pill warn">proposed</span> (IMS/DMS)</td></tr>
         <tr><td>Severity mix</td><td>Through the P1&ndash;P4 matrix, where volume <em>enters</em> the stack. P1 mostly bypasses L1 into L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
-        <tr><td>SLA response / restore</td><td>P1 response &le;15 min adds 25% to L2/L3 effort; &le;30 min adds 12%. P1 restore &le;2 h adds 10% on L3. Capped at +40%.</td><td>[F] Sc.3 Step 2</td></tr>
-        <tr><td>Availability target</td><td>&ge;99.9% adds a further 10% to L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>SLA response / restore</td><td>P1 response &le;15 min adds 25% to L2/L3 effort; &le;30 min adds 12%. P1 restore &le;2 h adds 10% on L3. Capped at +40%. A Service Tier preset (below) can set all four priorities' response/restore fields at once.</td><td>[F] Sc.3 Step 2</td></tr>
+        <tr><td>Availability Class</td><td>A&ndash;E (95% / 99% / 99.5% / 99.9% / 99.95%), a labelled preset over the same raw target-% field &mdash; &ge;99.9% still adds 10% to L2/L3 via the existing rule. Pick Custom to type the percentage directly, unchanged from before this existed.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Service tier preset</td><td>Gold / Silver / Bronze, per tower. One click sets Coverage window, Off-hours model, Availability Class and all eight SLA fields together &mdash; generic illustrative defaults, not any specific client's numbers. Everything stays fully editable afterward.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Existing automation</td><td>Deflates raw volume before sizing: 20&ndash;30% coverage &rarr; &minus;15&ndash;20%; 30&ndash;50% &rarr; &minus;20&ndash;30%.</td><td>[F] Sc.2 Step 2</td></tr>
         <tr><td>Coverage window</td><td>Shift maths: <code>(shifts/wk &times; per-shift) / 5</code>. Acts as a headcount <b>floor</b>, not an addition.</td><td>[F] p3</td></tr>
         <tr><td>Shared roster</td><td>Whether towers share one follow-the-sun rota or each runs its own. Materially cheaper when shared.</td><td>Engagement design</td></tr>
@@ -343,7 +344,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>107 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>122 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>

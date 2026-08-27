@@ -410,8 +410,13 @@ function defaults(){return{
       // bumpPerPoint calibrated so score===loMed gives a 10% bump and
       // score===medHigh gives 20%, matching the tier labels, then keeps
       // climbing continuously past medHigh instead of flatlining there.
-      ims:{wEnv:1, wHost:1.5, wDb:1, secFlat:3, loMed:8, medHigh:16, bumpPerPoint:0.0125},
-      dms:{wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3, loMed:10, medHigh:20, bumpPerPoint:0.01},
+      // ticketsPerPoint: PROPOSED - tickets/month per structural-complexity
+      // score point, used by rawVolume() when an IMS/DMS tower is in
+      // "proxy" demand mode. Calibrated so mkTower()'s own proposed field
+      // defaults (score 12 for IMS, 16.25 for DMS) land near the same ~55
+      // tickets/mo ballpark the AMS default (inc:40+sr:15) already anchors to.
+      ims:{wEnv:1, wHost:1.5, wDb:1, secFlat:3, loMed:8, medHigh:16, bumpPerPoint:0.0125, ticketsPerPoint:4.5},
+      dms:{wDp:1, wInt:1, wUp:0.75, wDown:0.75, platformOtherFlat:3, loMed:10, medHigh:20, bumpPerPoint:0.01, ticketsPerPoint:3.4},
       maxBump:2.00   // sanity ceiling only - triples B-factor at most; see structCpxBump
     },
     govBase:40, govPerTower:8,          // PROPOSED governance & reporting hrs/month
@@ -513,6 +518,17 @@ function mkTower(type){
     mix:{P1:4,P2:16,P3:50,P4:30},
     sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
     avail:99.5,
+    // availClass: PROPOSED - label only, mirrors a real client RFP's named
+    // Availability Class scheme (A-E). "custom" means the raw avail % above
+    // is hand-typed; picking a class writes avail from AVAIL_CLASSES and sets
+    // this label. avail itself remains the only number slaMod() reads.
+    availClass:"custom",
+    // serviceTier: PROPOSED - label only, set when a Gold/Silver/Bronze-style
+    // SERVICE_TIER_PRESETS button is clicked (bundles coverage+oohModel+
+    // availClass+sla in one go); "custom" means none was applied, or the
+    // fields have since been hand-edited (not tracked - same non-strict
+    // convention as the existing location presets).
+    serviceTier:"custom",
     apps:{S:2,M:4,L:2,XL:1,XXL:0}, mau:50000, mauRate:1.0,
     autoCov:0,
     // manual-estimation inputs. sre: is reliability the client's named capability
@@ -539,6 +555,29 @@ function mkTower(type){
   };
 }
 const DMS_PLATFORMS=["Databricks","Snowflake","Synapse","BigQuery","Redshift","Other"];
+// PROPOSED - a named Availability Class scheme, grounded in a real client
+// RFP's own scheme (95% -> 99.95%), not sourced from [F]/[P]. Picking a class
+// writes t.avail from .pct; "custom" leaves the raw % field as the source of
+// truth, unchanged from before this existed.
+const AVAIL_CLASSES=[
+  {id:"A",label:"Class A - Standard",pct:95},
+  {id:"B",label:"Class B - Enhanced",pct:99},
+  {id:"C",label:"Class C - High",pct:99.5},
+  {id:"D",label:"Class D - Very High",pct:99.9},
+  {id:"E",label:"Class E - Mission Critical",pct:99.95}
+];
+// PROPOSED - generic, illustrative Gold/Silver/Bronze-style service tiers,
+// bundling coverage+off-hours model+availability+SLA into one preset button
+// per tower, same "preset then still fully editable" convention as
+// RESP_PRESETS/LOC_PRESETS. Not any specific client's actual numbers.
+const SERVICE_TIER_PRESETS=[
+  {id:"gold",  label:"Gold",   coverage:"24x7", oohModel:"passive", availClass:"D",
+    sla:{P1r:30,P1x:60,  P2r:30,P2x:120, P3r:480,P3x:960,  P4r:480,P4x:2400}},
+  {id:"silver",label:"Silver", coverage:"16x5", oohModel:"passive", availClass:"B",
+    sla:{P1r:30,P1x:120, P2r:30,P2x:240, P3r:480,P3x:960,  P4r:480,P4x:2400}},
+  {id:"bronze",label:"Bronze", coverage:"16x5", oohModel:"passive", availClass:"A",
+    sla:{P1r:30,P1x:120, P2r:30,P2x:240, P3r:480,P3x:960,  P4r:480,P4x:2400}}
+];
 const PARTIES={us:"DAMO (us)",customer:"Customer",vendor:"Other vendor",product:"Product team"};
 const RESP_PRESETS=[
   {id:"full", n:"Full stack L1-L3",        own:{L1:"us",L2:"us",L3:"us"}},
@@ -675,6 +714,22 @@ const ENGAGEMENT_SEED={
   greenfield:{conf4:4, risk2:0.25, risk3:0.25, risk4:0.25},
   brownfield:{conf4:2, risk2:0.75, risk3:0.75, risk4:0.75}
 };
+// PROPOSED - shared by the Availability Class seg click and self-tests.
+// "custom" leaves t.avail as whatever was already there (hand-typed value
+// survives); any real class id writes t.avail from AVAIL_CLASSES.
+function applyAvailClass(t,v){
+  t.availClass=v;
+  if(v!=="custom"){ const cls=AVAIL_CLASSES.find(c=>c.id===v); if(cls) t.avail=cls.pct; }
+}
+// PROPOSED - shared by the Service Tier preset button click and self-tests.
+// Bundles coverage+off-hours model+Availability Class+SLA in one go, same
+// "preset then still fully editable" convention as RESP_PRESETS/LOC_PRESETS.
+function applyServiceTier(t,prId){
+  const pr=SERVICE_TIER_PRESETS.find(x=>x.id===prId); if(!pr) return;
+  t.coverage=pr.coverage; t.oohModel=pr.oohModel; t.serviceTier=pr.id;
+  applyAvailClass(t,pr.availClass);
+  t.sla=Object.assign({},t.sla,pr.sla);
+}
 function seedEngagementType(st,v){
   const s=ENGAGEMENT_SEED[v]; if(!s) return;
   st.conf[4]=s.conf4;
@@ -796,6 +851,16 @@ function scenarioDef(S){ return S.bench.scen[scenarioOf(S.eng)]; }
 function rawVolume(t,B){
   if(t.mode==="history") return (+t.inc||0)+(+t.sr||0);
   if(t.mode==="mau")     return (+t.mau||0)*(+t.mauRate||0)/100;
+  // PROPOSED - IMS/DMS "Complexity" proxy is driven by the tower's own
+  // structural-complexity score (envCount/hostCount/dbCount/security for IMS;
+  // dataProducts/integrations/upstreams/downstreams for DMS) rather than the
+  // generic apps-by-T-shirt-size table below, which is a poor conceptual fit
+  // for an infrastructure/data-platform tower (it isn't naturally sized by
+  // "how many apps"). AMS keeps the original apps-table proxy unchanged.
+  if(t.type!=="AMS"){
+    const c=t.type==="IMS"?B.structCpx.ims:B.structCpx.dms;
+    return structCpxScore(t,B)*(c.ticketsPerPoint||0);
+  }
   let v=0; for(const k in CPX){ const [lo,hi]=CPX[k]; v+=(+t.apps[k]||0)*((lo+hi)/2); }
   return v;                                        // [F Sc.1 Step 1] complexity-point proxy
 }
@@ -2850,6 +2915,72 @@ function selfTests(){
     ok:legacyOOH.bench.oohOnCallFactor===defaults().bench.oohOnCallFactor &&
        JSON.stringify(legacyOOH.bench.oohLocationByRegion)===JSON.stringify(defaults().bench.oohLocationByRegion)});
 
+  // Structural-complexity demand proxy, Availability Class, Service Tier
+  // presets. See rawVolume(), applyAvailClass(), applyServiceTier().
+  const T99ams=seedRoles(defaults()); T99ams.towers=[mkTower("AMS")];
+  T99ams.towers[0].mode="proxy"; T99ams.towers[0].apps={S:2,M:4,L:2,XL:1,XXL:0};
+  const expAms=2*4+4*10+2*17.5+1*30+0*50; // CPX midpoints: S(3-5)->4, M(8-12)->10, L(15-20)->17.5, XL(25-35)->30, XXL(40-60)->50
+  out.push({n:"AMS Complexity-mode demand is unaffected by this feature - still the apps-by-size table",
+    exp:String(expAms),got:String(rawVolume(T99ams.towers[0],T99ams.bench)),
+    ok:near(rawVolume(T99ams.towers[0],T99ams.bench),expAms,0.001)});
+
+  const T100=seedRoles(defaults()); T100.towers=[mkTower("IMS")];
+  T100.towers[0].mode="proxy";
+  const expIms=structCpxScore(T100.towers[0],T100.bench)*T100.bench.structCpx.ims.ticketsPerPoint;
+  out.push({n:"IMS Complexity-mode demand equals structCpxScore x ticketsPerPoint, not an apps-by-size table",
+    exp:expIms.toFixed(2),got:rawVolume(T100.towers[0],T100.bench).toFixed(2),
+    ok:near(rawVolume(T100.towers[0],T100.bench),expIms,0.001)});
+
+  const T101=seedRoles(defaults()); T101.towers=[mkTower("DMS")];
+  T101.towers[0].mode="proxy";
+  const expDms=structCpxScore(T101.towers[0],T101.bench)*T101.bench.structCpx.dms.ticketsPerPoint;
+  out.push({n:"DMS Complexity-mode demand equals structCpxScore x ticketsPerPoint, not an apps-by-size table",
+    exp:expDms.toFixed(2),got:rawVolume(T101.towers[0],T101.bench).toFixed(2),
+    ok:near(rawVolume(T101.towers[0],T101.bench),expDms,0.001)});
+
+  const T102=seedRoles(defaults()); T102.towers=[mkTower("IMS")];
+  T102.towers[0].mode="history"; T102.towers[0].inc=40; T102.towers[0].sr=15;
+  out.push({n:"IMS in History mode ignores structural-complexity fields entirely, same as before this feature",
+    exp:"55",got:String(rawVolume(T102.towers[0],T102.bench)),ok:rawVolume(T102.towers[0],T102.bench)===55});
+
+  const T103=seedRoles(defaults()); T103.towers=[mkTower("DMS")];
+  T103.towers[0].mode="mau"; T103.towers[0].mau=10000; T103.towers[0].mauRate=2;
+  out.push({n:"DMS in MAU mode ignores structural-complexity fields entirely, same as before this feature",
+    exp:"200",got:String(rawVolume(T103.towers[0],T103.bench)),ok:rawVolume(T103.towers[0],T103.bench)===200});
+
+  const T104=mkTower("IMS");
+  ["A","B","C","D","E"].forEach(function(id){
+    const cls=AVAIL_CLASSES.find(function(c){return c.id===id;});
+    applyAvailClass(T104,id);
+    out.push({n:"applyAvailClass("+id+") sets t.avail to "+cls.pct,
+      exp:String(cls.pct),got:String(T104.avail),ok:T104.avail===cls.pct && T104.availClass===id});
+  });
+  T104.avail=42;
+  applyAvailClass(T104,"custom");
+  out.push({n:"applyAvailClass('custom') leaves t.avail untouched (hand-typed value survives)",
+    exp:"42",got:String(T104.avail),ok:T104.avail===42 && T104.availClass==="custom"});
+
+  const T105=mkTower("IMS"); T105.coverage="8x5"; T105.oohModel="active"; T105.avail=50; T105.availClass="custom";
+  applyServiceTier(T105,"gold");
+  out.push({n:"applyServiceTier('gold') sets coverage/oohModel/Availability Class/avail/SLA all at once",
+    exp:"24x7/passive/D/99.9/{r30,x60}",
+    got:T105.coverage+"/"+T105.oohModel+"/"+T105.availClass+"/"+T105.avail+"/{r"+T105.sla.P1r+",x"+T105.sla.P1x+"}",
+    ok:T105.coverage==="24x7" && T105.oohModel==="passive" && T105.availClass==="D" && T105.avail===99.9 &&
+       T105.sla.P1r===30 && T105.sla.P1x===60 && T105.serviceTier==="gold"});
+
+  const T106=mkTower("DMS");
+  applyServiceTier(T106,"bronze");
+  out.push({n:"applyServiceTier('bronze') sets a different coverage/availability than gold",
+    exp:"16x5/A/95",got:T106.coverage+"/"+T106.availClass+"/"+T106.avail,
+    ok:T106.coverage==="16x5" && T106.availClass==="A" && T106.avail===95 && T106.serviceTier==="bronze"});
+
+  out.push({n:"mkTower() defaults availClass and serviceTier to 'custom' - no preset applied on a fresh tower",
+    exp:"custom/custom",got:mkTower("AMS").availClass+"/"+mkTower("AMS").serviceTier,
+    ok:mkTower("AMS").availClass==="custom" && mkTower("AMS").serviceTier==="custom"});
+
+  out.push({n:"[F p3] regression state (T1) is unaffected by this feature - still reproduces 3.3 FTE",
+    exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
+
   return out;
 }
 
@@ -3083,10 +3214,21 @@ function renderRail(){
       demand='<div class="row c2">'+num(p+".inc","Incidents / mo")+num(p+".sr","Service reqs / mo")+'</div>'+
         '<div class="field"><label>Severity mix (% of volume)</label><div class="row c4">'+
         num(p+".mix.P1","P1")+num(p+".mix.P2","P2")+num(p+".mix.P3","P3")+num(p+".mix.P4","P4")+'</div></div>';
-    }else if(t.mode==="proxy"){
+    }else if(t.mode==="proxy" && t.type==="AMS"){
       demand='<div class="field"><label>Apps by complexity <span class="flag">proxy</span></label><div class="row c3">'+
         num(p+".apps.S","S 3-5")+num(p+".apps.M","M 8-12")+num(p+".apps.L","L 15-20")+'</div><div class="row c2" style="margin-top:9px">'+
         num(p+".apps.XL","XL 25-35")+num(p+".apps.XXL","XXL 40-60")+'</div></div>'+
+        '<div class="field"><label>Severity mix (% of volume)</label><div class="row c4">'+
+        num(p+".mix.P1","P1")+num(p+".mix.P2","P2")+num(p+".mix.P3","P3")+num(p+".mix.P4","P4")+'</div></div>';
+    }else if(t.mode==="proxy"){
+      // PROPOSED - IMS/DMS complexity proxy reads the structural-complexity
+      // fields rendered further down this same card (envCount/hostCount/... or
+      // dataProducts/integrations/...) rather than a generic apps-by-size
+      // table, so the same inputs driving the B-factor bump also drive demand.
+      const cx=t.type==="IMS"?B.structCpx.ims:B.structCpx.dms;
+      const cscore=structCpxScore(t,B), ctpp=cx.ticketsPerPoint||0;
+      demand='<div class="field"><label>Complexity-derived demand <span class="flag">proposed</span></label>'+
+        '<p class="hint">Derived from the structural-complexity inputs below: score <b>'+cscore.toFixed(1)+'</b> &times; '+ctpp+' tickets/mo per point &asymp; <b>'+Math.round(cscore*ctpp)+'</b> tickets/mo.</p></div>'+
         '<div class="field"><label>Severity mix (% of volume)</label><div class="row c4">'+
         num(p+".mix.P1","P1")+num(p+".mix.P2","P2")+num(p+".mix.P3","P3")+num(p+".mix.P4","P4")+'</div></div>';
     }else{
@@ -3105,6 +3247,11 @@ function renderRail(){
       num(p+".autoCov","Existing automation coverage %")+
       '<div class="field"><label>SLA &mdash; response / restore, minutes</label>'+
         '<div class="row c4">'+num(p+".sla.P1r","P1 resp")+num(p+".sla.P1x","P1 rest")+num(p+".sla.P2r","P2 resp")+num(p+".sla.P2x","P2 rest")+'</div></div>'+
+      '<div class="field"><label>Availability Class <span class="flag">proposed</span></label>'+
+        seg(p+".availClass",AVAIL_CLASSES.map(c=>[c.id,c.id]).concat([["custom","Custom"]]))+
+        '<p class="hint">'+(t.availClass!=="custom"
+          ? esc((AVAIL_CLASSES.find(c=>c.id===t.availClass)||{}).label||"")+" &mdash; edit the % below directly, or pick Custom, to override."
+          : "Custom: type the target % directly below.")+'</p></div>'+
       num(p+".avail","Availability target %",0.01)+
       (t.type==="IMS"
         ? '<div class="field"><label>Delivery profile</label>'+
@@ -3138,6 +3285,12 @@ function renderRail(){
         '<div class="ownrow"><span class="k">L2</span>'+ownSel(p,"L2",t)+'</div>'+
         '<div class="ownrow"><span class="k">L3</span>'+ownSel(p,"L3",t)+'</div>'+
         '<p class="hint">Only tiers marked <b>DAMO (us)</b> are sized. Others still carry volume through the cascade.</p></div>'+
+      '<div class="field"><label>Service tier preset <span class="flag">proposed</span></label>'+
+        '<div class="btnrow">'+SERVICE_TIER_PRESETS.map(pr=>
+          '<button class="btn" type="button" data-tierpreset="'+pr.id+'" data-tw="'+i+'" style="font-size:11.5px;padding:4px 8px'+
+          (t.serviceTier===pr.id?';font-weight:700':'')+'">'+esc(pr.label)+'</button>').join("")+'</div>'+
+        '<p class="hint">Sets coverage window, off-hours model, Availability Class and SLA at once &mdash; generic illustrative defaults, not any specific client\'s numbers. Stays fully editable afterward'+
+        (SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier)?' (currently: <b>'+esc(SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier).label)+'</b>)':'')+'.</p></div>'+
       '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["16x5","16x5"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
       num(p+".ftePerShift","FTE per shift")+
       (t.coverage!=="8x5"
@@ -3470,7 +3623,8 @@ function buildRegister(base,mc,o1,rp){
       var tier=structCpxTier(t,B);
       L.push("- IMS structural complexity ("+t.envCount+" environments incl. "+t.nonProdCount+" non-prod, "+t.hostCount+" hostings, "+t.dbCount+" databases, security in scope: "+(t.security?"yes":"no")+") \u2014 **"+tier+"**"+
         (structCpxBump(t,B) ? ", +"+Math.round(structCpxBump(t,B)*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
-        (tier==="high" ? " Consider enabling Information Security Engineer in Roles & grades if not already." : ""));
+        (tier==="high" ? " Consider enabling Information Security Engineer in Roles & grades if not already." : "")+
+        (t.mode==="proxy" ? " Demand basis: complexity proxy, ~"+Math.round(rawVolume(t,B))+" tickets/mo derived from this score." : ""));
     });
     amsT.forEach(function(t){
       var ev=+t.evolution||0, over=ev>=B.evoThreshold;
@@ -3482,13 +3636,21 @@ function buildRegister(base,mc,o1,rp){
       var tier=structCpxTier(t,B);
       L.push("- DMS structural complexity ("+t.dataProducts+" data products on "+t.platform+", "+t.integrations+" integrations, "+t.upstreams+" upstreams, "+t.downstreams+" downstreams) \u2014 **"+tier+"**"+
         (structCpxBump(t,B) ? ", +"+Math.round(structCpxBump(t,B)*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
-        (tier==="high" ? " Consider enabling Data Architect / Data Strategist in Roles & grades if not already." : ""));
+        (tier==="high" ? " Consider enabling Data Architect / Data Strategist in Roles & grades if not already." : "")+
+        (t.mode==="proxy" ? " Demand basis: complexity proxy, ~"+Math.round(rawVolume(t,B))+" tickets/mo derived from this score." : ""));
     });
     L.push("");
   }
   L.push("## Coverage");
   S.towers.filter(function(t){return t.enabled;}).forEach(function(t){
-    var line="- "+t.type+": **"+t.coverage+"** support window";
+    // .find() returns undefined both for "custom" and for a legacy tower
+    // missing the field entirely (pre-dating this feature) - one safe check
+    // covers both, no need to string-compare against "custom" separately.
+    var tierPr=SERVICE_TIER_PRESETS.find(function(x){return x.id===t.serviceTier;});
+    var availCls=AVAIL_CLASSES.find(function(c){return c.id===t.availClass;});
+    var tierLabel=tierPr?tierPr.label:null;
+    var availLabel=availCls?availCls.label:null;
+    var line="- "+t.type+(tierLabel?" (**"+tierLabel+"**)":"")+": **"+t.coverage+"** support window"+(availLabel?", "+availLabel+" ("+t.avail+"%)":"");
     if(t.coverage!=="8x5"){
       if(t.oohModel==="passive"){
         var loc=oohLocationFor(S);
@@ -3679,9 +3841,13 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
     base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td><td class="num">'+fmt(y.total)+'</td></tr>').join("")+
     '</tbody></table></section>';
 
-  h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Window</th><th>Off-hours model</th></tr></thead><tbody>'+
+  h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Tier</th><th>Window</th><th>Availability</th><th>Off-hours model</th></tr></thead><tbody>'+
     S.towers.filter(t=>t.enabled).map(t=>{const loc=t.oohModel==="passive"?oohLocationFor(S):null;
-      return '<tr><td>'+t.type+'</td><td>'+t.coverage+'</td><td>'+
+      const tierPr=SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier);
+      const availCls=AVAIL_CLASSES.find(c=>c.id===t.availClass);
+      const tierLabel=tierPr?tierPr.label:"\u2014";
+      const availLabel=(availCls?availCls.label+" ":"")+"("+t.avail+"%)";
+      return '<tr><td>'+t.type+'</td><td>'+esc(tierLabel)+'</td><td>'+t.coverage+'</td><td>'+esc(availLabel)+'</td><td>'+
       (t.coverage==="8x5" ? "n/a"
         : t.oohModel==="passive" ? "Active-Passive (on-call, P1 only"+(loc?", typically "+loc:"")+")"
         : "Active-Active (dedicated)")+
@@ -4265,6 +4431,10 @@ document.addEventListener("click",e=>{
   const segEl=b.closest("[data-seg]");
   if(segEl){ let v=b.dataset.v; if(/^-?\d+(\.\d+)?$/.test(v)) v=parseFloat(v);
     if(segEl.dataset.seg==="eng.engagementType") seedEngagementType(S,v);
+    // Availability Class seg: also writes the raw t.avail % that slaMod()
+    // actually reads. "custom" leaves avail untouched (hand-typed value stays).
+    const availM=/^towers\.(\d+)\.availClass$/.exec(segEl.dataset.seg);
+    if(availM){ applyAvailClass(S.towers[+availM[1]],v); refresh(true); return; }
     sp(S,segEl.dataset.seg,v); refresh(true); return; }
   if(b.dataset.mix){
     setMix(S,b.dataset.mix,b.getAttribute("aria-pressed")!=="true");
@@ -4279,6 +4449,11 @@ document.addEventListener("click",e=>{
     const region=S.eng.region;
     const lp=(LOC_PRESETS[region]||[]).filter(x=>x.id===b.dataset.locpreset)[0];
     if(lp) S.eng.locMix[region]=Object.assign({},lp.mix);
+    refresh(true); return;
+  }
+  if(b.dataset.tierpreset){
+    const t=S.towers[+b.dataset.tw];
+    if(t) applyServiceTier(t,b.dataset.tierpreset);
     refresh(true); return;
   }
   if(b.dataset.add){ S.towers.push(mkTower(b.dataset.add)); refresh(true); return; }
