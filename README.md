@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 122 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 126 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -282,6 +282,8 @@ Four combinatorial sub-problems, each stated as a **QUBO** and solved **classica
 
 O4's priors widen automatically as the confidence score falls, so the Annexure 1 model actually moves the numbers instead of decorating the page.
 
+**O1's use-case tiering was revised.** `USECASES` gates every use case to a single tier (`ow[u.tier]` in `o1Data()`) — a use case whose tier isn't owned is excluded from the fundable portfolio outright, and anything prerequisiting it becomes unfundable too, however deep the chain. Four front-line use cases (Knowledge retrieval, Ticket auto-classification, Alert triage assistant, Ticket summarization) were originally `tier:"L1"`. Moved to `tier:"L2"`: this tooling is built and operated as L2 engineering work that supports the L1 team directly, rather than requiring DAMO to own L1 itself to get credit for it — a real deal (client keeps their own L1 desk, DAMO holds L2/L3) had its entire O1 portfolio collapse to two prerequisite-free items before this change, since every other use case's precedence chain rooted in one of those four. **The trade-off, stated rather than hidden:** with no `tier:"L1"` use case left in the catalogue, a deal where DAMO owns *only* L1 (not L2/L3) now finds nothing fundable in O1 at all — the previous version had exactly the opposite gap. One tier per use case cannot avoid both simultaneously; this is a `proposed` calibration choice, editable in the `USECASES` const, not a framework fact.
+
 ### Quantum algorithm mapping
 
 | Algorithm | Attaches to | Assessment |
@@ -320,7 +322,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 122 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 126 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -426,6 +428,10 @@ The **Verify against framework** card runs 122 checks on every render. Each is a
 120. `applyServiceTier('bronze')` sets a different coverage/availability than Gold, proving the presets are genuinely distinct, not just relabeled
 121. `mkTower()` defaults `availClass` and `serviceTier` to `'custom'` — no preset is silently applied to a fresh tower
 122. The `[F p3]` regression state is unaffected by this feature — still reproduces 3.3 FTE
+123. Knowledge retrieval, Ticket auto-classification, Alert triage assistant and Ticket summarization are `tier:"L2"` in `USECASES`, not `L1`
+124. A deal where DAMO owns L2/L3 but not L1 (e.g. the client keeps their own L1 desk) now excludes nothing on tier alone — `o1Data().excluded` is empty
+125. …and the full precedence chain (Intelligent alerting → Automated RCA, Runbook suggestion → Self-healing, Anomaly detection → Predictive alerting/scaling → Chaos engineering) is reachable in that same deal, not just the two prerequisite-free L3 items
+126. The trade-off is asserted explicitly, not left implicit: a deal where DAMO owns *only* L1 now has zero in-scope AIOps use cases
 
 ---
 

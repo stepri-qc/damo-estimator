@@ -755,12 +755,22 @@ function effShiftsPerWeek(t,B){
 
 /* [F] AIOps use-case catalogue, drawn from the AI-scope lists in Scenarios 1-4.
    effort = build person-weeks; defl = deflection benefit in FTE-% points;
-   tier = where the benefit lands; pre = prerequisite ids.  PROPOSED sizing. */
+   tier = where the benefit lands; pre = prerequisite ids.  PROPOSED sizing.
+   REVISED - the first four were originally tier:"L1" (front-line automation).
+   Moved to L2: these are built and operated as L2 engineering work even when
+   a client keeps their own L1 desk - the tooling directly supports that L1
+   team rather than requiring DAMO to own L1 itself to get credit for it. A
+   real consequence: with no L1-tier use case left in the catalogue, a deal
+   where DAMO owns ONLY L1 (not L2/L3) now finds nothing fundable in O1 at
+   all - the previous version had the opposite gap (an L1-only-owned deal
+   still got these four; an L2/L3-only deal, this session's actual case,
+   got nothing downstream of them). Pick whichever gap the real deal mix
+   makes more common; not both are avoidable with one tier per use case. */
 const USECASES=[
-  {id:"kr", n:"Knowledge retrieval",            effort:6,  defl:3.0, tier:"L1", pre:[]},
-  {id:"tc", n:"Ticket auto-classification",     effort:5,  defl:3.5, tier:"L1", pre:[]},
-  {id:"at", n:"Alert triage assistant",         effort:8,  defl:4.5, tier:"L1", pre:[]},
-  {id:"ts", n:"Ticket summarization",           effort:3,  defl:1.5, tier:"L1", pre:[]},
+  {id:"kr", n:"Knowledge retrieval",            effort:6,  defl:3.0, tier:"L2", pre:[]},
+  {id:"tc", n:"Ticket auto-classification",     effort:5,  defl:3.5, tier:"L2", pre:[]},
+  {id:"at", n:"Alert triage assistant",         effort:8,  defl:4.5, tier:"L2", pre:[]},
+  {id:"ts", n:"Ticket summarization",           effort:3,  defl:1.5, tier:"L2", pre:[]},
   {id:"ia", n:"Intelligent alerting",           effort:12, defl:6.0, tier:"L2", pre:["at"]},
   {id:"ad", n:"Anomaly detection",              effort:10, defl:4.0, tier:"L2", pre:["at"]},
   {id:"rb", n:"Runbook suggestion",             effort:7,  defl:3.5, tier:"L2", pre:["kr"]},
@@ -2980,6 +2990,38 @@ function selfTests(){
 
   out.push({n:"[F p3] regression state (T1) is unaffected by this feature - still reproduces 3.3 FTE",
     exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
+
+  // USECASES retiering: kr/tc/at/ts moved from L1 to L2 so their built
+  // tooling is credited to whichever tier actually operates it, not gated on
+  // owning L1 specifically. See o1Data()'s ow[u.tier] filter and o1Solve()'s
+  // prerequisite-by-index lookup - a use case whose tier isn't owned is
+  // excluded outright, and anything prerequisiting it becomes unfundable too.
+  const T107=["kr","tc","at","ts"].every(id=>USECASES.find(u=>u.id===id).tier==="L2");
+  out.push({n:"Knowledge retrieval/Ticket auto-classification/Alert triage/Ticket summarization are tier L2, not L1",
+    exp:"true",got:String(T107),ok:T107});
+
+  const T108=seedRoles(defaults()); T108.towers=[mkTower("IMS")];
+  T108.towers[0].own={L1:"customer",L2:"us",L3:"us"};
+  const b108=runEngine(T108,{});
+  const d108=o1Data(T108,b108);
+  const orderIds108=d108.order.map(u=>u.id).sort();
+  out.push({n:"L1-excluded, L2/L3-owned deal (e.g. client keeps L1): every use case is now in-scope, none excluded on tier alone",
+    exp:"[]",got:JSON.stringify(d108.excluded.map(u=>u.id)),ok:d108.excluded.length===0});
+  out.push({n:"...and the full precedence chain (ia/ad/rb/rc/sh/pa/ps/ce) is reachable, not just the two prerequisite-free L3 items",
+    exp:"contains ia,ad,rb,rc,sh,pa,ps,ce",got:JSON.stringify(orderIds108),
+    ok:["ia","ad","rb","rc","sh","pa","ps","ce"].every(id=>orderIds108.indexOf(id)>=0)});
+
+  // The traded-off flip side, stated explicitly rather than left implicit:
+  // an L1-only-owned deal (DAMO runs the desk, not L2/L3) now finds nothing
+  // fundable at all, since no use case is tier "L1" any more. Before this
+  // change it was the reverse deal shape (L2/L3-owned, L1 not) that came up
+  // empty. One tier per use case cannot avoid both gaps simultaneously.
+  const T109=seedRoles(defaults()); T109.towers=[mkTower("IMS")];
+  T109.towers[0].own={L1:"us",L2:"customer",L3:"customer"};
+  const b109=runEngine(T109,{});
+  const d109=o1Data(T109,b109);
+  out.push({n:"Flip side, stated not hidden: an L1-only-owned deal now has zero in-scope AIOps use cases",
+    exp:"0",got:String(d109.order.length),ok:d109.order.length===0});
 
   return out;
 }
