@@ -356,7 +356,7 @@ const uid=()=>Math.random().toString(36).slice(2,8);
 /* ---------- framework defaults ---------- */
 function defaults(){return{
   eng:{
-    term:3,                    // 1 | 3 | 5
+    term:3,                    // 1 | 2 | 3 | 4 | 5
     aiMaturity:"low",          // low | moderate      [F Part 2]
     volumetrics:"available",   // available | unavailable
     aiops:true,
@@ -737,7 +737,7 @@ function seedEngagementType(st,v){
 }
 /* [F Step 1, Sc.1] complexity-point proxy: tickets/app/month */
 const CPX={S:[3,5],M:[8,12],L:[15,20],XL:[25,35],XXL:[40,60]};
-const SHIFTS={"8x5":5,"16x5":10,"24x5":15,"24x7":21};
+const SHIFTS={"8x5":5,"8x7":7,"16x5":10,"16x7":14,"24x5":15,"24x7":21};
 // PROPOSED - off-hours coverage model. Active-Active (default) returns the
 // declared window's full shift count unchanged - byte-identical to the
 // formula this file has always used, so any tower that never touches
@@ -1430,8 +1430,12 @@ function o2Solve(S,base){
   const locs=(S.optim.locs&&S.optim.locs.length)?S.optim.locs:defaultLocs();
   const towers=S.towers.filter(t=>t.enabled);
   const cov = towers.length? towers.map(t=>t.coverage).sort((a,b)=>SHIFTS[b]-SHIFTS[a])[0] : "8x5";
-  const days = cov==="24x7" ? 7 : 5;
-  const blocks = cov==="8x5" ? [1] : cov==="16x5" ? [1,2] : [0,1,2];
+  // Days-per-week and daily-hour-block count are independent axes of the
+  // coverage string (8x5/8x7/16x5/16x7/24x5/24x7) - matched by pattern so a
+  // future coverage window added the same way doesn't need a third ternary
+  // branch here too.
+  const days = /7$/.test(cov) ? 7 : 5;
+  const blocks = /^8x/.test(cov) ? [1] : /^16x/.test(cov) ? [1,2] : [0,1,2];
   const heads = towers.length? Math.max(...towers.map(t=>+t.ftePerShift||1)) : 1;
   const shifts=[];
   for(let d=0;d<days;d++) for(const b of blocks) shifts.push({d:d,b:b,req:heads});
@@ -1600,7 +1604,7 @@ function excerptAt(text,idx,len,pad){
 }
 const WORDNUM={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10};
 function nearestTerm(n){
-  const opts=[1,3,5]; let best=opts[0], bestD=Math.abs(n-opts[0]);
+  const opts=[1,2,3,4,5]; let best=opts[0], bestD=Math.abs(n-opts[0]);
   for(let i=1;i<opts.length;i++){
     const d=Math.abs(n-opts[i]);
     if(d<=bestD){ best=opts[i]; bestD=d; }   // <= so a tie rounds up (opts ascending)
@@ -1689,7 +1693,9 @@ function extractCoverage(text){
   const checks=[
     [/\b24\s*[x\u00d7\/]\s*7\b|\b(?:around|round)[-\s]the[-\s]clock\b/i,"24x7"],
     [/\b24\s*[x\u00d7\/]\s*5\b/i,"24x5"],
+    [/\b16\s*[x\u00d7\/]\s*7\b/i,"16x7"],
     [/\b16\s*[x\u00d7\/]\s*5\b|\bextended\s+hours\b/i,"16x5"],
+    [/\b8\s*[x\u00d7\/]\s*7\b/i,"8x7"],
     [/\b8\s*[x\u00d7\/]\s*5\b|\bstandard\s+business\s+hours\b|\bbusiness\s+hours\b/i,"8x5"]
   ];
   for(let i=0;i<checks.length;i++){
@@ -2331,13 +2337,26 @@ function selfTests(){
             got:printThrew?("THREW: "+printThrew):((noQuantum?"no quantum terms":"quantum terms found")+" / "+(hasSAContent?"sections present":"sections missing")),
             ok:!printThrew&&noQuantum&&hasSAContent});
 
-  // 24. RFP intake - term extraction, including the tie-break-up remap.
+  // 24. RFP intake - term extraction. 1/2/3/4/5 are all directly supported
+  // now, so every integer in that range is an exact match, not a remap.
   const t36=extractTerm("This is a 36-month engagement.");
   const t5y=extractTerm("a 5-year contract for managed services");
   const t4y=extractTerm("a 4 year term");
+  const t7y=extractTerm("a 7 year framework agreement");
   out.push({n:"extractTerm: 36-month -> 3 years",exp:"3",got:String(t36&&t36.value),ok:!!t36&&t36.value===3});
   out.push({n:"extractTerm: 5-year -> 5 years",exp:"5",got:String(t5y&&t5y.value),ok:!!t5y&&t5y.value===5});
-  out.push({n:"extractTerm: 4-year ties up to 5 years",exp:"5",got:String(t4y&&t4y.value),ok:!!t4y&&t4y.value===5});
+  out.push({n:"extractTerm: 4-year is now an exact match, not a remap to 5",exp:"4",got:String(t4y&&t4y.value),ok:!!t4y&&t4y.value===4});
+  out.push({n:"extractTerm: 7-year clamps to the maximum supported option, 5",exp:"5",got:String(t7y&&t7y.value),ok:!!t7y&&t7y.value===5});
+
+  // Term=2 and Term=4 run the engine end-to-end, not just the UI/extraction
+  // layer - the year loop is generic over S.eng.term everywhere it appears,
+  // so this is a real regression guard, not a formality.
+  const T2yr=seedRoles(defaults()); T2yr.eng.term=2;
+  const T4yr=seedRoles(defaults()); T4yr.eng.term=4;
+  out.push({n:"eng.term=2 runs exactly 2 year-rows through runEngine",
+    exp:"2",got:String(runEngine(T2yr,{}).years.length),ok:runEngine(T2yr,{}).years.length===2});
+  out.push({n:"eng.term=4 runs exactly 4 year-rows through runEngine",
+    exp:"4",got:String(runEngine(T4yr,{}).years.length),ok:runEngine(T4yr,{}).years.length===4});
 
   // 25. RFP intake - all three towers detected independently.
   const towText="This covers Application Managed Services, infrastructure support, and database administration.";
@@ -2362,6 +2381,10 @@ function selfTests(){
   const cov85=extractCoverage("Support is limited to standard business hours.");
   out.push({n:"extractCoverage: 24x7 phrasing",exp:"24x7",got:String(cov247&&cov247.value),ok:!!cov247&&cov247.value==="24x7"});
   out.push({n:"extractCoverage: business hours phrasing",exp:"8x5",got:String(cov85&&cov85.value),ok:!!cov85&&cov85.value==="8x5"});
+  const cov87=extractCoverage("Weekend and weekday coverage is 8x7 for this module.");
+  const cov167=extractCoverage("This module runs 16x7 across the estate.");
+  out.push({n:"extractCoverage: 8x7 phrasing",exp:"8x7",got:String(cov87&&cov87.value),ok:!!cov87&&cov87.value==="8x7"});
+  out.push({n:"extractCoverage: 16x7 phrasing",exp:"16x7",got:String(cov167&&cov167.value),ok:!!cov167&&cov167.value==="16x7"});
 
   // 29. RFP intake - AIOps/automation intent.
   const aiopsR=extractAIOps("We expect the vendor to leverage AIOps and self-healing automation.");
@@ -2834,12 +2857,42 @@ function selfTests(){
   // values exactly (backward-compat, provable by construction); Active-Passive
   // discounts only the off-hours delta to bench.oohOnCallFactor.
   const T90ams=seedRoles(defaults()); T90ams.towers=[mkTower("AMS")];
-  ["8x5","16x5","24x5","24x7"].forEach(function(cv){
+  ["8x5","8x7","16x5","16x7","24x5","24x7"].forEach(function(cv){
     T90ams.towers[0].coverage=cv; T90ams.towers[0].oohModel="active";
     const got=effShiftsPerWeek(T90ams.towers[0],T90ams.bench);
     out.push({n:"Active-Active reproduces the exact pre-existing shift count for "+cv,
       exp:String(SHIFTS[cv]),got:String(got),ok:got===SHIFTS[cv]});
   });
+
+  // 8x7/16x7: same daily hours as 8x5/16x5, extended across all 7 days -
+  // the "off-hours" delta an Active-Passive tower discounts is exactly the
+  // weekend extension, since biz is always anchored to SHIFTS["8x5"].
+  out.push({n:"SHIFTS: 8x7 is 7 shifts/wk (8h x 7 days / 8h shift length)",
+    exp:"7",got:String(SHIFTS["8x7"]),ok:SHIFTS["8x7"]===7});
+  out.push({n:"SHIFTS: 16x7 is 14 shifts/wk (16h x 7 days / 8h shift length)",
+    exp:"14",got:String(SHIFTS["16x7"]),ok:SHIFTS["16x7"]===14});
+  const T90b=seedRoles(defaults()); T90b.towers=[mkTower("AMS")];
+  T90b.towers[0].coverage="8x7"; T90b.towers[0].oohModel="passive";
+  const got90b=effShiftsPerWeek(T90b.towers[0],T90b.bench);
+  out.push({n:"Active-Passive on 8x7: business hours (5) + weekend-only delta (2) x 0.15 = 5.3",
+    exp:"5.3",got:r1(got90b)+"",ok:Math.abs(got90b-5.3)<0.001});
+
+  // o2Solve's days/blocks used to be a hardcoded ternary over exactly the
+  // original four coverage strings, so 8x7/16x7 fell through to the "else"
+  // branch meant for 24x5/24x7 (3 blocks/day, i.e. full 24h coverage) - a
+  // real bug, now fixed by pattern-matching on the coverage string's shape
+  // instead of enumerating every value. Confirm both new windows get the
+  // right day count AND the right block count, not the 24h fallback.
+  const T90c=seedRoles(defaults()); T90c.towers=[mkTower("IMS")]; T90c.towers[0].coverage="8x7";
+  const o2c=o2Solve(T90c,runEngine(T90c,{}));
+  out.push({n:"o2Solve on 8x7: 7 days x 1 block/day (not the 24h fallback)",
+    exp:"days=7, blocks=[1]",got:"days="+o2c.days+", blocks="+JSON.stringify(o2c.blocks),
+    ok:o2c.days===7 && o2c.blocks.length===1 && o2c.blocks[0]===1});
+  const T90d=seedRoles(defaults()); T90d.towers=[mkTower("IMS")]; T90d.towers[0].coverage="16x7";
+  const o2d=o2Solve(T90d,runEngine(T90d,{}));
+  out.push({n:"o2Solve on 16x7: 7 days x 2 blocks/day (not the 24h fallback)",
+    exp:"days=7, blocks=[1,2]",got:"days="+o2d.days+", blocks="+JSON.stringify(o2d.blocks),
+    ok:o2d.days===7 && o2d.blocks.length===2 && o2d.blocks[0]===1 && o2d.blocks[1]===2});
 
   const T91=seedRoles(defaults()); T91.towers=[mkTower("AMS")];
   T91.towers[0].coverage="24x7"; T91.towers[0].oohModel="passive";
@@ -3226,7 +3279,7 @@ function renderRail(){
   let h="";
 
   h+=sec("eng","Engagement",
-    '<div class="field"><label>Term (years)</label>'+seg("eng.term",[[1,"1"],[3,"3"],[5,"5"]])+'</div>'+
+    '<div class="field"><label>Term (years)</label>'+seg("eng.term",[[1,"1"],[2,"2"],[3,"3"],[4,"4"],[5,"5"]])+'</div>'+
     '<div class="field"><label>Client AI maturity</label>'+seg("eng.aiMaturity",[["low","Low"],["moderate","Moderate"]])+'</div>'+
     '<div class="field"><label>Volumetrics</label>'+seg("eng.volumetrics",[["available","Available"],["unavailable","Not available"]])+'</div>'+
     '<div class="field"><label>Estate profile</label>'+seg("eng.estate",[["modern","Modern / SaaS"],["legacy","Complex legacy"]])+'</div>'+
@@ -3333,7 +3386,7 @@ function renderRail(){
           (t.serviceTier===pr.id?';font-weight:700':'')+'">'+esc(pr.label)+'</button>').join("")+'</div>'+
         '<p class="hint">Sets coverage window, off-hours model, Availability Class and SLA at once &mdash; generic illustrative defaults, not any specific client\'s numbers. Stays fully editable afterward'+
         (SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier)?' (currently: <b>'+esc(SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier).label)+'</b>)':'')+'.</p></div>'+
-      '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["16x5","16x5"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
+      '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["8x7","8x7"],["16x5","16x5"],["16x7","16x7"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
       num(p+".ftePerShift","FTE per shift")+
       (t.coverage!=="8x5"
         ? '<div class="field"><label>Out-of-office-hours coverage <span class="flag">proposed</span></label>'+

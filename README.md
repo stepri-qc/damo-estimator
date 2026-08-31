@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 126 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 138 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -104,7 +104,7 @@ base  = (A + B + G) / hours_per_month     # default 160
 ```
 
 ### 3.5 Coverage, hypercare, AIOps
-- **Coverage** — `(shifts_per_week × FTE_per_shift) / 5`. Acts as a **floor**, not an addition: when the roster needs more people than the workload does, headcount is set by the support window. The tool flags this when it happens.
+- **Coverage** — `(shifts_per_week × FTE_per_shift) / 5`. Acts as a **floor**, not an addition: when the roster needs more people than the workload does, headcount is set by the support window. The tool flags this when it happens. Six windows are selectable: `8x5`/`16x5`/`24x5` (weekday) and `8x7`/`16x7`/`24x7` (every day) — the `x7` variants keep the same daily hours as their `x5` sibling but extend across weekends, computed by the same shift-count formula (`SHIFTS`). `Term (years)` runs 1–5 individually, not just 1/3/5 — every value runs the engine for exactly that many year-rows; Y4–Y5, where reached, still extend the Y3+ pass-through/inflow benchmarks.
 - **Hypercare** — Y1 carries up to 3× steady-state volume for the first few months with a step-down glide path ([F] G4).
 - **AIOps** — deflection applies to delivery FTE; AIOps engineers are added at 1:4 or 1:8 (flexing to 1:6 above 20 FTE).
 
@@ -322,7 +322,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 126 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 138 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -432,6 +432,13 @@ The **Verify against framework** card runs 126 checks on every render. Each is a
 124. A deal where DAMO owns L2/L3 but not L1 (e.g. the client keeps their own L1 desk) now excludes nothing on tier alone — `o1Data().excluded` is empty
 125. …and the full precedence chain (Intelligent alerting → Automated RCA, Runbook suggestion → Self-healing, Anomaly detection → Predictive alerting/scaling → Chaos engineering) is reachable in that same deal, not just the two prerequisite-free L3 items
 126. The trade-off is asserted explicitly, not left implicit: a deal where DAMO owns *only* L1 now has zero in-scope AIOps use cases
+127–132. Active-Active reproduces the exact pre-existing shift count for all six coverage windows (8x5/8x7/16x5/16x7/24x5/24x7), including the two new ones
+133. `SHIFTS["8x7"]` is 7 shifts/week and `SHIFTS["16x7"]` is 14, matching the shift-count formula
+134. Active-Passive on 8x7 discounts only the weekend delta: business hours (5) + (2 × 0.15) = 5.3
+135. `o2Solve` on an 8x7 tower resolves 7 days × 1 block/day — not the 24-hour fallback a hardcoded ternary used to produce for any coverage string it didn't recognise
+136. `o2Solve` on a 16x7 tower resolves 7 days × 2 blocks/day, same fix
+137. `extractCoverage` picks up 8x7 and 16x7 phrasing
+138. `eng.term` runs the engine for exactly 2 and exactly 4 year-rows — direct values now, not values `nearestTerm` used to remap to 1/3/5
 
 ---
 
