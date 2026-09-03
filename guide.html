@@ -301,7 +301,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
       <thead><tr><th>Input</th><th>Drives</th><th>Source</th></tr></thead>
       <tbody>
         <tr><td>Service mix</td><td>Which of AMS, IMS and DMS are in the proposal. Each line brings its own ARE multipliers, B-factor, automation ceiling and role set.</td><td>Client requirement</td></tr>
-        <tr><td>Term</td><td>Number of years modelled; how far the productivity curve compounds. Y4&ndash;Y5 extend the Y3+ benchmarks.</td><td>Client requirement</td></tr>
+        <tr><td>Term</td><td>Number of years modelled; how far the productivity curve compounds. Any value 1&ndash;5 runs directly, not just 1/3/5 &mdash; the engine produces exactly that many year-rows. Y4&ndash;Y5, where reached, still extend the Y3+ benchmarks.</td><td>Client requirement</td></tr>
         <tr><td>Client AI maturity</td><td>Half of scenario selection. Sets AIOps ratio (1:4 low, 1:8 moderate) and whether AIOps starts in Y1 or Y2.</td><td>[F] Part 2</td></tr>
         <tr><td>Volumetrics</td><td>The other half. Available &rarr; bottom-up sizing and higher confidence; not available &rarr; proxy sizing and maximum contingency.</td><td>[F] Part 2</td></tr>
         <tr><td>Estate profile</td><td>Non-ticketing B-factor: 20&ndash;25% for modern custom/SaaS, 30&ndash;35% for complex legacy.</td><td>[F] 1.1</td></tr>
@@ -312,7 +312,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Availability Class</td><td>A&ndash;E (95% / 99% / 99.5% / 99.9% / 99.95%), a labelled preset over the same raw target-% field &mdash; &ge;99.9% still adds 10% to L2/L3 via the existing rule. Pick Custom to type the percentage directly, unchanged from before this existed.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Service tier preset</td><td>Gold / Silver / Bronze, per tower. One click sets Coverage window, Off-hours model, Availability Class and all eight SLA fields together &mdash; generic illustrative defaults, not any specific client's numbers. Everything stays fully editable afterward.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Existing automation</td><td>Deflates raw volume before sizing: 20&ndash;30% coverage &rarr; &minus;15&ndash;20%; 30&ndash;50% &rarr; &minus;20&ndash;30%.</td><td>[F] Sc.2 Step 2</td></tr>
-        <tr><td>Coverage window</td><td>Shift maths: <code>(shifts/wk &times; per-shift) / 5</code>. Acts as a headcount <b>floor</b>, not an addition.</td><td>[F] p3</td></tr>
+        <tr><td>Coverage window</td><td>Shift maths: <code>(shifts/wk &times; per-shift) / 5</code>. Acts as a headcount <b>floor</b>, not an addition. Six windows: <code>8x5</code>/<code>16x5</code>/<code>24x5</code> (weekdays) and <code>8x7</code>/<code>16x7</code>/<code>24x7</code> (every day) &mdash; each <code>x7</code> variant keeps its <code>x5</code> sibling's daily hours but extends across weekends.</td><td>[F] p3</td></tr>
         <tr><td>Shared roster</td><td>Whether towers share one follow-the-sun rota or each runs its own. Materially cheaper when shared.</td><td>Engagement design</td></tr>
         <tr><td>Productivity curve</td><td>Scenario YoY targets (conservative) or the 18%&rarr;65% cumulative template (stretch). The two do not reconcile &mdash; pick deliberately.</td><td>[F] Part 3 vs Sc.3</td></tr>
         <tr><td>Confidence &amp; risk</td><td>Contingency posture, commercial recommendation, and the width of the Monte Carlo bands.</td><td>[F] Annexures 1&ndash;2</td></tr>
