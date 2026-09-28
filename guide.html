@@ -173,6 +173,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#policy">Role policy</a>
     <a href="#structcpx">Structural complexity</a>
     <a href="#location">Delivery location</a>
+    <a href="#transition">Transition, calculator, outcome</a>
     <a href="#gotchas">Five traps</a>
     <a href="#glossary">Glossary</a>
   </nav>
@@ -343,8 +344,11 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>O2 rostering</td><td>Rostered FTE against the analytic lower bound. A gap means rounding waste from unshareable time blocks.</td></tr>
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
+        <tr><td>Transition</td><td>Person-months <em>before</em> service start, shown separately from Y1 &mdash; never added into the headline FTE.</td></tr>
+        <tr><td>AIOps efficiency calculator</td><td>Net FTE saved after AIOps-engineer overhead, and the payback period per solution. Check whether it's driving the estimate or still what-if.</td></tr>
+        <tr><td>Outcome KPIs</td><td>Which years sit in credit, meets, or gain-share territory against the scenario's own savings target.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>138 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>149 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity, the AIOps efficiency calculator, transition phase, and outcome bands). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -472,6 +476,39 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <div class="callout warn">
       <p><b>The split is uniform, not per-role.</b> Every role's Year 1 FTE gets the same percentage split &mdash; a Developer at 20/30/50 lands at those same three shares, and so does everyone else. It does not pin specific roles to specific locations. A "Developers from Romania, everyone else from India" pattern is achieved by shaping the overall percentages to roughly match that mix, not by assigning Developer to nearshore directly. If you need true per-role location pinning, that's a follow-up, not something the current mix does.</p>
     </div>
+  </section>
+
+  <section id="transition">
+    <h2>Transition, AIOps calculator, and outcome bands</h2>
+    <p class="lede">Three linked additions that answer a question the core estimate doesn't: not just <em>how many people</em>, but <em>what happens before service starts</em>, <em>which specific AIOps solutions</em> are actually funded, and <em>what gets committed to the client</em> around the savings target.</p>
+
+    <h3>Transition phase</h3>
+    <p>A ramp-up <em>before</em> service commencement &mdash; Knowledge Transfer &rarr; Shadow (incumbent leads, we observe) &rarr; Reverse shadow (we lead, incumbent backs up) &mdash; reported beside Year 1, never added into it. Each phase is a duration in weeks and a team size as a fraction of the steady-state Y1 team (hypercare excluded), plus a fixed core FTE (transition manager and leads) present throughout. A legacy estate stretches every phase length; switching Engagement type re-seeds the KT duration the same way it already re-seeds the confidence sliders &mdash; greenfield 3 weeks, brownfield 6.</p>
+
+    <h3>AIOps efficiency calculator</h3>
+    <p>The scenario's YoY curve (Picking a scenario, above) is a top-down target. This is the bottom-up version: tick which specific AIOps use cases this deal will actually build, and set each one's deflection %, start year and adoption ramp. Solutions stack <b>multiplicatively</b>, never simply added, and the combined total is capped at the same automation ceiling the scenario curve already respects.</p>
+    <div class="demo">
+      <header><h4>What-if vs. driving</h4><span class="tag">two modes</span></header>
+      <div class="body">
+        <div class="ctrl">
+          <p style="margin:0 0 10px"><b>What-if (default)</b> &mdash; the calculator shows its own numbers (FTE saved, AIOps-engineer overhead, net saving, payback) without changing the estimate. Good for testing a specific solution roadmap before committing to it.</p>
+          <p style="margin:0"><b>Driving</b> &mdash; tick "Apply to estimate" and the named, costed solutions <em>become</em> the estimate, replacing the scenario's compounding curve entirely.</p>
+        </div>
+        <div class="out">
+          <p class="mini" style="margin:0">Seven core L2 use cases are on by default &mdash; chosen because their combined effect (~24%) clears the 1:4 AIOps break-even (20%, see the break-even demo above). The four prerequisite-free use cases alone (~12%) never would, which would make a first look at the calculator show a net loss before you'd touched anything.</p>
+        </div>
+      </div>
+    </div>
+    <p><b>Seed from O1 portfolio</b> copies whichever use cases the O1 optimizer actually funded (and the years it funded them) straight into the calculator &mdash; O1 and the calculator describe the same decision from two angles (capacity-constrained optimization vs. hand-picked what-if), so this lets one seed the other instead of choosing twice.</p>
+    <div class="callout warn">
+      <p><b>The scenario curve and a named solution set can diverge in later years.</b> The curve compounds every year; a fixed set of solutions levels off once every one of them is fully adopted. On a longer term, the calculator will often flag that a deal's later-year scenario savings aren't yet backed by any named AIOps solution &mdash; worth knowing before it becomes the client's discovery, not yours.</p>
+    </div>
+
+    <h3>Outcome / KPI bands</h3>
+    <p>Where the calculator sizes the team, this is what gets promised to the client: service-credit and gain-share bands around the scenario's own contractual savings target (not "vs. Y1," which hypercare and the brownfield uplift inflate). Modelled deflection below a floor (default 0.8&times; target) triggers a service-credit conversation, capped at a share of that year's effort. Above a trigger (default 1.25&times; target), the excess is split with the client as gain-share. Everything in between is simply "meets." An indicative MTTR-reduction figure rides alongside &mdash; informational only, it never changes FTE.</p>
+
+    <h3>Saved Scenarios and Excel export</h3>
+    <p>Name, save and compare up to three estimate variants &mdash; kept in this browser only (<code>localStorage</code>), with Export/Import to move them between machines as a file. <b>Export Excel</b> produces an 8-sheet workbook (Summary, Year by year, Tower breakdown, Staffing plan, Transition, AIOps calculator, Outcome KPIs, Assumptions) with every number also visible on screen &mdash; built by the page itself, no external library.</p>
   </section>
 
   <section id="gotchas">

@@ -68,7 +68,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
 5. Score the nine confidence drivers and nine risk categories.
 6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 138 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic and the IMS/DMS structural-complexity model.
+7. Hit **Verify against framework** at the bottom — 149 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -267,6 +267,49 @@ Three related gaps surfaced from actually mapping a real RFP (50Hertz Transmissi
 
 All three ship as `applyAvailClass(t,v)` and `applyServiceTier(t,prId)` — small, directly self-tested functions shared between the click handlers and the test suite, rather than logic living only inline in a DOM event listener.
 
+### 3.14 Transition phase — KT → Shadow → Reverse shadow
+
+A ramp-up period *before* service start, reported alongside the estimate but never folded into Y1 FTE — it happens before Y1, not during it. Three phases, each a duration (weeks) and a team size (as a fraction of the steady-state Y1 team, hypercare stripped back out since `runEngine` already puts hypercare inside Y1):
+
+| Phase | Meaning | Default weeks | Default team (× steady-state) |
+|---|---|---|---|
+| KT | Knowledge transfer | 6 | 50% |
+| Shadow | Incumbent leads, we observe | 4 | 80% |
+| Reverse shadow | We lead, incumbent backs up | 4 | 100% |
+
+A fixed **core FTE** (default 2 — the transition manager and leads) is present throughout all three phases on top of the ratio-based headcount. A **legacy estate stretch** (default +25%) lengthens every phase when `eng.estate==="legacy"` — an unfamiliar, undocumented system genuinely takes longer to transfer. **Engagement type re-seeds KT weeks** the same way it already re-seeds the confidence/risk sliders (§3.10): greenfield 3 weeks (a system we already know), brownfield 6 (the conservative default). `transitionPlan(S,base)` computes the phase-by-phase FTE and person-months; `chartTransition` renders it as a ramp chart against the steady-state Y1 line. `proposed` throughout — the phase lengths, ratios and stretch factor are this estimator's own calibration, not from `[F]`/`[P]`.
+
+### 3.15 AIOps efficiency calculator
+
+The scenario's own YoY savings curve (§3.1) is a top-down commitment — a percentage the framework says a given scenario should hit, not a bottom-up sum of specific automations. The calculator is the bottom-up version: pick the actual AIOps use cases this deal will build from the existing `USECASES` catalogue (§5), and for each one set its deflection % at full adoption, its start year, and an adoption ramp in months. `calcShares(S,y)` combines whichever solutions are switched on **multiplicatively** — `1 − ∏(1 − share)` — so stacking solutions can never exceed 100%, and the combined figure is still clamped to the same per-tower automation ceiling (`towerCeiling`) the scenario curve already respects.
+
+Two modes:
+- **What-if (default)** — the calculator computes and displays its own numbers (FTE saved, AIOps-engineer overhead, net saving, payback period per solution) without touching the actual estimate. `deflectionAt()` still reads the scenario curve. Confirmed by self-test to leave every one of the four scenarios byte-identical to a state with no calculator at all.
+- **Driving** (`aiopsCalc.drive:true`) — `deflectionAt()` reads `calcShares(S,y).raw` instead of the scenario's compounding YoY formula, so the named, costed solutions *are* the estimate rather than a side calculation next to it.
+
+**Seven core L2 use cases are on by default** (Knowledge retrieval, Ticket auto-classification, Alert triage, Ticket summarization, Intelligent alerting, Anomaly detection, Runbook suggestion) — chosen because their combined effect at full adoption (~24%) clears the 1:4 AIOps break-even (20%, §6 point 2); the four prerequisite-free ones alone (~12%) never would, which would make a first look at the calculator show a net loss before anyone touched a setting. **AIOps engineers are charged from Y1**, the same rule `runEngine` already uses — they build the tooling before any solution goes live, so a "net saving" that only counted overhead in years a solution was actually live would make Y1 look free when it isn't.
+
+**Realising the freed capacity** is a three-way split (reduce team / redeploy to backlog / commit as promised productivity) applied to the *net* FTE saved in the final year, normalised to sum to 100%. **Seed from O1 portfolio** copies whichever use cases the O1 optimizer (§5) actually funded, at the years it funded them, straight into the calculator — the two mechanisms describe the same decision (which AIOps solutions, and when) from two different angles (capacity-constrained optimization vs. hand-picked what-if), and this button lets one seed the other rather than requiring the same choices to be made twice.
+
+**A portfolio vs. curve check** (`calcVsCurve`) runs the engine both ways regardless of the current toggle, so the card can warn *before* the calculator is applied, not just after: because the scenario curve compounds every year while a fixed portfolio levels off once every selected solution is fully adopted, a named solution set frequently deflects less than the curve assumes in the later years of a longer term — the tool states this as "the scenario's later-year savings are not yet backed by named AIOps solutions" rather than leaving it implicit.
+
+### 3.16 Outcome / KPI bands
+
+Where the AIOps calculator (§3.15) is about sizing the team, this is about what gets *committed to the client* — service-credit and gain-share bands around the scenario's own contractual savings target, expressed in person-months, never price. The target itself is the same YoY curve `deflectionAt()` already compounds (`1 − (1 − yoy)^k` from the scenario's AIOps start year) — not "productivity vs. Y1," which hypercare and the brownfield uplift inflate and would overstate what's actually being promised.
+
+- **Credit floor** (default 0.8× target) — modelled deflection below this triggers a service-credit discussion, capped at a configurable share of that year's annual effort (default 10%).
+- **Gain-share trigger** (default 1.25× target) — modelled deflection above this splits the *excess* value with the client (default 50% our share).
+- Everything between the floor and trigger is "meets," reported but with no credit or gain-share event.
+- An indicative **MTTR reduction** KPI (`USECASE_MTTR`, a separate small proposed table from deflection %) shows the reliability story alongside the effort one — it never touches FTE, purely informational.
+
+`outcomeModel(S,base,trad)` computes one row per year (target/floor/stretch/status), `chartOutcome` renders each year as a horizontal band with the modelled deflection marked against it. `outcomeReady` flags whether the scenario's own commercial-model recommendation (§3.1) already mentions "outcome" — a hint for whether these bands are contractually relevant to this deal at all, not a hard gate.
+
+### 3.17 Saved Scenarios and Excel export
+
+**Saved Scenarios** — name, save and compare up to three estimate variants, kept in this browser's `localStorage` only (never synced anywhere; Export/Import move them between machines as a JSON file). Every `localStorage` access is guarded — a private window or blocked site data makes the accessor throw, and the save path surfaces that as an alert rather than silently losing the estimate. Comparison metrics (`scenMetrics`) run each saved state through the full engine live, so the comparison always reflects the current code, not whatever was true when the scenario was saved.
+
+**Export Excel** produces an 8-sheet `.xlsx` workbook (Summary, Year by year, Tower breakdown, Staffing plan, Transition, AIOps calculator, Outcome KPIs, Assumptions) with every number also visible on screen — see §9 for how the file itself is built with no library.
+
 ---
 
 ## 5. The optimization layer
@@ -322,7 +365,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 138 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 149 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -439,6 +482,17 @@ The **Verify against framework** card runs 138 checks on every render. Each is a
 136. `o2Solve` on a 16x7 tower resolves 7 days × 2 blocks/day, same fix
 137. `extractCoverage` picks up 8x7 and 16x7 phrasing
 138. `eng.term` runs the engine for exactly 2 and exactly 4 year-rows — direct values now, not values `nearestTerm` used to remap to 1/3/5
+139. The AIOps calculator in what-if mode leaves the estimate byte-identical to a state with no calculator at all, across all four scenarios
+140. Driving the calculator with every solution switched off gives exactly zero deflection, every year
+141. Stacked solutions never exceed the tower automation ceiling, even with every solution set to 100% deflection from Y1
+142. A 12-month adoption ramp averages 78/144 of full effect in its first year — the linear-ramp-by-month arithmetic, not an approximation
+143. Reduce + redeploy + commit always adds back to exactly the net FTE saved, whatever the three-way split
+144. Transition: a steady team of 10 with a core of 2, at the default 6/4/4-week phases and 50/80/100% ratios, totals 30.02 person-months by hand-calculation
+145. Transition: a legacy estate stretches every phase length by exactly 25%, scaling the person-months total the same way
+146. Outcome target: Scenario 3 compounds its 13.5% YoY figure from Y2, so Y3's target is exactly `1 − 0.865²`
+147. Portfolio vs. curve: on a 5-year Scenario 3 term, the default calculator solutions under-deflect the scenario curve only in Y3–Y5 (where the curve keeps compounding and the fixed portfolio has levelled off) — and never when AIOps itself is off
+148. Applying the calculator matches the headline estimate exactly: its net FTE saved equals no-AIOps FTE minus the driven estimate's FTE, every year, with AIOps engineers counted from Y1 in both
+149. Excel export round-trips through this file's own zip reader — a cell value and its CRC32 checksum both survive a full write-then-read cycle
 
 ---
 
@@ -458,8 +512,12 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - Off-hours on-call factor (§3.12, default 15% of a dedicated shift) and the off-hours on-call location by region (EU/NA → Offshore, APAC → China) — neither is derived from real cost/rate data, since the tool has none; both are stated conventions pending real engagement data
 - IMS/DMS complexity-proxy `ticketsPerPoint` (§3.13, default 4.5 for IMS, 3.4 for DMS) — calibrated only so a fresh tower's own field defaults land near the AMS default's ~55 tickets/month, not against any real engagement's actual ticket volume
 - Availability Class percentages and Service Tier preset coverage/SLA numbers (§3.13) — a generic, illustrative A–E/Gold-Silver-Bronze scheme grounded in one real client RFP, not calibrated as a house standard; treat the tier presets as a starting point to edit per deal, not a target to match
+- Transition phase lengths, team ratios, core FTE and legacy stretch (§3.14) — a proposed KT/Shadow/Reverse-shadow shape, not sourced from `[F]`/`[P]` or any specific engagement's actual transition experience
+- The seven default-on AIOps calculator solutions and their per-solution deflection/ramp figures (§3.15) — chosen so the default selection clears the 1:4 break-even, not because those seven are necessarily the right seven for a given deal
+- `USECASE_MTTR`, the indicative MTTR-reduction table (§3.15/§3.16) — informational only, never touches FTE, and not derived from real incident data
+- Outcome band multipliers — credit floor (0.8×), gain-share trigger (1.25×), service-credit cap (10% of annual effort) and gain-share split (50%) (§3.16) — generic contractual-shape defaults, not calibrated against any real outcome-based contract
 
-The highest-value calibration is the **AIOps use-case effort and deflection numbers**, because they drive O1's funding decisions and the whole savings narrative.
+The highest-value calibration is the **AIOps use-case effort and deflection numbers**, because they drive O1's funding decisions, the calculator's default selection, and the whole savings narrative.
 
 ---
 
@@ -476,3 +534,5 @@ The highest-value calibration is the **AIOps use-case effort and deflection numb
 - The masthead's **Start from RFP** button exists because the intake screen's fresh-load landing gate turned out to be a one-time-only trap in production: it checks `location.hash`, but every render saves state to that hash, so a bookmarked/long-lived tab trips "not fresh" forever after the very first visit. The button re-opens intake unconditionally, resetting `INTAKE_REPORT` and `INTAKE_DOCS` to a clean single blank row each time, regardless of hash state.
 - `parsePdfText`'s position-aware run-joining (§2) was added after an early version — `content.items.map(it=>it.str).join(" ")`, a space between every pdf.js text run unconditionally — was caught inserting spaces inside words on a real extracted PDF (a run split mid-word by a font/kerning change became two runs, and the naive join turned "Services" into "Servic es," which silently broke a tower-name match). Verified by generating real test files (`docx`/`xlsx` node packages, `cupsfilter` for a real PDF) and round-tripping them through the actual parsers rather than trusting the code by inspection.
 - **Copy prompt for Claude** (§2) reuses the exact `t.select(); document.execCommand("copy")` mechanism the register's own Copy button already uses — deliberately not `navigator.clipboard.writeText` (untested in this sandboxed deployment) and not a Blob download (confirmed broken here). Its target textarea (`#claudePromptText`) is positioned off-screen with `left:-9999px`, not `display:none` — a `display:none` element can't be `.select()`-ed for `execCommand("copy")` to work in every browser, so it has to stay in the layout, just invisible.
+- **Downloads actually work inside the Artifact viewer now.** The plain `<a download>`/Blob approach the "broken here" note above describes for print/popups turned out to affect every file-producing button the same way, including the pre-existing Export JSON. Fixed properly rather than worked around: `window.claude.use("downloads")` is requested once at load (`DOWNLOADS` module-level variable, `try`/`catch`-guarded since `window.claude` is absent on every non-Artifact host), and `download(name,text,type)` now checks for it first — inside the Artifact, a save goes through `DOWNLOADS.save({filename,data})`, which surfaces the viewer's own confirm/decline/rate-limit outcomes rather than silently doing nothing; on any other host (local file, Netlify) `window.claude` is simply absent and the original plain-link path runs unchanged.
+- **Excel export (§3.17) is a from-scratch, dependency-free `.xlsx` writer** — `xlsxWrite`, `zipStore`, `crc32` — matching the file's existing no-library stance (the same reasoning that keeps everything but pdf.js hand-rolled, §2). A minimal SpreadsheetML package (`[Content_Types].xml`, `workbook.xml`, one `sheetN.xml` per sheet, a two-style `styles.xml` for bold headers) is zipped with **STORE**, not DEFLATE — no compression, so no need to reimplement or bundle a deflate encoder, at the cost of a somewhat larger file than a real zip tool would produce. Inline strings and numeric cells only (no shared-string table, no formulas) — everything the workbook needs is either text or a plain number already computed by the engine. Self-tested by round-tripping a real cell value and its CRC32 checksum through this same file's own `unzipEntry`/XML-parsing code (the same reader `extractTabularIncidents`, §2, already uses for uploaded `.xlsx` files) — the writer and the reader check each other.
