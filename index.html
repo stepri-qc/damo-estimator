@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>DAMO Estimator</title>
 <style>
 :root{
@@ -203,6 +204,13 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .bar{height:9px;background:var(--sunken);border-radius:100px;overflow:hidden;border:1px solid var(--rule-2)}
 .bar>i{display:block;height:100%;background:var(--accent)}
 
+/* ---------- AIOps calculator rows ---------- */
+.calcrow{display:grid;grid-template-columns:minmax(0,1fr) 50px 40px 44px;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid var(--rule-2)}
+.calcrow .check{font-size:12.5px}
+.calcrow .tw{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.03em;margin-left:21px}
+.calcrow input[type=number]{padding:2px 5px;font-size:11.5px}
+.calcrow.off{opacity:.5}
+.calchead{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:650;border-bottom:1px solid var(--rule)}
 /* ---------- print report ----------
    A dedicated, always-current, SA-only report, hidden on screen and shown
    exclusively when printing - regardless of whether print is triggered by the
@@ -265,8 +273,10 @@ body.intake-active #intake{display:block}
   <span class="spacer"></span>
   <div class="btnrow noprint">
     <button class="btn" id="btnStartRFP" type="button" title="Opens the RFP intake screen to pre-fill inputs from a document, regardless of any saved estimate in this tab.">Start from RFP</button>
+    <button class="btn" id="btnScenarios" type="button" title="Save named versions of this estimate in this browser and compare up to three side by side.">Scenarios</button>
     <button class="btn" id="btnTheme" type="button">Theme</button>
     <button class="btn" id="btnExport" type="button">Export JSON</button>
+    <button class="btn" id="btnXlsx" type="button" title="Download the summary, year-by-year, towers, staffing plan, transition, AIOps calculator, outcome KPIs and assumptions as an .xlsx workbook.">Export Excel</button>
     <button class="btn" id="btnImport" type="button">Import</button>
     <button class="btn" id="btnPrint" type="button" title="Shows the printable SA-only report on screen. Click it, then press Ctrl/Cmd+P and choose &quot;Save as PDF&quot;.">Print / Save PDF</button>
   </div>
@@ -423,6 +433,10 @@ function defaults(){return{
     handoffPct:0.04,                    // PROPOSED coordination uplift per ownership boundary
     hypercareMonths:4, hypercareMult:3, // [F G4] 3-6 months at ~3x steady-state
     brownfieldUplift:0.20,              // PROPOSED - hidden-work/handoff friction on an existing build others made; Y1 full, Y2 half, Y3+ none (taper hardcoded alongside inflowMul/p12/p23)
+    // PROPOSED - transition ahead of service start: phase lengths in weeks,
+    // team sizes as a share of the steady-state Y1 team, plus a fixed core
+    // (transition manager + leads). Legacy estates stretch every phase.
+    transition:{on:true,ktWeeks:6,shadowWeeks:4,reverseWeeks:4,ktRatio:0.5,shadowRatio:0.8,reverseRatio:1.0,coreFTE:2,legacyStretch:0.25},
     // [F Part 3] scenario matrix
     scen:{
       1:{name:"Low AI + no volumetrics",conf:"Low",cont:"10%",contV:0.10,shape:"pyramid",aiopsFrom:2,ratio:4,yoy:0.135,yoyLabel:"12-15%",comm:"T&M \u2192 Fixed Fee",band:"Critical",presales:"DAMO rapid assessment"},
@@ -461,6 +475,9 @@ function defaults(){return{
   conf:[3,4,4,3,2,3,3,4,3],   // [F Annexure 1] worked example
   risk:[0.50,0.25,0.75,0.50,0.25,0.25,0.25,0.25,0.25], // [F Annexure 2] worked example
   optim:{o1:true,o2:true,o3:true,o4:true,mcN:3000,seed:12345},
+  // PROPOSED - AIOps efficiency calculator (see aiopsCalcRun) and outcome bands (see outcomeModel)
+  aiopsCalc:calcDefaults(),
+  outcome:{floorPct:0.8,stretchPct:1.25,creditCap:0.10,gainShare:0.5},
   ui:{},
   // a real narrative summary can only come from an actual Claude conversation
   // (no published Artifact has runtime LLM access) - set via the intake
@@ -499,6 +516,18 @@ function seedRoles(st){
     // added since (e.g. brownfieldUplift) for anyone reloading or revisiting a
     // tab/bookmark/shared link carrying an old #hash.
     st.bench=Object.assign({},defaults().bench,st.bench||{});
+  }
+  if(st){
+    // calculator/outcome/transition arrived after links were already being shared;
+    // backfill field by field so an old hash or import keeps working
+    const cd=calcDefaults(), ac=st.aiopsCalc||{};
+    ac.uc=ac.uc||{};
+    USECASES.forEach(u=>{ ac.uc[u.id]=Object.assign({},cd.uc[u.id],ac.uc[u.id]||{}); });
+    ac.realize=Object.assign({},cd.realize,ac.realize||{});
+    if(ac.drive==null) ac.drive=false;
+    st.aiopsCalc=ac;
+    st.outcome=Object.assign({},defaults().outcome,st.outcome||{});
+    st.bench.transition=Object.assign({},defaults().bench.transition,st.bench.transition||{});
   }
   ROLES.forEach(r=>{ if(st.roles[r.id]==null) st.roles[r.id]=r.on;
                      if(st.roleW[r.id]==null) st.roleW[r.id]=r.w; });
@@ -734,6 +763,7 @@ function seedEngagementType(st,v){
   const s=ENGAGEMENT_SEED[v]; if(!s) return;
   st.conf[4]=s.conf4;
   st.risk[2]=s.risk2; st.risk[3]=s.risk3; st.risk[4]=s.risk4;
+  if(st.bench && st.bench.transition) st.bench.transition.ktWeeks = v==="greenfield"?3:6;   // PROPOSED - we already know a system we built
 }
 /* [F Step 1, Sc.1] complexity-point proxy: tickets/app/month */
 const CPX={S:[3,5],M:[8,12],L:[15,20],XL:[25,35],XXL:[40,60]};
@@ -971,6 +1001,13 @@ function towerCeiling(S){
 function deflectionAt(S,y,mulOverride){
   if(!S.eng.aiops) return 0;
   const B=S.bench, sc=scenarioDef(S);
+  // PROPOSED - AIOps efficiency calculator as the driver: deflection built up
+  // from the selected solutions replaces the scenario curve, same ceiling.
+  if(S.aiopsCalc && S.aiopsCalc.drive){
+    let dc=calcShares(S,y).raw;
+    if(mulOverride!=null) dc*=mulOverride;
+    return clamp(dc,0,towerCeiling(S));
+  }
   if(y<sc.aiopsFrom) return 0;
   const k=y-sc.aiopsFrom;
   let d = (B.aiopsMode==="stretch")
@@ -1578,6 +1615,324 @@ function o4Run(S){
   return {cv:cv,N:N,bands:bands,tornado:tor,eff:eff};
 }
 
+/* =====================  AIOPS EFFICIENCY CALCULATOR  =====================
+   PROPOSED. Lets an SA pick the AIOps solutions actually being applied, set
+   each one's deflection, start year and adoption ramp, and see the headcount
+   they free up - and what to do with it (reduce, redeploy, commit). Effort
+   and FTE only, never money: the tool still carries no rate card.
+   Solutions combine multiplicatively, 1 - prod(1 - share), so stacking use
+   cases can never pass 100%, and the result is clamped to towerCeiling exactly
+   like the scenario curve. Optional driver: with aiopsCalc.drive on,
+   deflectionAt() reads this instead of the scenario YoY curve. */
+
+// PROPOSED - indicative MTTR reduction (%) per use case, feeding the outcome
+// model's MTTR KPI only. Never touches FTE. Not from [F] or [P].
+const USECASE_MTTR={kr:8,at:10,ia:15,ad:10,rb:20,rc:30,sh:35,pa:10};
+
+function calcDefaults(){
+  const uc={};
+  // Default selection: the seven core L2 use cases. Combined (~24% at full
+  // adoption) this lands close to Scenario 3's own cumulative Y3 curve and
+  // clears the 1:4 break-even (20%); the four prerequisite-free ones alone
+  // (~12%) never would, so a first look would always show a net loss.
+  const ON=["kr","tc","at","ts","ia","ad","rb"];
+  USECASES.forEach(u=>{ uc[u.id]={on:ON.indexOf(u.id)>=0,defl:u.defl,start:0,ramp:6}; });
+  return {drive:false,uc:uc,realize:{reduce:50,redeploy:30,commit:20}};
+}
+/* start 0 means "the scenario's own AIOps start year" */
+function calcStartYear(S,c){ return (+c.start>0)? Math.round(+c.start) : scenarioDef(S).aiopsFrom; }
+/* average adoption across the 12 months of year y - linear ramp over c.ramp months from the start month */
+function calcRamp(S,c,y){
+  const s0=(calcStartYear(S,c)-1)*12, m=Math.max(+c.ramp||0,0);
+  let a=0;
+  for(let k=1;k<=12;k++){ const el=(y-1)*12+k-s0; a+= el<=0?0:(m<=0?1:Math.min(1,el/m)); }
+  return a/12;
+}
+/* same in-scope rule as o1Data: a use case deflecting a tier we do not provide buys us no headcount */
+function calcItems(S){
+  const ow=ownedTiers(S), C=S.aiopsCalc||calcDefaults();
+  return USECASES.map(u=>{
+    const c=(C.uc&&C.uc[u.id])||{on:false,defl:u.defl,start:0,ramp:6};
+    return {u:u,c:c,inScope:!!ow[u.tier],on:!!c.on&&!!ow[u.tier]};
+  });
+}
+function calcShares(S,y){
+  const items=calcItems(S).filter(x=>x.on);
+  const shares=items.map(x=>clamp((+x.c.defl||0)/100,0,1)*calcRamp(S,x.c,y));
+  const raw=1-shares.reduce((p,s)=>p*(1-s),1);
+  const ceil_=towerCeiling(S);
+  return {items:items,shares:shares,raw:raw,combined:Math.min(raw,ceil_),capped:raw>ceil_+1e-9};
+}
+/* Savings measured against the no-AIOps engine run (trad), so the numbers mean
+   the same thing whether or not the calculator is driving the estimate. */
+function aiopsCalcRun(S,trad){
+  const T=S.eng.term, B=S.bench, C=S.aiopsCalc||calcDefaults(), items=calcItems(S);
+  const per={}; items.forEach(x=>per[x.u.id]={fte:[],pm:0});
+  const years=[];
+  for(let y=1;y<=T;y++){
+    const sh=calcShares(S,y), tr=trad.years[y-1];
+    const baseDel=tr?tr.delivery:0;
+    const gross=S.eng.aiops?baseDel*sh.combined:0;
+    const ssum=sum(sh.shares);
+    // each solution's slice of the combined (capped) saving, pro rata to its own share
+    sh.items.forEach((x,i)=>{ const f=ssum?gross*sh.shares[i]/ssum:0; per[x.u.id].fte[y-1]=f; per[x.u.id].pm+=f*12; });
+    const after=baseDel-gross;
+    const active=S.eng.aiops && sh.shares.some(s=>s>0);
+    const ratio=aiopsRatio(S,after);
+    // Embedded AIOps engineers on exactly runEngine's rule: every year AIOps is in
+    // scope, from Y1, whether or not a selected solution is live yet - they build
+    // the tooling before it deflects anything. Charging them only in "live" years
+    // made Y1 look free here while the headline estimate paid for it.
+    const overhead=S.eng.aiops?Math.ceil(after/ratio):0;
+    years.push({y:y,base:baseDel,baseTotal:tr?tr.total:0,defl:S.eng.aiops?sh.combined:0,raw:sh.raw,capped:sh.capped,
+                gross:gross,after:after,ratio:ratio,overhead:overhead,net:gross-overhead,active:active});
+  }
+  const hm=B.hoursMonth*B.util;
+  const rows=items.filter(x=>x.on).map(x=>{
+    const p=per[x.u.id], buildPM=x.u.effort/4.33, sy=calcStartYear(S,x.c);
+    let cum=0, pay=null;
+    for(let m=(sy-1)*12+1;m<=T*12;m++){ cum+=(p.fte[Math.ceil(m/12)-1]||0); if(cum>=buildPM){ pay=m-(sy-1)*12; break; } }
+    return {u:x.u,c:x.c,start:sy,fte:p.fte,pm:p.pm,buildPM:buildPM,payback:pay,hrs:(p.fte[T-1]||0)*hm};
+  });
+  const last=years[years.length-1]||{net:0,gross:0,overhead:0,ratio:8,baseTotal:0};
+  const R=C.realize||{}, w=[+R.reduce||0,+R.redeploy||0,+R.commit||0].map(v=>Math.max(v,0)), ws=sum(w);
+  const netN=Math.max(last.net,0), part=i=>ws?netN*w[i]/ws:0;
+  const sc=scenarioDef(S), k=Math.max(T-sc.aiopsFrom+1,0);
+  const realize={sum:ws,reduce:part(0),redeployFTE:part(1),redeployHrs:part(1)*hm,commit:part(2),
+                 commitPct:last.baseTotal?part(2)/last.baseTotal:0,targetPct:1-Math.pow(1-sc.yoy,k)};
+  const grossPM=sum(years.map(y=>y.gross*12)), overheadPM=sum(years.map(y=>y.overhead*12));
+  const preLivePM=sum(years.filter(y=>!y.active).map(y=>y.overhead*12));   // engineers carried before any solution goes live
+  return {years:years,rows:rows,realize:realize,grossPM:grossPM,overheadPM:overheadPM,netPM:grossPM-overheadPM,preLivePM:preLivePM,
+          buildPM:sum(rows.map(r=>r.buildPM)),be:1/(last.ratio+1),drive:!!C.drive,
+          excluded:items.filter(x=>x.c.on&&!x.inScope).map(x=>x.u)};
+}
+
+/* Portfolio vs the scenario curve it would replace, year by year. Applying the
+   calculator raises FTE wherever the selected solutions deflect less than the
+   curve - typically later years, because the curve compounds every year while a
+   fixed portfolio levels off once every solution is fully adopted. Runs the
+   engine both ways regardless of the current toggle, so the card can warn
+   before the SA applies it as well as after. */
+function calcVsCurve(S){
+  if(!S.eng.aiops) return {years:[],up:[],maxUp:0,worst:null};
+  const run=v=>runEngine(Object.assign({},S,{aiopsCalc:Object.assign({},S.aiopsCalc,{drive:v})}),{});
+  const curve=run(false), port=run(true);
+  const years=curve.years.map((y,i)=>({y:y.y,curve:y.total,port:port.years[i].total,curveDefl:y.defl,portDefl:port.years[i].defl}));
+  const up=years.filter(r=>r.port>r.curve+0.05);   // ignore rounding-level noise
+  const worst=up.reduce((w,r)=>(!w||r.port-r.curve>w.port-w.curve)?r:w,null);
+  return {years:years,up:up,maxUp:worst?worst.port-worst.curve:0,worst:worst};
+}
+
+/* =====================  TRANSITION PHASE  =====================
+   PROPOSED. KT -> shadow -> reverse shadow ahead of service commencement.
+   Sized off the steady-state Y1 team (Y1 delivery with hypercare taken back
+   out - hypercare stays in Y1 where runEngine already puts it). Reported
+   alongside the run estimate, never added to Y1 FTE: it happens before it. */
+function transitionPlan(S,base){
+  const X=Object.assign({},defaults().bench.transition,S.bench.transition||{});
+  const y1=base.years[0];
+  const steady=y1? y1.delivery/(y1.hyper||1) : 0;
+  const stretch=(S.eng.estate==="legacy")?1+(+X.legacyStretch||0):1;
+  const phases=[["KT","Knowledge transfer",X.ktWeeks,X.ktRatio],
+                ["Shadow","Shadow (incumbent leads, we observe)",X.shadowWeeks,X.shadowRatio],
+                ["Reverse","Reverse shadow (we lead, incumbent backs up)",X.reverseWeeks,X.reverseRatio]]
+    .map(p=>{ const wk=Math.max(+p[2]||0,0)*stretch, f=Math.max(+p[3]||0,0)*steady+Math.max(+X.coreFTE||0,0);
+      return {k:p[0],n:p[1],weeks:wk,ratio:+p[3]||0,fte:wk>0?f:0,pm:wk>0?f*wk/4.33:0}; });
+  const pm=sum(phases.map(p=>p.pm));
+  return {on:!!X.on,steady:steady,stretch:stretch,phases:phases,weeks:sum(phases.map(p=>p.weeks)),
+          pm:X.on?pm:0,rawPM:pm,peak:Math.max(0,...phases.map(p=>p.fte)),core:+X.coreFTE||0};
+}
+
+/* =====================  OUTCOME-BASED MODEL  =====================
+   PROPOSED. The outcome commitment is the scenario's own contractual savings
+   target ([F Part 3] YoY %, compounded from the AIOps start year), measured
+   as effort removed against the no-AIOps baseline - NOT productivity vs Y1,
+   which hypercare and the brownfield uplift inflate. Bands: service credit
+   below a floor, gain-share above a stretch trigger. The modelled AIOps
+   deflection is what gets tested against them. Person-months only, no price. */
+function outcomeModel(S,base,trad){
+  const O=Object.assign({},defaults().outcome,S.outcome||{});
+  const sc=base.sc, items=calcItems(S).filter(x=>x.on);
+  const years=base.years.map((yr,i)=>{
+    const k=yr.y-sc.aiopsFrom+1;
+    const target=(S.eng.aiops&&k>0)?1-Math.pow(1-sc.yoy,k):0;
+    const floor=target*(+O.floorPct||0), stretch=target*(+O.stretchPct||1);
+    const annualPM=yr.total*12, baselinePM=(trad&&trad.years[i]?trad.years[i].delivery:yr.pre)*12;
+    const mttr=S.eng.aiops?1-items.reduce((p,x)=>p*(1-((USECASE_MTTR[x.u.id]||0)/100)*calcRamp(S,x.c,yr.y)),1):0;
+    const status=target<=0?"n/a":(yr.defl<floor?"credit":(yr.defl>=stretch?"gain":(yr.defl>=target?"meets":"short")));
+    return {y:yr.y,defl:yr.defl,target:target,floor:floor,stretch:stretch,annualPM:annualPM,status:status,
+            creditPM:target>0?annualPM*(+O.creditCap||0):0,
+            gainPM:Math.max(stretch-target,0)*baselinePM*(+O.gainShare||0),mttr:mttr};
+  });
+  const sla=S.towers.filter(t=>t.enabled).map(t=>({type:t.type,p1r:t.sla.P1r,p1x:t.sla.P1x,p2r:t.sla.P2r,p2x:t.sla.P2x,avail:t.avail,coverage:t.coverage}));
+  return {O:O,years:years,sla:sla,outcomeReady:/outcome/i.test(sc.comm),comm:sc.comm,yoyLabel:sc.yoyLabel};
+}
+function extrasFor(S,base,trad){
+  return {trn:transitionPlan(S,base),calc:aiopsCalcRun(S,trad),om:outcomeModel(S,base,trad),cmp:calcVsCurve(S)};
+}
+
+/* =====================  SAVED SCENARIOS  =====================
+   localStorage only - private to this browser. Every access is guarded: a
+   private window or blocked site data makes the accessor throw. */
+const SCEN_KEY="damoScenarios";
+let SCEN_OPEN=false, SCEN_CMP=[];
+function scenList(){ try{ const v=JSON.parse(localStorage.getItem(SCEN_KEY)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return null; } }
+function scenStore(list){ try{ localStorage.setItem(SCEN_KEY,JSON.stringify(list)); return true; }catch(e){ return false; } }
+function stateFrom(st){ return seedRoles(Object.assign(defaults(),JSON.parse(JSON.stringify(st)))); }
+function scenMetrics(st){
+  const X=st===S?S:stateFrom(st);
+  const base=runEngine(X,{}), trad=runEngine(X,{aiops:false}), ex=extrasFor(X,base,trad);
+  const eff=effScore(X), bd=bandOf(eff), last=base.years[base.years.length-1];
+  const cl=ex.calc.years[ex.calc.years.length-1];
+  return {mix:mixLabel(X),scen:"S"+base.scenario+" "+base.sc.name,term:X.eng.term,y1:base.years[0].total,yn:last.total,
+    pm:sum(base.years.map(y=>y.total*12)),prod:last.prod,band:bd.name+" "+eff.toFixed(0),
+    ratio:X.eng.aiops?"1:"+last.ratio:"none",trPM:ex.trn.pm,calcNet:cl?cl.net:0,
+    drive:X.aiopsCalc&&X.aiopsCalc.drive?"Driving":"What-if"};
+}
+
+/* =====================  XLSX WRITER  =====================
+   Minimal SpreadsheetML package, zipped with STORE (no compression) so no
+   library or network request is needed - same offline stance as the inline
+   pdf.js bundle. Inline strings, numbers, a bold header style, column widths. */
+const CRC_TABLE=(()=>{ const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=CRC_TABLE[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){
+  const enc=new TextEncoder(), parts=[], cd=[]; let off=0;
+  files.forEach(f=>{
+    const nm=enc.encode(f.name), d=f.data, crc=crc32(d);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true);
+    lh.setUint16(12,0x21,true); lh.setUint32(14,crc,true); lh.setUint32(18,d.length,true); lh.setUint32(22,d.length,true);
+    lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,d);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true);
+    ch.setUint16(14,0x21,true); ch.setUint32(16,crc,true); ch.setUint32(20,d.length,true); ch.setUint32(24,d.length,true);
+    ch.setUint16(28,nm.length,true); ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nm);
+    off+=30+nm.length+d.length;
+  });
+  const cdSize=sum(cd.map(x=>x.length));
+  const e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true);
+  e.setUint32(12,cdSize,true); e.setUint32(16,off,true);
+  const all=parts.concat(cd,[new Uint8Array(e.buffer)]);
+  const out=new Uint8Array(sum(all.map(x=>x.length))); let p=0;
+  all.forEach(x=>{ out.set(x,p); p+=x.length; });
+  return out;
+}
+function xlsxCol(i){ let s=""; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; }
+function xmlEsc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,""); }
+function xlsxSheetName(n,i){ return String(n).replace(/[\[\]:*?\/\\]/g," ").slice(0,31).trim()||("Sheet"+(i+1)); }
+/* sheets: [{name, rows:[[cell,...],...], bold:[rowIdx,...]}] - row 0 is always a bold header */
+function xlsxWrite(sheets){
+  const enc=new TextEncoder(), X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const NS="http://schemas.openxmlformats.org/", files=[];
+  const add=(n,s)=>files.push({name:n,data:enc.encode(X+s)});
+  add("[Content_Types].xml",'<Types xmlns="'+NS+'package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    sheets.map((s,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("")+
+    '</Types>');
+  add("_rels/.rels",'<Relationships xmlns="'+NS+'package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="'+NS+'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  add("xl/workbook.xml",'<workbook xmlns="'+NS+'spreadsheetml/2006/main" xmlns:r="'+NS+'officeDocument/2006/relationships"><sheets>'+
+    sheets.map((s,i)=>'<sheet name="'+xmlEsc(xlsxSheetName(s.name,i))+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join("")+'</sheets></workbook>');
+  add("xl/_rels/workbook.xml.rels",'<Relationships xmlns="'+NS+'package/2006/relationships">'+
+    sheets.map((s,i)=>'<Relationship Id="rId'+(i+1)+'" Type="'+NS+'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join("")+
+    '<Relationship Id="rId'+(sheets.length+1)+'" Type="'+NS+'officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  add("xl/styles.xml",'<styleSheet xmlns="'+NS+'spreadsheetml/2006/main">'+
+    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'+
+    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'+
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'+
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+    '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'+
+    '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>');
+  sheets.forEach((s,i)=>{
+    const widths=[];
+    s.rows.forEach(r=>r.forEach((v,c)=>{ widths[c]=Math.max(widths[c]||8,Math.min(String(v==null?"":v).length+2,70)); }));
+    const cols=widths.length?'<cols>'+widths.map((w,c)=>'<col min="'+(c+1)+'" max="'+(c+1)+'" width="'+w+'" customWidth="1"/>').join("")+'</cols>':"";
+    const body=s.rows.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>{
+      if(v==null||v==="") return "";
+      const ref=xlsxCol(ci)+(ri+1), hdr=ri===0||(s.bold&&s.bold.indexOf(ri)>=0);
+      if(typeof v==="number"&&isFinite(v))
+        return '<c r="'+ref+'"'+(hdr?' s="1"':(Number.isInteger(v)?'':' s="2"'))+'><v>'+v+'</v></c>';
+      return '<c r="'+ref+'" t="inlineStr"'+(hdr?' s="1"':'')+'><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>';
+    }).join("")+'</row>').join("");
+    add("xl/worksheets/sheet"+(i+1)+".xml",'<worksheet xmlns="'+NS+'spreadsheetml/2006/main">'+cols+'<sheetData>'+body+'</sheetData></worksheet>');
+  });
+  return zipStore(files);
+}
+/* The workbook the bid team gets: every number here is also on screen. */
+function buildWorkbook(){
+  const base=runEngine(S,{}), trad=runEngine(S,{aiops:false}), rp=rolePlan(S,base);
+  const ex=extrasFor(S,base,trad), last=base.years[base.years.length-1];
+  const eff=effScore(S), bd=bandOf(eff), T=S.eng.term, Ys=base.years.map(y=>"Y"+y.y);
+  const sheets=[];
+  sheets.push({name:"Summary",rows:[["Field","Value"],
+    ["Basis","Effort & FTE only - no rate card, no price"],
+    ["Generated",new Date().toLocaleString()],
+    ["Service towers",mixLabel(S)],
+    ["Scenario","S"+base.scenario+" - "+base.sc.name],
+    ["Term (years)",T],
+    ["Y1 FTE",r2(base.years[0].total)],
+    ["Y"+last.y+" FTE",r2(last.total)],
+    ["Productivity by Y"+last.y,r2(last.prod)],
+    ["Person-months over term",r2(sum(base.years.map(y=>y.total*12)))],
+    ["Confidence",bd.name+" ("+eff.toFixed(1)+")"],
+    ["AIOps",S.eng.aiops?"1:"+last.ratio:"not in scope"],
+    ["AIOps calculator",ex.calc.drive?"Driving the estimate":"What-if only"],
+    ["Calculator net FTE saved (Y"+last.y+")",r2(ex.calc.years.length?ex.calc.years[ex.calc.years.length-1].net:0)],
+    ["Transition person-months",ex.trn.on?r2(ex.trn.pm):"not modelled"],
+    ["Commercial model",base.sc.comm]]});
+  sheets.push({name:"Year by year",rows:[["Year","Tickets/mo","Ticketing A (h/mo)","Non-ticketing B (h/mo)","Governance G (h/mo)",
+    "Base FTE","Coverage floor","Pre-AIOps FTE","AIOps deflection","Delivery FTE","AIOps FTE","Total FTE","No-AIOps total","Productivity vs Y1"]]
+    .concat(base.years.map((y,i)=>["Y"+y.y,r2(y.vol),r2(y.A),r2(y.B),r2(y.G),r2(y.baseFTE),r2(y.floor),r2(y.pre),r2(y.defl),
+      r2(y.delivery),y.aiopsFTE,r2(y.total),r2(trad.years[i].total),r2(y.prod)]))});
+  sheets.push({name:"Tower breakdown (Y1)",rows:[["Tower","Tickets/mo","L1 tickets","L2 tickets","L3 tickets","L1 h","L2 h","L3 h",
+    "A (h)","B (h)","G (h)","FTE","L1 owner","L2 owner","L3 owner"]]
+    .concat(base.years[0].rows.map(r=>[r.type,r2(r.vol),r2(r.t1),r2(r.t2),r2(r.t3),r2(r.h1),r2(r.h2),r2(r.h3),r2(r.A),r2(r.B),r2(r.G),r2(r.fte),
+      PARTIES[r.own.L1],PARTIES[r.own.L2],PARTIES[r.own.L3]]))});
+  const sp_=[["Year","Role","Tier"].concat(GRADES,["Total FTE"])];
+  rp.forEach(p=>ROLES.forEach(r=>{ const g=p.roleGrades[r.id]; if(!g||sum(g)<0.005) return;
+    sp_.push(["Y"+p.y,r.n,TIER_LABEL[r.tier]||r.tier].concat(g.map(r2),[r2(sum(g))])); }));
+  sheets.push({name:"Staffing plan",rows:sp_});
+  const tr=ex.trn;
+  sheets.push({name:"Transition",rows:[["Phase","Weeks","FTE","Share of steady team","Person-months"]]
+    .concat(tr.phases.map(p=>[p.n,r2(p.weeks),r2(p.fte),r2(p.ratio),r2(p.pm)]),
+      [["Total",r2(tr.weeks),"","",r2(tr.rawPM)],[],["Steady-state Y1 team (excl. hypercare)",r2(tr.steady)],
+       ["Core transition FTE",tr.core],["Legacy stretch applied",r2(tr.stretch)],["Modelled",tr.on?"Yes":"No"]]),bold:[tr.phases.length+1]});
+  const c=ex.calc;
+  const cr=[["Solution","Tier","Deflection %","Start year","Ramp (months)","Build (PM)","Saved over term (PM)","Payback (months)"].concat(Ys.map(y=>y+" FTE saved"))]
+    .concat(c.rows.map(r=>[r.u.n,r.u.tier,+r.c.defl,r.start,+r.c.ramp,r2(r.buildPM),r2(r.pm),r.payback==null?"beyond term":r.payback].concat(r.fte.map(v=>r2(v||0)))));
+  const hdr2=cr.length+1;
+  cr.push([]);
+  cr.push(["Year","Combined deflection","Baseline delivery FTE","Gross FTE saved","AIOps engineer FTE","Net FTE saved"]);
+  c.years.forEach(y=>cr.push(["Y"+y.y,r2(y.defl),r2(y.base),r2(y.gross),y.overhead,r2(y.net)]));
+  cr.push([]);
+  cr.push(["Realisation (Y"+T+")","FTE"]);
+  cr.push(["Reduce headcount",r2(c.realize.reduce)],["Redeploy to backlog",r2(c.realize.redeployFTE)],
+          ["Commit as productivity",r2(c.realize.commit)],["Committed share of baseline team",r2(c.realize.commitPct)],
+          ["Scenario cumulative target",r2(c.realize.targetPct)],["Driving estimate",c.drive?"Yes":"No"]);
+  sheets.push({name:"AIOps calculator",rows:cr,bold:[hdr2,hdr2+c.years.length+2]});
+  const om=ex.om;
+  const orows=[["Year","Modelled deflection","Savings target","Service-credit floor","Gain-share trigger","MTTR reduction",
+    "Annual effort (PM)","Service credit at risk (PM)","Gain-share, our share (PM)","Status"]]
+    .concat(om.years.map(y=>["Y"+y.y,r2(y.defl),r2(y.target),r2(y.floor),r2(y.stretch),r2(y.mttr),r2(y.annualPM),r2(y.creditPM),r2(y.gainPM),y.status]));
+  const hdr3=orows.length+1;
+  orows.push([]);
+  orows.push(["Tower","Coverage","P1 response (min)","P1 restore (min)","P2 response (min)","P2 restore (min)","Availability %"]);
+  om.sla.forEach(s=>orows.push([s.type,s.coverage,s.p1r,s.p1x,s.p2r,s.p2x,s.avail]));
+  sheets.push({name:"Outcome KPIs",rows:orows,bold:[hdr3]});
+  const reg=buildRegister(base,MEMO.mc||null,MEMO.o1||null,rp).split("\n");
+  sheets.push({name:"Assumptions",rows:[["Assumptions & risk register"]].concat(reg.map(l=>[l.replace(/\*\*/g,"")]))});
+  return xlsxWrite(sheets);
+}
+
 /* =====================  RFP INTAKE - HEURISTIC EXTRACTION  =====================
    Pure, regex-based pattern matching over pasted/uploaded text. This is NOT
    comprehension - every hit carries the matched excerpt so the review step
@@ -1923,6 +2278,7 @@ async function parseXlsxRows(arrayBuffer){
         const vEl=c.getElementsByTagName("v")[0];
         let v=vEl?vEl.textContent:"";
         if(t==="s") v=shared[+v]||"";
+        else if(t==="inlineStr") v=Array.from(c.getElementsByTagName("t")).map(x=>x.textContent).join("");   // e.g. this page's own Excel export
         return v;
       }));
     });
@@ -3076,6 +3432,71 @@ function selfTests(){
   out.push({n:"Flip side, stated not hidden: an L1-only-owned deal now has zero in-scope AIOps use cases",
     exp:"0",got:String(d109.order.length),ok:d109.order.length===0});
 
+
+  // ---- AIOps efficiency calculator, transition, outcome, XLSX ----
+  // Driver off must leave the engine exactly as it was: compare against a
+  // state with no aiopsCalc at all (the pre-calculator code path) in every scenario.
+  let regOk=true;
+  [["low","unavailable"],["moderate","unavailable"],["low","available"],["moderate","available"]].forEach(c=>{
+    const A=seedRoles(defaults()); A.eng.aiMaturity=c[0]; A.eng.volumetrics=c[1];
+    const Bx=JSON.parse(JSON.stringify(A)); delete Bx.aiopsCalc;
+    const a=runEngine(A,{}).years.map(y=>y.total), b=runEngine(Bx,{}).years.map(y=>y.total);
+    if(JSON.stringify(a)!==JSON.stringify(b)) regOk=false;
+  });
+  out.push({n:"AIOps calculator in what-if mode leaves the estimate unchanged (all 4 scenarios)",exp:"identical",got:regOk?"identical":"differs",ok:regOk});
+
+  const C1=seedRoles(defaults()); C1.aiopsCalc.drive=true;
+  Object.keys(C1.aiopsCalc.uc).forEach(k=>C1.aiopsCalc.uc[k].on=false);
+  const d1=runEngine(C1,{}).years.map(y=>y.defl);
+  out.push({n:"Calculator driving with no solutions selected gives zero deflection",exp:"0 every year",got:d1.map(pct0).join(" "),ok:d1.every(v=>v===0)});
+
+  const C2=seedRoles(defaults()); C2.aiopsCalc.drive=true;
+  Object.keys(C2.aiopsCalc.uc).forEach(k=>{ C2.aiopsCalc.uc[k].on=true; C2.aiopsCalc.uc[k].defl=100; C2.aiopsCalc.uc[k].start=1; C2.aiopsCalc.uc[k].ramp=0; });
+  const d2=runEngine(C2,{}).years.map(y=>y.defl), cap2=towerCeiling(C2);
+  out.push({n:"Stacked solutions never exceed the tower automation ceiling",exp:"\u2264 "+pct0(cap2),got:d2.map(pct0).join(" "),ok:d2.every(v=>v<=cap2+1e-9)&&Math.abs(d2[0]-cap2)<1e-9});
+
+  const rampY1=calcRamp(C2,{start:1,ramp:12},1);
+  out.push({n:"12-month adoption ramp averages 78/144 of full effect in its first year",exp:"0.542",got:rampY1.toFixed(3),ok:near(rampY1,78/144,1e-9)});
+
+  const C3=seedRoles(defaults()); C3.towers[0].inc=600; C3.towers[0].sr=200; const cr3=aiopsCalcRun(C3,runEngine(C3,{aiops:false})), n3=Math.max(cr3.years[cr3.years.length-1].net,0);
+  const split3=cr3.realize.reduce+cr3.realize.redeployFTE+cr3.realize.commit;
+  out.push({n:"Reduce + redeploy + commit adds back to the net FTE saved",exp:fmt(n3,2)+" (>0)",got:fmt(split3,2),ok:n3>0&&near(split3,n3,1e-9)});
+
+  // hand calc: steady team 10, core 2 -> 7 / 10 / 12 FTE over 6 / 4 / 4 weeks = 130 FTE-weeks = 30.02 PM
+  const Tr=seedRoles(defaults()), fb={years:[{delivery:10,hyper:1}]};
+  const tp=transitionPlan(Tr,fb);
+  out.push({n:"Transition: steady team 10, core 2, 6/4/4 weeks at 50/80/100%",exp:"30.02 PM",got:tp.pm.toFixed(2)+" PM",ok:near(tp.pm,130/4.33,0.005)});
+  Tr.eng.estate="legacy";
+  const tpl=transitionPlan(Tr,fb);
+  out.push({n:"Transition: legacy estate stretches every phase by 25%",exp:"37.53 PM",got:tpl.pm.toFixed(2)+" PM",ok:near(tpl.pm,130*1.25/4.33,0.005)});
+
+  const Om=seedRoles(defaults()), omb=runEngine(Om,{}), om3=outcomeModel(Om,omb,runEngine(Om,{aiops:false}));
+  out.push({n:"Outcome target: Scenario 3 compounds 13.5% YoY from Y2, so Y3 = 1 \u2212 0.865\u00b2",exp:"25.2%",got:pct(om3.years[2].target),
+            ok:near(om3.years[2].target,1-0.865*0.865,1e-9)&&om3.years[0].target===0});
+
+  const Cv=seedRoles(defaults()); Cv.eng.term=5; Cv.towers[0].inc=600; Cv.towers[0].sr=200;
+  const cv5=calcVsCurve(Cv), cvOff=calcVsCurve(Object.assign({},Cv,{eng:Object.assign({},Cv.eng,{aiops:false})}));
+  out.push({n:"Portfolio vs curve: Scenario 3, 5-year term, default solutions raise FTE only in Y3\u2013Y5 (the curve keeps compounding, the portfolio levels off)",
+            exp:"Y3,Y4,Y5",got:cv5.up.map(r=>"Y"+r.y).join(",")||"none",ok:cv5.up.map(r=>r.y).join()==="3,4,5"&&cvOff.up.length===0});
+
+  const Id=seedRoles(defaults()); Id.towers[0].inc=600; Id.towers[0].sr=200; Id.aiopsCalc.drive=true;
+  const idB=runEngine(Id,{}), idT=runEngine(Id,{aiops:false}), idC=aiopsCalcRun(Id,idT);
+  const idOk=idC.years.every((y,i)=>Math.abs(y.net-(idT.years[i].total-idB.years[i].total))<1e-9);
+  out.push({n:"Calculator matches the estimate: applied, its net saving equals no-AIOps FTE minus estimate FTE every year (AIOps engineers counted from Y1)",
+            exp:"equal every year",got:idOk?"equal every year (Y1 net "+fmt(idC.years[0].net)+")":"differs",ok:idOk&&idC.years[0].overhead>0});
+
+  let xOk=false, xGot="unreadable";
+  try{
+    const xb=xlsxWrite([{name:"T",rows:[["a","b"],[1,2.5]]}]);
+    const ent=unzipEntry(xb.buffer,"xl/worksheets/sheet1.xml");
+    const doc=new DOMParser().parseFromString(new TextDecoder().decode(ent.raw),"application/xml");
+    const b2=Array.from(doc.getElementsByTagName("c")).find(c=>c.getAttribute("r")==="B2");
+    xGot=b2?b2.textContent:"missing";
+    const crcOk=new DataView(xb.buffer).getUint32(14,true)===crc32(xb.subarray(30+new DataView(xb.buffer).getUint16(26,true),30+new DataView(xb.buffer).getUint16(26,true)+new DataView(xb.buffer).getUint32(18,true)));
+    xOk=ent.method===0 && xGot==="2.5" && crcOk;
+  }catch(e){ xGot=e.message; }
+  out.push({n:"Excel export round-trips through this page's own zip reader (B2, CRC)",exp:"2.5",got:xGot,ok:xOk});
+
   return out;
 }
 
@@ -3297,6 +3718,7 @@ function renderRail(){
         ? "IME: the whole team is shown as India, no further configuration."
         : "Location mix below.")+'</p></div>'+
     (S.eng.region!=="ime" ? renderLocMix() : "")+
+    renderTransitionRail()+
     '<div class="callout acc"><b>Scenario '+n+'</b> &mdash; '+esc(sc.name)+'. Confidence '+esc(sc.conf)+
       ', Y1 contingency '+esc(sc.cont)+', AIOps '+(sc.aiopsFrom===1?"from Y1":"from Y2")+' at 1:'+sc.ratio+'.</div>'
   ,true);
@@ -3425,6 +3847,9 @@ function renderRail(){
     '<div class="row c2">'+num("bench.tok.inShare","Input token share",0.01)+num("bench.tok.agent","Agent-run uplift",0.01)+'</div>'
   );
 
+  h+=sec("calc","AIOps efficiency calculator",renderCalcRail(),!!S.aiopsCalc.drive);
+  h+=sec("out","Outcome model",renderOutcomeRail());
+
   let cf=CONF_DRIVERS.map((d,i)=>
     '<div class="scorer"><span>'+esc(d[0])+(i===4?' <span class="flag" title="Auto-seeded from Engagement type">proposed</span>':"")+'</span><span class="w">'+d[1]+'</span>'+
     '<input type="range" min="1" max="5" step="1" data-p="conf.'+i+'" value="'+S.conf[i]+'">'+
@@ -3452,7 +3877,7 @@ function renderRail(){
         '</div>';
     });
   });
-  h+=sec("roles","Roles &amp; grades",
+  h+=sec("roles","Roles & grades",
     '<p class="hint">Tier headcount is distributed across the roles you have in scope, weighted by each role\u2019s weight and by how much of that tier\u2019s effort comes from the towers it serves. Grades run Lead &gt; Senior &gt; Consultant, roughly 1:2:4.</p>'+
     rl+
     '<div class="field" style="margin-top:10px"><label>Seniority uplift as shape inverts</label>'+
@@ -3858,6 +4283,7 @@ function buildRegister(base,mc,o1,rp){
   L.push("- Role policy (manual-estimation heuristics, not framework-sourced): only nine roles are on by default \u2014 L1 Product Support Engineer (all towers); AMS L2 Systems Support Engineer, which also covers AMS L3 below the "+B.evoThreshold+"% evolution threshold; IMS L2 Infrastructure Support Engineer; AMS L3 Developer once evolution work reaches "+B.evoThreshold+"% (\"SSEs are capable of doing the minor enhancements\" below it); IMS L3 Infrastructure Engineer, with SRE included in the mix only when the client's SRE checkbox is set (IMS-only, a genuine inclusion gate \u2014 not present at all otherwise \u2014 then weighted 1.8x against Infrastructure Engineer's 0.5x once both are eligible); DMS L2/L3 Data Engineer, the sole role spanning both tiers; governance limited to Service Delivery Manager alone, present on every engagement. Every other role in the 37-role catalogue is present but off by default. SDM ratio 1:8.");
   L.push("- Grade ladder: three grades only (Lead, Senior, Consultant \u2014 no Principal), target ratio 1:2:4, applied uniformly per tier. Service Delivery Manager is graded wholly Lead, which falls out of the uniform-ratio table since SDM is the sole role left in governance rather than needing a special case.");
   L.push("");
+  registerExtras(EXT||extrasFor(S,base,runEngine(S,{aiops:false}))).forEach(l=>L.push(l));
   L.push("## Known inconsistencies in the source framework");
   L.push("- Productive hours per month: the page-3 illustration divides by 160; Scenario 3 Step 1 states 150. This estimate uses "+B.hoursMonth+".");
   L.push("- Annexure 2 arithmetic: the worked risk-drag example lists nine weighted values summing to 14.25 but prints a total of 15.3. The band conclusion (Medium) is unaffected, but the published total is wrong. This tool sums the rows.");
@@ -3978,6 +4404,8 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
       '</tbody></table><p style="font-size:10.5px;color:#666;margin-top:4px">P80 is the commit number for a fixed-fee posture; the point estimate is the planning baseline.</p></section>';
   }
 
+  h+=printExtras(EXT||extrasFor(S,base,trad));
+
   h+='<section><h2>Token &amp; inference run cost</h2><table><tbody>'+
     '<tr><td>Borne by</td><td>'+(B.tok.borne==="client"?"Client (framework guardrail G5)":"Thoughtworks")+'</td></tr>'+
     '<tr><td>Per person / week</td><td>$'+f0(tok.perDevWeekAll)+'</td></tr>'+
@@ -4039,7 +4467,286 @@ function hideIntake(){
 
 /* ---------- canvas ---------- */
 let MEMO={};
+let EXT=null;   // transition / calculator / outcome results for the current render
 let INTAKE_REPORT=null;
+/* ---------- new-feature rail blocks ---------- */
+function renderTransitionRail(){
+  return '<div class="field"><label>Transition phase <span class="flag">proposed</span></label>'+
+    chk("bench.transition.on","Model transition (KT &rarr; shadow &rarr; reverse shadow)")+'</div>'+
+    (S.bench.transition.on
+      ? '<div class="row c3">'+num("bench.transition.ktWeeks","KT weeks")+num("bench.transition.shadowWeeks","Shadow weeks")+num("bench.transition.reverseWeeks","Reverse weeks")+'</div>'+
+        '<div class="row c3">'+num("bench.transition.ktRatio","KT team",0.05)+num("bench.transition.shadowRatio","Shadow team",0.05)+num("bench.transition.reverseRatio","Reverse team",0.05)+'</div>'+
+        '<div class="row c2">'+num("bench.transition.coreFTE","Core transition FTE",0.5)+num("bench.transition.legacyStretch","Legacy estate stretch",0.05)+'</div>'+
+        '<p class="hint">Team sizes are fractions of the steady-state Y1 team (hypercare excluded). Core FTE is the transition manager and leads, present throughout. '+
+        'Engagement type re-seeds KT weeks: greenfield 3, brownfield 6. Transition effort is reported beside Y1, never added to it.</p>'
+      : '');
+}
+function renderCalcRail(){
+  const C=S.aiopsCalc, ow=ownedTiers(S), sc=scenarioDef(S);
+  const rows=USECASES.map(u=>{
+    const c=C.uc[u.id], p="aiopsCalc.uc."+u.id, inS=!!ow[u.tier];
+    return '<div class="calcrow'+(c.on&&inS?"":" off")+'">'+
+      '<div><label class="check"><input type="checkbox" data-p="'+p+'.on" '+(c.on?"checked":"")+(inS?"":" disabled")+'><span>'+esc(u.n)+'</span></label>'+
+      '<span class="tw">'+u.tier+' &middot; '+u.effort+'pw build'+(u.pre.length?' &middot; needs '+u.pre.map(x=>esc(USECASES.find(v=>v.id===x).n)).join(", "):"")+
+      (inS?"":' &middot; tier not ours')+'</span></div>'+
+      '<input type="number" step="0.5" min="0" max="100" aria-label="'+esc(u.n)+' deflection %" data-p="'+p+'.defl" value="'+c.defl+'">'+
+      '<input type="number" step="1" min="0" max="5" aria-label="'+esc(u.n)+' start year" data-p="'+p+'.start" value="'+c.start+'">'+
+      '<input type="number" step="1" min="0" max="36" aria-label="'+esc(u.n)+' ramp months" data-p="'+p+'.ramp" value="'+c.ramp+'">'+
+      '</div>';
+  }).join("");
+  const R=C.realize, rs=(+R.reduce||0)+(+R.redeploy||0)+(+R.commit||0);
+  return '<p class="hint">Choose the AIOps solutions this deal will actually apply. Deflection is the % of delivery effort each removes at full adoption; '+
+      'start 0 means the scenario\u2019s own AIOps start (Y'+sc.aiopsFrom+'). Stacked solutions combine multiplicatively and are capped at the tower automation ceiling. <span class="flag">proposed</span></p>'+
+    (S.eng.aiops?"":'<div class="callout">AIOps is off in Engagement, so nothing here saves effort until it is turned on.</div>')+
+    '<div class="btnrow"><button class="btn" type="button" id="btnCalcSeedO1">Seed from O1 portfolio</button>'+
+      '<button class="btn" type="button" id="btnCalcAll">All</button><button class="btn" type="button" id="btnCalcNone">None</button></div>'+
+    '<div class="calcrow calchead"><span>Solution</span><span>Defl %</span><span>Start</span><span>Ramp mo</span></div>'+rows+
+    chk("aiopsCalc.drive","<b>Apply to estimate</b> &mdash; replace the scenario YoY curve with these solutions")+
+    '<div class="field"><label>Use the freed capacity (% of net FTE saved)</label><div class="row c3">'+
+      num("aiopsCalc.realize.reduce","Reduce team",5,'min="0" max="100"')+num("aiopsCalc.realize.redeploy","Redeploy",5,'min="0" max="100"')+
+      num("aiopsCalc.realize.commit","Commit",5,'min="0" max="100"')+'</div>'+
+      '<p class="hint" style="'+(rs===100?"":"color:var(--warn)")+'">'+(rs===100?"Sums to 100%.":"Sums to "+rs+"% \u2014 split is normalised proportionally.")+
+      ' Reduce = smaller team; redeploy = hours moved to the evolution backlog; commit = productivity promised to the client.</p></div>';
+}
+function renderOutcomeRail(){
+  return '<p class="hint">Bands around the estimate\u2019s own effort-reduction commitment, measured in person-months &mdash; no price. <span class="flag">proposed</span></p>'+
+    '<div class="row c2">'+num("outcome.floorPct","Credit floor (x target)",0.05)+num("outcome.stretchPct","Gain-share trigger (x target)",0.05)+'</div>'+
+    '<div class="row c2">'+num("outcome.creditCap","Service-credit cap (effort share)",0.01)+num("outcome.gainShare","Our gain-share",0.05)+'</div>';
+}
+
+/* ---------- new-feature charts ---------- */
+function chartTransition(tr){
+  const W=780,H=210,L=46,R=16,Tp=18,Bt=30;
+  const wk=tr.weeks||1, max=Math.max(tr.peak,tr.steady)*1.2||1;
+  const xx=w=>L+(W-L-R)*w/wk, yy=v=>Tp+(H-Tp-Bt)*(1-v/max);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Transition FTE ramp by phase">';
+  axisTicks(max,4).forEach(v=>{ s+='<line class="gridline" x1="'+L+'" y1="'+yy(v)+'" x2="'+(W-R)+'" y2="'+yy(v)+'"/>'+
+    '<text class="tick" x="'+(L-7)+'" y="'+(yy(v)+3)+'" text-anchor="end">'+v.toFixed(0)+'</text>'; });
+  let x0=0;
+  tr.phases.forEach((p,i)=>{
+    if(!(p.weeks>0)){ return; }
+    const a=xx(x0), b=xx(x0+p.weeks);
+    s+='<rect x="'+(a+1)+'" y="'+yy(p.fte)+'" width="'+Math.max(b-a-2,1)+'" height="'+(H-Bt-yy(p.fte))+'" style="fill:var(--accent);opacity:'+[0.4,0.65,0.9][i]+'"/>';
+    s+='<text class="slabel" x="'+((a+b)/2)+'" y="'+(yy(p.fte)-6)+'" text-anchor="middle">'+esc(p.k)+' &middot; '+fmt(p.fte)+' FTE</text>';
+    s+='<text class="tick" x="'+a+'" y="'+(H-12)+'" text-anchor="start">wk '+Math.round(x0)+'</text>';
+    x0+=p.weeks;
+  });
+  s+='<text class="tick" x="'+(W-R)+'" y="'+(H-12)+'" text-anchor="end">wk '+Math.round(wk)+' &middot; service start</text>';
+  s+='<line x1="'+L+'" y1="'+yy(tr.steady)+'" x2="'+(W-R)+'" y2="'+yy(tr.steady)+'" style="stroke:var(--ink-2);stroke-dasharray:4 4"/>'+
+    '<text class="slabel" x="'+(L+6)+'" y="'+(yy(tr.steady)-5)+'" text-anchor="start">steady Y1 team '+fmt(tr.steady)+'</text>';
+  s+='<line class="axis" x1="'+L+'" y1="'+(H-Bt)+'" x2="'+(W-R)+'" y2="'+(H-Bt)+'"/></svg>';
+  return s;
+}
+function chartCalc(c){
+  const n=c.years.length, W=780,H=230,L=46,R=16,Tp=16,Bt=32;
+  const max=Math.max(1,...c.years.map(y=>Math.max(y.gross,y.overhead)))*1.2;
+  const bw=(W-L-R)/n, iw=Math.min(bw*0.22,40);
+  const yy=v=>Tp+(H-Tp-Bt)*(1-v/max);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="FTE saved, AIOps engineer overhead and net saving by year">';
+  axisTicks(max,4).forEach(v=>{ s+='<line class="gridline" x1="'+L+'" y1="'+yy(v)+'" x2="'+(W-R)+'" y2="'+yy(v)+'"/>'+
+    '<text class="tick" x="'+(L-7)+'" y="'+(yy(v)+3)+'" text-anchor="end">'+v.toFixed(1)+'</text>'; });
+  c.years.forEach((y,i)=>{
+    const cx=L+bw*i+bw/2;
+    [[y.gross,"var(--compute)",1],[y.overhead,"var(--warn)",0.85],[Math.max(y.net,0),"var(--accent)",1]].forEach((b,j)=>{
+      const x=cx+(j-1.5)*(iw+4)+2, v=b[0];
+      s+='<rect x="'+x+'" y="'+yy(v)+'" width="'+iw+'" height="'+(H-Bt-yy(v))+'" style="fill:'+b[1]+';opacity:'+b[2]+'"/>'+
+        '<text class="slabel" x="'+(x+iw/2)+'" y="'+(yy(v)-5)+'" text-anchor="middle">'+fmt(j===2?y.net:v)+'</text>';
+    });
+    s+='<text class="tick" x="'+cx+'" y="'+(H-12)+'" text-anchor="middle">Y'+y.y+' &middot; '+pct0(y.defl)+'</text>';
+  });
+  s+='<line class="axis" x1="'+L+'" y1="'+(H-Bt)+'" x2="'+(W-R)+'" y2="'+(H-Bt)+'"/></svg>';
+  return s;
+}
+function chartOutcome(yr){
+  const W=780,H=96,L=16,R=16;
+  const max=Math.max(yr.stretch*1.45,yr.defl*1.15,0.05), xx=v=>L+(W-L-R)*v/max;
+  const f=xx(yr.floor), t=xx(yr.target), st=xx(yr.stretch);
+  let s='<svg viewBox="0 0 '+W+' '+(H+8)+'" role="img" aria-label="Outcome bands for Y'+yr.y+'">';
+  s+='<rect x="'+L+'" y="30" width="'+(f-L)+'" height="26" style="fill:var(--crit-soft);stroke:var(--crit)"/>';
+  s+='<rect x="'+f+'" y="30" width="'+(st-f)+'" height="26" style="fill:var(--sunken);stroke:var(--rule)"/>';
+  s+='<rect x="'+st+'" y="30" width="'+(W-R-st)+'" height="26" style="fill:var(--good-soft);stroke:var(--good)"/>';
+  s+='<text class="slabel" x="'+((L+f)/2)+'" y="47" text-anchor="middle" style="fill:var(--crit)">service credit</text>';
+  s+='<text class="slabel" x="'+((f+st)/2)+'" y="47" text-anchor="middle">neutral</text>';
+  s+='<text class="slabel" x="'+((st+W-R)/2)+'" y="47" text-anchor="middle" style="fill:var(--good)">gain-share</text>';
+  [[f,"floor "+pct0(yr.floor)],[t,"target "+pct0(yr.target)],[st,"trigger "+pct0(yr.stretch)]].forEach((m,i)=>{
+    s+='<line x1="'+m[0]+'" y1="30" x2="'+m[0]+'" y2="'+(i===1?64:56)+'" style="stroke:var(--ink);stroke-width:'+(i===1?2:1)+'"/>'+
+      '<text class="tick" x="'+m[0]+'" y="'+(i===1?76:68)+'" text-anchor="middle">'+m[1]+'</text>';
+  });
+  const md=xx(yr.defl);
+  s+='<path d="M'+(md-6)+' 18 L'+(md+6)+' 18 L'+md+' 29 Z" style="fill:var(--accent)"/>'+
+    '<text class="slabel" x="'+md+'" y="12" text-anchor="'+(md>W-120?"end":(md<120?"start":"middle"))+'" style="fill:var(--accent);font-weight:700">modelled '+pct0(yr.defl)+'</text>';
+  s+='<text class="tick" x="'+L+'" y="100">0%</text><text class="tick" x="'+(W-R)+'" y="100" text-anchor="end">'+pct0(max)+' effort removed vs no-AIOps baseline</text></svg>';
+  return s;
+}
+
+/* ---------- new-feature cards ---------- */
+function scenCard(){
+  const list=scenList();
+  let h='<div class="card noprint" id="scenCard"><header><h2>Saved scenarios</h2>'+
+    '<span class="note">Kept in this browser only. Export to share or move between machines.</span>'+
+    '<span class="spacer"></span><div class="btnrow"><button class="btn" id="btnScenExport" type="button">Export all</button>'+
+    '<button class="btn" id="btnScenImport" type="button">Import</button></div></header><div class="cardbody">';
+  if(list===null){
+    return h+'<div class="callout">Browser storage is unavailable here (private window or blocked site data). Use Export JSON / Import in the masthead to keep versions instead.</div></div></div>';
+  }
+  h+='<div class="btnrow" style="margin-bottom:12px"><input type="text" id="scenName" aria-label="Scenario name" placeholder="Name this version, e.g. Brownfield 24x7 + AIOps" style="flex:1;min-width:180px;width:auto;font-family:var(--sans)">'+
+    '<button class="btn primary" id="btnScenSave" type="button">Save current</button></div>';
+  if(!list.length) return h+'<p class="hint">Nothing saved yet. Save the current inputs, change them, save again, then tick up to three to compare.</p></div></div>';
+  SCEN_CMP=SCEN_CMP.filter(id=>list.some(x=>x.id===id));
+  h+='<div class="tablewrap"><table><thead><tr><th>Compare</th><th>Name</th><th>Towers</th><th>Saved</th><th></th></tr></thead><tbody>'+
+    list.map(x=>'<tr><td><input type="checkbox" data-scencmp="'+x.id+'" aria-label="Compare '+esc(x.name)+'" '+(SCEN_CMP.indexOf(x.id)>=0?"checked":"")+
+      (SCEN_CMP.length>=3&&SCEN_CMP.indexOf(x.id)<0?" disabled":"")+'></td>'+
+      '<td style="font-family:var(--sans)"><b>'+esc(x.name)+'</b></td><td>'+esc(mixLabel(stateFrom(x.state)))+'</td>'+
+      '<td>'+esc(new Date(x.savedAt).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"}))+'</td>'+
+      '<td><div class="btnrow" style="justify-content:flex-end"><button class="btn" type="button" data-scenload="'+x.id+'">Load</button>'+
+      '<button class="xbtn" type="button" data-scendel="'+x.id+'" aria-label="Delete '+esc(x.name)+'">&times;</button></div></td></tr>').join("")+
+    '</tbody></table></div>';
+  if(SCEN_CMP.length){
+    const cols=[{name:"Current",m:scenMetrics(S)}].concat(SCEN_CMP.map(id=>{ const x=list.find(v=>v.id===id); return {name:x.name,m:scenMetrics(x.state)}; }));
+    const cur=cols[0].m;
+    const R=[["Towers","mix"],["Scenario","scen"],["Term (yrs)","term"],["Y1 FTE","y1",1],["Final-year FTE","yn",1],["Person-months over term","pm",0],
+             ["Productivity by final year","prod","%"],["Confidence","band"],["AIOps ratio","ratio"],["Transition PM","trPM",1],
+             ["Calculator net FTE saved","calcNet",1],["Calculator","drive"]];
+    const cell=(r,m,isCur)=>{
+      const v=m[r[1]];
+      if(r[2]==null) return esc(String(v));
+      const f=r[2]==="%"?pct0(v):fmt(v,r[2]);
+      if(isCur) return f;
+      const d=v-cur[r[1]];
+      if(Math.abs(d)<(r[2]==="%"?0.005:0.05)) return f;
+      const df=r[2]==="%"?(d>0?"+":"")+Math.round(d*100)+"pp":(d>0?"+":"")+fmt(d,r[2]);
+      return f+' <span class="sub-td">('+df+')</span>';
+    };
+    h+='<h3 style="font-size:13.5px;margin:16px 0 8px">Side by side <span class="hint" style="font-family:var(--sans);font-weight:400">&mdash; deltas are against the current inputs</span></h3>'+
+      '<div class="tablewrap"><table><thead><tr><th>Metric</th>'+cols.map(c=>'<th>'+esc(c.name)+'</th>').join("")+'</tr></thead><tbody>'+
+      R.map(r=>'<tr><td>'+r[0]+'</td>'+cols.map((c,i)=>'<td>'+cell(r,c.m,i===0)+'</td>').join("")+'</tr>').join("")+
+      '</tbody></table></div>';
+  }
+  return h+'</div></div>';
+}
+function transitionCard(tr,base){
+  if(!tr.on) return '<div class="card"><header><h2>Transition</h2><span class="pill mute">NOT MODELLED</span>'+
+    '<span class="note">Turn it on under Engagement to size KT, shadow and reverse shadow ahead of service start.</span></header></div>';
+  const y1=base.years[0];
+  return '<div class="card"><header><h2>Transition</h2><span class="pill acc">'+fmt(tr.pm)+' PM</span>'+
+    '<span class="note">Before service commencement. Sized off the steady Y1 team; not added to Y1 FTE.</span></header><div class="cardbody">'+
+    chartTransition(tr)+
+    '<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Phase</th><th>Weeks</th><th>Share of steady team</th><th>FTE</th><th>Person-months</th></tr></thead><tbody>'+
+    tr.phases.map(p=>'<tr><td>'+esc(p.n)+'</td><td>'+fmt(p.weeks)+'</td><td>'+pct0(p.ratio)+' + '+fmt(tr.core)+' core</td><td>'+fmt(p.fte)+'</td><td>'+fmt(p.pm)+'</td></tr>').join("")+
+    '<tr class="total"><td>Total</td><td>'+fmt(tr.weeks)+'</td><td></td><td>peak '+fmt(tr.peak)+'</td><td>'+fmt(tr.pm)+'</td></tr></tbody></table></div>'+
+    '<div class="grid2" style="margin-top:14px">'+
+    '<div class="callout acc"><b>'+fmt(tr.weeks,0)+' weeks</b> to service start'+(tr.stretch>1?' (incl. +'+pct0(tr.stretch-1)+' legacy-estate stretch)':'')+
+      '. Transition effort equals <b>'+pct0(tr.pm/Math.max(y1.total*12,0.001))+'</b> of Y1 run effort.</div>'+
+    '<div class="callout">Hypercare is separate: it stays in Y1 as a '+fmt(y1.hyper,2)+'x uplift ('+S.bench.hypercareMonths+' months at '+S.bench.hypercareMult+'x). '+
+      'Transition is the handover itself; hypercare is the first months of running the service.</div></div></div></div>';
+}
+function calcCard(c,base,cv){
+  const T=S.eng.term, last=c.years[c.years.length-1], R=c.realize;
+  let h='<div class="card compute"><header><h2>AIOps efficiency calculator</h2>'+
+    '<span class="pill '+(c.drive?"cmp":"mute")+'">'+(c.drive?"DRIVING ESTIMATE":"WHAT-IF")+'</span>'+
+    '<span class="note">Savings against the no-AIOps baseline, in FTE and person-months only. Pick solutions in the rail.</span></header><div class="cardbody">';
+  if(!S.eng.aiops) return h+'<div class="callout">AIOps is out of scope (Engagement), so the selected solutions save nothing. Turn it on to see their effect.</div></div></div>';
+  if(!c.rows.length) return h+'<div class="callout">No in-scope solutions selected. Tick some in the rail, or use <b>Seed from O1 portfolio</b>.</div>'+
+    (c.excluded.length?'<p class="hint" style="margin-top:8px">Ticked but out of scope (a tier we do not provide): '+c.excluded.map(u=>esc(u.n)).join(", ")+'.</p>':'')+'</div></div>';
+  const fast=c.rows.filter(r=>r.payback!=null).sort((a,b)=>a.payback-b.payback)[0];
+  h+='<div class="grid3">'+
+    '<div class="callout '+(last.net>0?"acc":"")+'"><b>'+fmt(last.net)+' FTE</b> net saved by Y'+last.y+'<br><span class="hint">'+fmt(last.gross)+' freed &minus; '+last.overhead+' AIOps engineer'+(last.overhead===1?"":"s")+' at 1:'+last.ratio+'</span></div>'+
+    '<div class="callout '+(c.netPM>0?"acc":"")+'"><b>'+f0(c.netPM)+' person-months</b> net over the term<br><span class="hint">'+f0(c.grossPM)+' freed &minus; '+f0(c.overheadPM)+' AIOps engineers'+(c.preLivePM?', incl. '+f0(c.preLivePM)+' before any solution is live':'')+'</span></div>'+
+    '<div class="callout"><b>'+fmt(c.buildPM)+' PM</b> to build<br><span class="hint">'+(fast?'fastest payback: '+esc(fast.u.n)+', '+fast.payback+' months':'no solution pays back within the term')+'</span></div></div>'+
+    '<div class="callout '+(last.defl>c.be?"acc":"")+'" style="margin-top:12px"><b>'+pct0(last.defl)+'</b> combined deflection by Y'+last.y+' against a <b>'+pct0(c.be)+'</b> break-even at 1:'+last.ratio+'. '+
+      (last.defl>c.be?'The team genuinely shrinks once the AIOps engineers are paid for.':'Below break-even the AIOps engineers cost more headcount than the solutions save &mdash; treat those years as investment.')+
+      (c.years.some(y=>y.capped)?' <b>Automation ceiling reached</b> &mdash; extra solutions add nothing past '+pct0(base.ceiling)+'.':'')+'</div>'+
+    (cv&&cv.up.length?'<div class="callout" style="margin-top:12px"><b>'+(c.drive?'Applying these solutions raises':'Applying these solutions would raise')+' FTE in '+cv.up.map(r=>'Y'+r.y).join(', ')+'</b> (by up to '+fmt(cv.maxUp)+' FTE) compared with the scenario curve. '+
+      'In Y'+cv.worst.y+' the curve assumes '+pct0(cv.worst.curveDefl)+' deflection; these solutions deliver '+pct0(cv.worst.portDefl)+'. '+
+      'The curve compounds every year, while a fixed set of solutions levels off once fully adopted. Add solutions with later start years, commit only to what this portfolio supports, or state the gap in the proposal.</div>':'')+
+    '<div style="margin-top:14px">'+chartCalc(c)+'</div>'+
+    '<div class="legend"><span><i style="background:var(--compute)"></i>FTE freed</span><span><i style="background:var(--warn)"></i>AIOps engineers</span><span><i style="background:var(--accent)"></i>Net saved</span></div>'+
+    '<div class="tablewrap" style="margin-top:14px"><table><thead><tr><th>Solution</th><th>Tier</th><th>Defl %</th><th>Starts</th><th>Build PM</th>'+
+      c.years.map(y=>'<th>Y'+y.y+' FTE</th>').join("")+'<th>PM saved</th><th>Payback</th><th>Y'+T+' h/mo</th></tr></thead><tbody>'+
+    c.rows.map(r=>'<tr><td>'+esc(r.u.n)+'</td><td>'+r.u.tier+'</td><td>'+fmt(+r.c.defl)+'</td><td>Y'+r.start+(+r.c.ramp?' +'+r.c.ramp+'mo':'')+'</td><td>'+fmt(r.buildPM)+'</td>'+
+      r.fte.map(v=>'<td>'+fmt(v||0,2)+'</td>').join("")+'<td>'+fmt(r.pm)+'</td><td>'+(r.payback==null?'<span class="sub-td">beyond term</span>':r.payback+' mo')+'</td><td>'+f0(r.hrs)+'</td></tr>').join("")+
+    '<tr class="total"><td>Total</td><td></td><td></td><td></td><td>'+fmt(c.buildPM)+'</td>'+c.years.map(y=>'<td>'+fmt(y.gross,2)+'</td>').join("")+
+      '<td>'+fmt(c.grossPM)+'</td><td></td><td>'+f0(sum(c.rows.map(r=>r.hrs)))+'</td></tr></tbody></table></div>'+
+    '<h3 style="font-size:13.5px;margin:18px 0 8px">Using the freed capacity (Y'+T+')</h3>'+
+    '<div class="grid3">'+
+    '<div class="callout acc"><b>'+fmt(R.reduce)+' FTE</b> off the team<br><span class="hint">smaller run team, Y'+T+'</span></div>'+
+    '<div class="callout acc"><b>'+f0(R.redeployHrs)+' h/month</b> redeployed<br><span class="hint">'+fmt(R.redeployFTE)+' FTE onto evolution / backlog work</span></div>'+
+    '<div class="callout '+(R.commitPct>=R.targetPct?"acc":"")+'"><b>'+pct0(R.commitPct)+'</b> productivity committed<br><span class="hint">'+fmt(R.commit)+' FTE vs a '+pct0(R.targetPct)+' cumulative scenario target</span></div></div>'+
+    (R.commitPct<R.targetPct?'<div class="callout" style="margin-top:12px"><b>Gap to the scenario savings target.</b> The committed share covers '+pct0(R.commitPct)+' against '+pct0(R.targetPct)+
+      '. Commit more of the saving, add solutions, or state in the proposal that the '+esc(base.sc.yoyLabel)+' YoY target is not supported by the selected portfolio.</div>':'')+
+    (c.excluded.length?'<p class="hint" style="margin-top:10px"><b>Ticked but out of scope</b> (a tier we do not provide): '+c.excluded.map(u=>esc(u.n)).join(", ")+'.</p>':'')+
+    '</div></div>';
+  return h;
+}
+function outcomeCard(om){
+  const O=om.O, yn=om.years[om.years.length-1];
+  let h='<div class="card"><header><h2>Outcome-based model</h2>'+
+    '<span class="pill '+(om.outcomeReady?"good":"warn")+'">'+esc(om.comm.toUpperCase())+'</span>'+
+    '<span class="note">KPIs and commercial bands in effort terms. Credits and gain-share are person-months, not money.</span></header><div class="cardbody">';
+  if(!om.outcomeReady) h+='<div class="callout" style="margin-bottom:12px"><b>The framework does not recommend outcome-based pricing from day 1 in this scenario</b> ('+esc(om.comm)+'). '+
+    'Use these bands as a phase-2 option once volumetrics or AI maturity firm up.</div>';
+  const ST={credit:["crit","BELOW FLOOR"],short:["warn","SHORT"],meets:["acc","MEETS"],gain:["good","GAIN-SHARE"]};
+  h+='<div class="tablewrap"><table><thead><tr><th>Year</th><th>Savings target</th><th>Modelled deflection</th><th>Status</th><th>Floor / trigger</th>'+
+    '<th>MTTR cut</th><th>Credit at risk</th><th>Gain-share</th></tr></thead><tbody>'+
+    om.years.map(y=>'<tr><td>Y'+y.y+'</td><td>'+(y.target>0?pct0(y.target):'<span class="sub-td">no AIOps yet</span>')+'</td><td>'+pct0(y.defl)+'</td>'+
+      '<td>'+(ST[y.status]?'<span class="pill '+ST[y.status][0]+'">'+ST[y.status][1]+'</span>':'&ndash;')+'</td>'+
+      '<td>'+(y.target>0?pct0(y.floor)+' / '+pct0(y.stretch):'&ndash;')+'</td><td>'+pct0(y.mttr)+'</td>'+
+      '<td>'+fmt(y.creditPM)+' PM</td><td>'+fmt(y.gainPM)+' PM</td></tr>').join("")+
+    '</tbody></table></div>';
+  if(yn.target>0) h+='<div style="margin-top:14px">'+chartOutcome(yn)+'</div>'+
+    '<p class="hint">Y'+yn.y+': the target is the scenario\u2019s '+esc(om.yoyLabel)+' YoY saving, compounded to <b>'+pct0(yn.target)+'</b> of baseline effort. '+
+    'Below <b>'+pct0(yn.floor)+'</b>, a service credit scales up to '+pct0(O.creditCap)+' of that year\u2019s effort ('+fmt(yn.creditPM)+' PM). '+
+    'Above <b>'+pct0(yn.stretch)+'</b>, we keep '+pct0(O.gainShare)+' of the extra saving ('+fmt(yn.gainPM)+' PM at the trigger point). The estimate models <b>'+pct0(yn.defl)+'</b>.</p>';
+  else h+='<p class="hint" style="margin-top:10px">No AIOps savings target falls inside this term (AIOps out of scope or starting after it); only SLA KPIs apply.</p>';
+  h+='<h3 style="font-size:13.5px;margin:16px 0 8px">SLA commitments carried into the KPI set</h3>'+
+    '<div class="tablewrap"><table><thead><tr><th>Tower</th><th>Coverage</th><th>P1 respond / restore</th><th>P2 respond / restore</th><th>Availability</th></tr></thead><tbody>'+
+    om.sla.map(s=>'<tr><td>'+s.type+'</td><td>'+esc(s.coverage)+'</td><td>'+s.p1r+' / '+s.p1x+' min</td><td>'+s.p2r+' / '+s.p2x+' min</td><td>'+s.avail+'%</td></tr>').join("")+
+    '</tbody></table></div><p class="hint" style="margin-top:8px">MTTR reduction is an indicative figure from the selected AIOps solutions <span class="flag">proposed</span>, and only moves with the calculator.</p></div></div>';
+  return h;
+}
+function printExtras(ex){
+  const tr=ex.trn, c=ex.calc, om=ex.om;
+  let h='';
+  if(tr.on) h+='<section><h2>Transition</h2><table><thead><tr><th>Phase</th><th class="num">Weeks</th><th class="num">FTE</th><th class="num">Person-months</th></tr></thead><tbody>'+
+    tr.phases.map(p=>'<tr><td>'+esc(p.n)+'</td><td class="num">'+fmt(p.weeks)+'</td><td class="num">'+fmt(p.fte)+'</td><td class="num">'+fmt(p.pm)+'</td></tr>').join("")+
+    '<tr class="total"><td>Total</td><td class="num">'+fmt(tr.weeks)+'</td><td class="num">peak '+fmt(tr.peak)+'</td><td class="num">'+fmt(tr.pm)+'</td></tr></tbody></table>'+
+    '<p style="font-size:10.5px;color:#666;margin-top:4px">Precedes service commencement; not included in Y1 FTE. Hypercare remains in Y1.</p></section>';
+  if(S.eng.aiops && c.rows.length){
+    const last=c.years[c.years.length-1];
+    h+='<section><h2>AIOps efficiency</h2><table><thead><tr><th>Solution</th><th>Tier</th><th class="num">Deflection %</th><th class="num">Starts</th><th class="num">Build PM</th><th class="num">PM saved</th><th class="num">Payback</th></tr></thead><tbody>'+
+      c.rows.map(r=>'<tr><td>'+esc(r.u.n)+'</td><td>'+r.u.tier+'</td><td class="num">'+fmt(+r.c.defl)+'</td><td class="num">Y'+r.start+'</td><td class="num">'+fmt(r.buildPM)+'</td><td class="num">'+fmt(r.pm)+'</td><td class="num">'+(r.payback==null?'beyond term':r.payback+' mo')+'</td></tr>').join("")+
+      '</tbody></table><table style="margin-top:8px"><tbody>'+
+      '<tr><td>Net FTE saved by Y'+last.y+'</td><td class="num"><b>'+fmt(last.net)+'</b></td></tr>'+
+      '<tr><td>Net person-months saved over the term</td><td class="num">'+f0(c.netPM)+'</td></tr>'+
+      '<tr><td>Combined deflection vs break-even</td><td class="num">'+pct0(last.defl)+' vs '+pct0(c.be)+'</td></tr>'+
+      '<tr><td>Use of freed capacity (reduce / redeploy / commit)</td><td class="num">'+fmt(c.realize.reduce)+' / '+fmt(c.realize.redeployFTE)+' / '+fmt(c.realize.commit)+' FTE</td></tr>'+
+      '<tr><td>Status</td><td class="num">'+(c.drive?'Drives this estimate':'What-if only')+'</td></tr></tbody></table></section>';
+  }
+  h+='<section><h2>Outcome-based model</h2><table><thead><tr><th>Year</th><th class="num">Deflection</th><th class="num">Savings target</th><th class="num">MTTR</th><th class="num">Credit at risk (PM)</th><th class="num">Gain-share (PM)</th></tr></thead><tbody>'+
+    om.years.map(y=>'<tr><td>Y'+y.y+'</td><td class="num">'+pct0(y.defl)+'</td><td class="num">'+(y.target>0?pct0(y.target):'&ndash;')+'</td><td class="num">'+pct0(y.mttr)+'</td><td class="num">'+fmt(y.creditPM)+'</td><td class="num">'+fmt(y.gainPM)+'</td></tr>').join("")+
+    '</tbody></table><p style="font-size:10.5px;color:#666;margin-top:4px">Commercial model per framework: '+esc(om.comm)+'. Bands are in person-months of effort; no price.</p></section>';
+  return h;
+}
+function registerExtras(ex){
+  const tr=ex.trn, c=ex.calc, om=ex.om, L=[];
+  L.push("## Transition, AIOps efficiency and outcome model");
+  L.push(tr.on
+    ? "- Transition: "+fmt(tr.weeks,0)+" weeks (KT "+fmt(tr.phases[0].weeks)+", shadow "+fmt(tr.phases[1].weeks)+", reverse shadow "+fmt(tr.phases[2].weeks)+"), **"+fmt(tr.pm)+" person-months**, peaking at "+fmt(tr.peak)+" FTE. Precedes service start and is not in Y1 FTE; hypercare stays in Y1. Proposed calibration."
+    : "- Transition is not modelled in this estimate; KT, shadow and reverse shadow effort must be sized separately.");
+  if(S.eng.aiops && c.rows.length){
+    const last=c.years[c.years.length-1];
+    L.push("- AIOps solutions applied: "+c.rows.map(r=>r.u.n+" ("+fmt(+r.c.defl)+"%, from Y"+r.start+")").join(", ")+".");
+    L.push("- AIOps efficiency: "+pct0(last.defl)+" combined deflection by Y"+last.y+", **"+fmt(last.net)+" FTE net saved** after "+last.overhead+" AIOps engineer(s); "+f0(c.netPM)+" person-months over the term. "+
+      (c.drive?"These solutions drive the estimate in place of the scenario YoY curve.":"Shown as a what-if; the estimate still uses the scenario YoY curve."));
+    const cv=ex.cmp;
+    if(cv && cv.up.length)
+      L.push("- Portfolio vs scenario curve: applying these solutions "+(c.drive?"raises":"would raise")+" FTE in "+cv.up.map(r=>"Y"+r.y).join(", ")+" (up to "+fmt(cv.maxUp)+" FTE); in Y"+cv.worst.y+" the curve assumes "+pct0(cv.worst.curveDefl)+" deflection against "+pct0(cv.worst.portDefl)+" from the named solutions. The scenario's later-year savings are not yet backed by named AIOps solutions.");
+  }
+  L.push("- Outcome bands: target is the scenario's "+om.yoyLabel+" YoY saving compounded against the no-AIOps baseline; service credit below "+pct0(om.O.floorPct)+" of target (capped at "+pct0(om.O.creditCap)+" of annual effort), gain-share of "+pct0(om.O.gainShare)+" above "+pct0(om.O.stretchPct)+" of target. Expressed in person-months; no price.");
+  L.push("");
+  return L;
+}
+
 function renderCanvas(){
   const B=S.bench;
   const base=runEngine(S,{});
@@ -4050,6 +4757,7 @@ function renderCanvas(){
   const eff=effScore(S), bd=bandOf(eff);
   const last=base.years[base.years.length-1];
   const sc=base.sc, tok=tokenModel(S,last.total);
+  const ex=extrasFor(S,base,trad); EXT=ex;
   let h="";
 
   /* summary */
@@ -4057,6 +4765,7 @@ function renderCanvas(){
     '<div class="stat"><span class="k">Y1 FTE</span><span class="v">'+fmt(base.years[0].total)+'</span></div>'+
     '<div class="stat"><span class="k">Y'+last.y+' FTE</span><span class="v">'+fmt(last.total)+'</span></div>'+
     '<div class="stat"><span class="k">Productivity</span><span class="v">'+pct0(last.prod)+'</span></div>'+
+    (ex.trn.on?'<div class="stat"><span class="k">Transition PM</span><span class="v">'+fmt(ex.trn.pm,0)+'</span></div>':"")+
     (mc?'<div class="stat"><span class="k">Y'+last.y+' P80</span><span class="v">'+fmt(mc.bands[mc.bands.length-1].p80)+'</span></div>':"")+
     '<span class="spacer"></span>'+
     '<span class="pill acc">'+esc(mixLabel(S).replace(/ \+ /g,"+"))+'</span>'+
@@ -4064,6 +4773,8 @@ function renderCanvas(){
     '<span class="pill '+bd.cls+'">'+bd.name.toUpperCase()+' '+eff.toFixed(0)+'</span>'+
     (S.eng.aiops?'<span class="pill cmp">AIOPS 1:'+last.ratio+'</span>':'<span class="pill mute">NO AIOPS</span>')+
     '</div>';
+
+  if(SCEN_OPEN) h+=scenCard();
 
   /* document summary - only ever set via the "Import Claude-prepared inputs"
      JSON path, never generated by this page (no runtime LLM access exists
@@ -4190,6 +4901,9 @@ function renderCanvas(){
     (S.eng.aiops?'<span><i style="background:var(--ink-3)"></i>No AIOps (baseline)</span>':"")+
     (mc?'<span><i style="background:var(--accent);opacity:.25"></i>P20&ndash;P95</span>':"")+'</div></div></div>';
 
+  /* transition */
+  h+=transitionCard(ex.trn,base);
+
   /* traditional vs AI */
   if(S.eng.aiops){
     const savedPM=sum(base.years.map((y,i)=>(trad.years[i].total-y.total)*12));
@@ -4214,6 +4928,10 @@ function renderCanvas(){
         : 'Every AIOps year here clears that threshold, so the headcount reduction is real from the start.')+
       '</div></div></div>';
   }
+
+  /* AIOps efficiency calculator + outcome model */
+  h+=calcCard(ex.calc,base,ex.cmp);
+  h+=outcomeCard(ex.om);
 
   /* team shape */
   h+='<div class="card"><header><h2>Team shape</h2><span class="note">Pyramid &rarr; diamond &rarr; inverted, driven by scenario and year. Splits are proposed defaults.</span></header><div class="cardbody">'+
@@ -4515,6 +5233,12 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const el=e.target;
+  if(el.dataset && el.dataset.scencmp){
+    const id=el.dataset.scencmp;
+    SCEN_CMP=SCEN_CMP.filter(x=>x!==id);
+    if(el.checked && SCEN_CMP.length<3) SCEN_CMP.push(id);
+    refresh(false); return;
+  }
   if(el.dataset && el.dataset.p && (el.tagName==="SELECT"||el.type==="checkbox")){
     sp(S,el.dataset.p,coerce(el));
     syncCpxBadge(el.dataset.p);
@@ -4565,7 +5289,49 @@ document.addEventListener("click",e=>{
     i.onchange=()=>{ const f=i.files[0]; if(f) handleIntakeUpload(docId,f); };
     i.click(); return;
   }
+  if(b.dataset.scenload){
+    const x=(scenList()||[]).find(v=>v.id===b.dataset.scenload);
+    if(x){ S=stateFrom(x.state); refresh(true); }
+    return;
+  }
+  if(b.dataset.scendel){
+    const list=(scenList()||[]).filter(v=>v.id!==b.dataset.scendel);
+    scenStore(list); SCEN_CMP=SCEN_CMP.filter(x=>x!==b.dataset.scendel);
+    refresh(false); return;
+  }
   switch(b.id){
+    case "btnScenarios":
+      SCEN_OPEN=!SCEN_OPEN; b.setAttribute("aria-pressed",String(SCEN_OPEN));
+      refresh(false); if(SCEN_OPEN) setTimeout(()=>window.scrollTo(0,0),40); break;
+    case "btnScenSave":{
+      const list=scenList(); if(list===null) break;
+      const nm=($("#scenName").value||"").trim()||("Scenario "+(list.length+1));
+      list.push({id:uid(),name:nm,savedAt:new Date().toISOString(),state:JSON.parse(JSON.stringify(S))});
+      if(!scenStore(list)) alert("Could not save - browser storage is full or blocked.");
+      refresh(false); break; }
+    case "btnScenExport": download("damo-scenarios.json",JSON.stringify(scenList()||[],null,1),"application/json"); break;
+    case "btnScenImport":{
+      const i=document.createElement("input"); i.type="file"; i.accept=".json";
+      i.onchange=()=>{ const f=i.files[0]; if(!f) return; const rd=new FileReader();
+        rd.onload=()=>{ try{
+            const inc=JSON.parse(rd.result); if(!Array.isArray(inc)) throw 0;
+            const list=scenList()||[];
+            inc.forEach(x=>{ if(x&&x.id&&x.state&&!list.some(v=>v.id===x.id)) list.push(x); });
+            scenStore(list); refresh(false);
+          }catch(err){ alert("That file isn't a DAMO scenarios export."); } };
+        rd.readAsText(f); };
+      i.click(); break; }
+    case "btnXlsx":
+      try{ download("damo-estimate.xlsx",buildWorkbook(),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); }
+      catch(err){ alert("Excel export failed: "+err.message); }
+      break;
+    case "btnCalcSeedO1":{
+      const o1s=o1Solve(S,runEngine(S,{}),150000);
+      Object.keys(S.aiopsCalc.uc).forEach(k=>S.aiopsCalc.uc[k].on=false);
+      o1s.picked.forEach(p=>{ const c=S.aiopsCalc.uc[p.u.id]; c.on=true; c.start=p.year; });
+      refresh(true); break; }
+    case "btnCalcAll": USECASES.forEach(u=>{ if(ownedTiers(S)[u.tier]) S.aiopsCalc.uc[u.id].on=true; }); refresh(true); break;
+    case "btnCalcNone": Object.keys(S.aiopsCalc.uc).forEach(k=>S.aiopsCalc.uc[k].on=false); refresh(true); break;
     case "btnReset": S=seedRoles(defaults()); refresh(true); break;
     case "btnClearDocSummary": S.docSummary=null; refresh(true); break;
     case "btnTheme":{
@@ -4650,7 +5416,22 @@ document.addEventListener("click",e=>{
       i.click(); break; }
   }
 });
+/* Inside the claude.ai artifact viewer a plain <a download> does nothing - files
+   go through the `downloads` capability, which asks the viewer to confirm. On
+   any other host (local file, Netlify) window.claude is absent and the plain
+   link below still works. */
+let DOWNLOADS=null;
+try{ if(window.claude && typeof window.claude.use==="function")
+       window.claude.use("downloads").then(d=>{ DOWNLOADS=d; }).catch(()=>{}); }catch(e){}
 function download(name,text,type){
+  if(DOWNLOADS){
+    DOWNLOADS.save({filename:name,data:text}).catch(err=>{
+      const c=err&&err.code;
+      if(c==="declined"||c==="rate_limited") return;
+      alert("Could not save "+name+(c?" ("+c+")":"")+".");
+    });
+    return;
+  }
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([text],{type:type||"text/plain"}));
   a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
@@ -4668,3 +5449,5 @@ refresh(true);
 if(!hadHash){ renderIntake(); showIntake(); }
 
 </script>
+
+</body></html>
