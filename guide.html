@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>DAMO Estimator &mdash; User Guide</title>
 <style>
 :root{
@@ -150,7 +151,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
   <div class="inner">
     <p class="eyebrow">DAMO Managed Services &middot; User Guide</p>
     <h1>How to size a managed-services bid with the DAMO Estimator</h1>
-    <p>A working guide to the tool: what each input drives, how the framework's arithmetic actually behaves, and the four places where a careless estimate goes wrong. The demos below are live &mdash; drag them.</p>
+    <p>A working guide to the tool: what each input drives, how the framework's arithmetic actually behaves, and the six places where a careless estimate goes wrong. The demos below are live &mdash; drag them.</p>
     <div class="btns">
       <a class="btn primary" href="https://claude.ai/code/artifact/6182d787-5523-4e96-8b2b-ef126a234fc4">Open the estimator</a>
       <button class="btn" type="button" id="btnTheme">Switch theme</button>
@@ -166,6 +167,10 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#cascade">The cascade</a>
     <a href="#scenario">Picking a scenario</a>
     <a href="#breakeven">AIOps break-even</a>
+    <a href="#aiopscalc">AIOps efficiency calculator</a>
+    <a href="#transition">Transition phase</a>
+    <a href="#outcome">Outcome-based model</a>
+    <a href="#scenarios">Scenarios &amp; exports</a>
     <a href="#inputs">Input reference</a>
     <a href="#outputs">Reading the outputs</a>
     <a href="#resp">Who provides what</a>
@@ -173,8 +178,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#policy">Role policy</a>
     <a href="#structcpx">Structural complexity</a>
     <a href="#location">Delivery location</a>
-    <a href="#transition">Transition, calculator, outcome</a>
-    <a href="#gotchas">Five traps</a>
+    <a href="#gotchas">Six traps</a>
     <a href="#glossary">Glossary</a>
   </nav>
 
@@ -182,7 +186,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
   <section id="start">
     <h2>Start here</h2>
-    <p class="lede">Six steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
+    <p class="lede">Eight steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
     <div class="steps">
       <div class="step"><div><h4>Set the engagement</h4><p>Term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, Customer Region (IME/EU/APAC/NA), and engagement type. The first four choices alone select the scenario &mdash; and with it your contingency, team shape, AIOps timing and savings target.</p></div></div>
       <div class="step"><div><h4>Say whether it&rsquo;s greenfield or brownfield</h4><p>Built and run by us from day one, or an existing estate we&rsquo;re taking over? Brownfield is the conservative default &mdash; it auto-seeds four confidence/risk sliders lower <em>and</em> adds a direct Y1 FTE uplift (default +20%, tapering to zero by Y3) on top, since taking over an unfamiliar system genuinely costs more in the first year than the framework&rsquo;s sliders alone capture.</p></div></div>
@@ -190,7 +194,8 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
       <div class="step"><div><h4>Enter demand</h4><p>Incident history if you have it. If you do not, switch the tower to <b>Complexity</b> (apps by S/M/L/XL/XXL) or <b>MAU</b>. The tool handles all four scenarios, not just the ones with data.</p></div></div>
       <div class="step"><div><h4>Set SLAs and coverage</h4><p>P1 response under 15 minutes adds 25% to L2/L3 staffing. Coverage window sets a headcount <em>floor</em> through the shift maths &mdash; often the binding constraint, not the ticket volume.</p></div></div>
       <div class="step"><div><h4>Score confidence and risk</h4><p>Nine drivers, nine risk categories. This is not decoration: the effective score sets your contingency posture <em>and</em> widens the Monte Carlo bands.</p></div></div>
-      <div class="step"><div><h4>Export the register</h4><p>Copy the auto-composed assumptions, exclusions, volume-band clause and risk log straight into the proposal annex. Then run <b>Verify against framework</b> in front of the client if you want to show your working.</p></div></div>
+      <div class="step"><div><h4>Choose the AIOps solutions and plan the transition</h4><p>In <b>AIOps efficiency calculator</b>, tick the solutions this deal will actually apply and see the net FTE they save once the AIOps engineers are paid for. Decide how that freed capacity is used. Under Engagement, check the <b>Transition phase</b> weeks for knowledge transfer, shadow and reverse shadow.</p></div></div>
+      <div class="step"><div><h4>Export and compare</h4><p>Copy the auto-composed assumptions, exclusions, volume-band clause and risk log into the proposal annex, or use <b>Export Excel</b> for the bid team. Save versions under <b>Scenarios</b> to compare options side by side. Run <b>Verify against framework</b> in front of the client if you want to show your working.</p></div></div>
     </div>
   </section>
 
@@ -295,6 +300,71 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     </div>
   </section>
 
+  <section id="aiopscalc">
+    <h2>AIOps efficiency calculator</h2>
+    <p class="lede">For the question a solution architect actually gets asked: <em>if we apply these AIOps solutions, how much smaller does the team get, and what do we do with the capacity?</em> Everything is in FTE, hours and person-months &mdash; still no rate card, no price.</p>
+
+    <div class="steps">
+      <div class="step"><div><h4>Pick the solutions</h4><p>The rail section lists all 14 AIOps use cases. Tick the ones this deal will apply. For each you can set <b>Defl %</b> (share of delivery effort it removes at full adoption), <b>Start</b> (year it goes live; 0 means the scenario&rsquo;s own AIOps start year) and <b>Ramp mo</b> (months to reach full effect). <b>Seed from O1 portfolio</b> copies the optimiser&rsquo;s funded set and start years; <b>All</b> and <b>None</b> do what they say.</p></div></div>
+      <div class="step"><div><h4>Read the savings</h4><p>The calculator card shows FTE freed, the AIOps engineers needed to build and run the tooling, and the <b>net</b> saving per year. Engineers are counted every year AIOps is in scope, from Y1 &mdash; before any solution is live &mdash; exactly as the headline estimate counts them, so a year with no deflection yet shows as a net cost. Per solution you see build effort, person-months saved over the term, payback month and hours freed per month.</p></div></div>
+      <div class="step"><div><h4>Decide how to use the capacity</h4><p>Split the net saving three ways: <b>Reduce</b> (a smaller run team), <b>Redeploy</b> (hours moved onto evolution or backlog work) and <b>Commit</b> (productivity promised to the client). The card compares the committed share with the scenario&rsquo;s own savings target and flags any gap.</p></div></div>
+      <div class="step"><div><h4>Optionally apply it to the estimate</h4><p>By default the calculator is a what-if and the headline FTE is unchanged. Tick <b>Apply to estimate</b> and the deflection built from your chosen solutions replaces the scenario&rsquo;s generic year-on-year curve everywhere &mdash; headline FTE, Monte Carlo bands, Traditional vs AI, staffing plan.</p></div></div>
+    </div>
+
+    <h3>How solutions combine</h3>
+    <p>Solutions stack multiplicatively, not additively: two solutions at 10% each remove 19%, not 20%, because the second only acts on what the first left behind. The combined figure is then capped at the tower automation ceiling (AMS 60%, IMS 70%, DMS 50%, volume-weighted on a mixed deal). A solution that deflects a tier we do not provide is greyed out &mdash; it buys us no headcount, the same rule the O1 portfolio uses.</p>
+
+    <div class="callout warn">
+      <p><b>A handful of small solutions will not clear break-even.</b> At a 1:4 AIOps ratio the break-even is 20% deflection. The four prerequisite-free starters (knowledge retrieval, ticket classification, alert triage, summarisation) add up to about 12%, so on their own they make the team <em>bigger</em>. The default selection is the seven core L2 solutions, about 24% combined, which is close to Scenario 3&rsquo;s own Y3 curve. On a very small team, even that can show a slightly negative net &mdash; one whole AIOps engineer is a large share of a 4-FTE team. That is a real result, not a bug: say so in the proposal.</p>
+      <p><b>Applying it can raise FTE in later years.</b> The scenario curve compounds every year; a fixed set of solutions levels off once fully adopted. Wherever the solutions deflect less than the curve, applying them raises FTE &mdash; the card warns you, naming the years and the gap, before and after you apply.</p>
+    </div>
+    <p class="mini">The solution catalogue&rsquo;s effort and deflection figures, and the MTTR figures used by the outcome model, are a proposed calibration and editable. They are the most valuable thing to replace with real engagement data.</p>
+  </section>
+
+  <section id="transition">
+    <h2>Transition phase</h2>
+    <p class="lede">The handover before service commencement &mdash; knowledge transfer, shadow, then reverse shadow &mdash; sized as its own block of effort.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Phase</th><th>Default length</th><th>Team present</th></tr></thead>
+      <tbody>
+        <tr><td>Knowledge transfer</td><td>6 weeks (3 for greenfield)</td><td>50% of the steady team + core</td></tr>
+        <tr><td>Shadow</td><td>4 weeks</td><td>80% of the steady team + core</td></tr>
+        <tr><td>Reverse shadow</td><td>4 weeks</td><td>100% of the steady team + core</td></tr>
+      </tbody>
+    </table></div>
+    <p>The <b>steady team</b> is Year 1 delivery FTE with hypercare taken back out. The <b>core</b> (default 2 FTE) is the transition manager and leads, present throughout. A complex-legacy estate stretches every phase by 25%. All values are under Engagement and are a proposed calibration.</p>
+    <div class="callout">
+      <p><b>Transition is not hypercare, and it is not in Y1 FTE.</b> Transition happens <em>before</em> service start, so the card reports it alongside the estimate as person-months, and the summary strip shows <b>Transition PM</b>. Hypercare is the first months of actually running the service and stays inside Y1 as an uplift, exactly as before.</p>
+    </div>
+  </section>
+
+  <section id="outcome">
+    <h2>Outcome-based model</h2>
+    <p class="lede">What an outcome-linked commercial construct would look like around this estimate &mdash; expressed in effort, never money.</p>
+    <p>The commitment is the scenario&rsquo;s own savings target (for example 12&ndash;15% a year in Scenario 3), compounded from the year AIOps starts and measured against the no-AIOps baseline. Measuring it against Year 1 instead would be misleading, because Year 1 is inflated by hypercare and the brownfield uplift. Around that target sit three bands:</p>
+    <ul>
+      <li><b>Below the credit floor</b> (default 80% of target): a service credit, scaling up to a cap (default 10% of that year&rsquo;s effort).</li>
+      <li><b>Between floor and trigger</b>: neutral.</li>
+      <li><b>Above the gain-share trigger</b> (default 125% of target): we keep a share (default 50%) of the extra effort saved.</li>
+    </ul>
+    <p>Each year shows the modelled AIOps deflection against these bands, with a status (<span class="pill crit">BELOW FLOOR</span> <span class="pill warn">SHORT</span> <span class="pill acc">MEETS</span> <span class="pill good">GAIN-SHARE</span>), an indicative MTTR reduction from the selected solutions, and the tower SLAs carried into the KPI set.</p>
+    <div class="callout warn">
+      <p><b>The framework only recommends outcome pricing in Scenarios 2 and 4.</b> In Scenarios 1 and 3 the card still shows the bands, but warns that they are a phase-2 option once volumetrics or AI maturity firm up. With the calculator in what-if mode, the modelled deflection equals the scenario curve, so the status will read MEETS by construction; apply the calculator to test a real solution portfolio against the target.</p>
+    </div>
+  </section>
+
+  <section id="scenarios">
+    <h2>Scenarios &amp; exports</h2>
+    <p class="lede">Keep versions of an estimate, compare them, and hand the numbers to the bid team.</p>
+    <h3>Saved scenarios</h3>
+    <p>Click <b>Scenarios</b> in the masthead. Name the current inputs and <b>Save current</b>; change something and save again. Tick up to three saved versions to see them side by side with the current inputs: Y1 and final-year FTE, person-months over the term, productivity, scenario, confidence, AIOps ratio, transition effort and calculator saving, each with its difference from the current inputs. <b>Load</b> restores a version.</p>
+    <div class="callout">
+      <p><b>Saved scenarios live in this browser only.</b> They do not follow you to another machine or another browser, and a private window will not keep them. Use <b>Export all</b> and <b>Import</b> to move or share them.</p>
+    </div>
+    <h3>Excel export</h3>
+    <p><b>Export Excel</b> downloads an eight-sheet workbook: Summary, Year by year, Tower breakdown (Y1), Staffing plan (role &times; grade &times; year), Transition, AIOps calculator, Outcome KPIs and Assumptions. Every figure in it is also on screen. Inside the claude.ai viewer, each download asks you to confirm first; on the Netlify site it downloads directly.</p>
+  </section>
+
   <section id="inputs">
     <h2>Input reference</h2>
     <p class="lede">What each control actually drives, and where the default comes from.</p>
@@ -322,6 +392,11 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Customer Region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently. Also drives which delivery location typically carries off-hours on-call, for Active-Passive towers.</td><td>Engagement design</td></tr>
         <tr><td>Out-of-office-hours coverage</td><td>IMS/DMS/AMS, shown whenever coverage isn't 8x5. Active-Active reproduces the existing shift-floor formula unchanged. Active-Passive keeps business hours fully staffed and discounts only the off-hours delta to an on-call allowance &mdash; a materially lower coverage floor for the same declared window.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>AIOps solutions</td><td>Which of the 14 use cases this deal applies, with deflection %, start year and adoption ramp for each. Combined multiplicatively, capped at the automation ceiling. Drives the calculator; drives the estimate too when <i>Apply to estimate</i> is ticked.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Apply to estimate</td><td>Off: the calculator is a what-if and the scenario YoY curve drives deflection. On: the selected solutions drive deflection everywhere in the estimate.</td><td>Engagement design</td></tr>
+        <tr><td>Use of freed capacity</td><td>Reduce / redeploy / commit split of the net FTE saved. Informational &mdash; it never changes the headline FTE &mdash; but the commit share is checked against the scenario savings target.</td><td>Engagement design</td></tr>
+        <tr><td>Transition phase</td><td>Weeks and team share for knowledge transfer, shadow and reverse shadow, plus core transition FTE and the legacy stretch. Reported as person-months beside the estimate, never added to Y1.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Outcome model</td><td>Credit floor and gain-share trigger (as multiples of the savings target), service-credit cap and our gain-share. Effort only.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Structural complexity</td><td>IMS/DMS only. Environments/hostings/databases/security (IMS) or data products/platform/integrations/upstreams/downstreams (DMS) compute a score that continuously bumps B-factor (10% at the Low/Medium cut-point, 20% at Medium/High, still climbing beyond) and, via the same score's discrete Low/Medium/High label, gates Information Security Engineer or Data Architect/Data Strategist eligibility at High.</td><td><span class="pill warn">proposed</span></td></tr>
       </tbody>
     </table></div>
@@ -340,15 +415,16 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Team shape</td><td>The progression pyramid &rarr; diamond &rarr; inverted across years, and the AIOps band in violet.</td></tr>
         <tr><td>Role &amp; grade staffing plan</td><td>Lead share by year. This is the seniority narrative in your own grade ladder.</td></tr>
         <tr><td>Delivery location mix</td><td>Who sits where, for team-loading &mdash; the split for whichever region is active (EU/APAC/NA). IME just confirms India.</td></tr>
+        <tr><td>Transition</td><td>Weeks to service start and total person-months. Compare them with Y1 run effort to sanity-check the handover budget.</td></tr>
+        <tr><td>AIOps efficiency calculator</td><td>Net FTE saved by the final year, and whether combined deflection clears break-even. Then the gap-to-target callout, if there is one.</td></tr>
+        <tr><td>Outcome-based model</td><td>The status column: which years land below the credit floor, and how many person-months are at risk.</td></tr>
+        <tr><td>Saved scenarios</td><td>The difference column against your current inputs &mdash; which option moves final-year FTE and person-months most.</td></tr>
         <tr><td>O1 portfolio</td><td>Which AIOps use cases are funded in which year, and what did <em>not</em> make the capacity cut.</td></tr>
         <tr><td>O2 rostering</td><td>Rostered FTE against the analytic lower bound. A gap means rounding waste from unshareable time blocks.</td></tr>
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
-        <tr><td>Transition</td><td>Person-months <em>before</em> service start, shown separately from Y1 &mdash; never added into the headline FTE.</td></tr>
-        <tr><td>AIOps efficiency calculator</td><td>Net FTE saved after AIOps-engineer overhead, and the payback period per solution. Check whether it's driving the estimate or still what-if.</td></tr>
-        <tr><td>Outcome KPIs</td><td>Which years sit in credit, meets, or gain-share territory against the scenario's own savings target.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>149 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity, the AIOps efficiency calculator, transition phase, and outcome bands). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>149 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity, the AIOps calculator, transition, outcome targets and the Excel writer). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -478,41 +554,8 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     </div>
   </section>
 
-  <section id="transition">
-    <h2>Transition, AIOps calculator, and outcome bands</h2>
-    <p class="lede">Three linked additions that answer a question the core estimate doesn't: not just <em>how many people</em>, but <em>what happens before service starts</em>, <em>which specific AIOps solutions</em> are actually funded, and <em>what gets committed to the client</em> around the savings target.</p>
-
-    <h3>Transition phase</h3>
-    <p>A ramp-up <em>before</em> service commencement &mdash; Knowledge Transfer &rarr; Shadow (incumbent leads, we observe) &rarr; Reverse shadow (we lead, incumbent backs up) &mdash; reported beside Year 1, never added into it. Each phase is a duration in weeks and a team size as a fraction of the steady-state Y1 team (hypercare excluded), plus a fixed core FTE (transition manager and leads) present throughout. A legacy estate stretches every phase length; switching Engagement type re-seeds the KT duration the same way it already re-seeds the confidence sliders &mdash; greenfield 3 weeks, brownfield 6.</p>
-
-    <h3>AIOps efficiency calculator</h3>
-    <p>The scenario's YoY curve (Picking a scenario, above) is a top-down target. This is the bottom-up version: tick which specific AIOps use cases this deal will actually build, and set each one's deflection %, start year and adoption ramp. Solutions stack <b>multiplicatively</b>, never simply added, and the combined total is capped at the same automation ceiling the scenario curve already respects.</p>
-    <div class="demo">
-      <header><h4>What-if vs. driving</h4><span class="tag">two modes</span></header>
-      <div class="body">
-        <div class="ctrl">
-          <p style="margin:0 0 10px"><b>What-if (default)</b> &mdash; the calculator shows its own numbers (FTE saved, AIOps-engineer overhead, net saving, payback) without changing the estimate. Good for testing a specific solution roadmap before committing to it.</p>
-          <p style="margin:0"><b>Driving</b> &mdash; tick "Apply to estimate" and the named, costed solutions <em>become</em> the estimate, replacing the scenario's compounding curve entirely.</p>
-        </div>
-        <div class="out">
-          <p class="mini" style="margin:0">Seven core L2 use cases are on by default &mdash; chosen because their combined effect (~24%) clears the 1:4 AIOps break-even (20%, see the break-even demo above). The four prerequisite-free use cases alone (~12%) never would, which would make a first look at the calculator show a net loss before you'd touched anything.</p>
-        </div>
-      </div>
-    </div>
-    <p><b>Seed from O1 portfolio</b> copies whichever use cases the O1 optimizer actually funded (and the years it funded them) straight into the calculator &mdash; O1 and the calculator describe the same decision from two angles (capacity-constrained optimization vs. hand-picked what-if), so this lets one seed the other instead of choosing twice.</p>
-    <div class="callout warn">
-      <p><b>The scenario curve and a named solution set can diverge in later years.</b> The curve compounds every year; a fixed set of solutions levels off once every one of them is fully adopted. On a longer term, the calculator will often flag that a deal's later-year scenario savings aren't yet backed by any named AIOps solution &mdash; worth knowing before it becomes the client's discovery, not yours.</p>
-    </div>
-
-    <h3>Outcome / KPI bands</h3>
-    <p>Where the calculator sizes the team, this is what gets promised to the client: service-credit and gain-share bands around the scenario's own contractual savings target (not "vs. Y1," which hypercare and the brownfield uplift inflate). Modelled deflection below a floor (default 0.8&times; target) triggers a service-credit conversation, capped at a share of that year's effort. Above a trigger (default 1.25&times; target), the excess is split with the client as gain-share. Everything in between is simply "meets." An indicative MTTR-reduction figure rides alongside &mdash; informational only, it never changes FTE.</p>
-
-    <h3>Saved Scenarios and Excel export</h3>
-    <p>Name, save and compare up to three estimate variants &mdash; kept in this browser only (<code>localStorage</code>), with Export/Import to move them between machines as a file. <b>Export Excel</b> produces an 8-sheet workbook (Summary, Year by year, Tower breakdown, Staffing plan, Transition, AIOps calculator, Outcome KPIs, Assumptions) with every number also visible on screen &mdash; built by the page itself, no external library.</p>
-  </section>
-
   <section id="gotchas">
-    <h2>Five traps</h2>
+    <h2>Six traps</h2>
     <p class="lede">Things the tool surfaces that a hand-built estimate will miss.</p>
 
     <h3>1. Annexure 2 does not add up</h3>
@@ -529,6 +572,9 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
     <h3>5. The automation ceiling caps the stretch curve</h3>
     <p>Per-tower automation ceilings (AMS 60%, IMS 70%, DMS 50%) are volume-weighted into a deal-level cap. On a mixed AMS+IMS+DMS deal that lands near 56%, so the 18%&rarr;65% template flattens rather than reaching 65%. The tool marks the year it binds. Raising a ceiling is fine &mdash; but only with evidence, because committing past it is how AIOps savings promises break.</p>
+
+    <h3>6. Adding AIOps solutions does not automatically shrink the team</h3>
+    <p>Every solution you tick raises deflection, but the AIOps engineers who build and run them are headcount too. At 1:4 you need more than 20% combined deflection before the team gets smaller at all. The calculator shows gross saving, AIOps engineers and net saving separately for exactly this reason &mdash; quote the net, and if it is negative in early years, call those years an investment.</p>
   </section>
 
   <section id="glossary">
@@ -544,6 +590,9 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
       <div><dt>Risk drag</dt><dd>Annexure 2 overlay subtracted from the weighted driver score to give the effective confidence score.</dd></div>
       <div><dt>Volume band clause</dt><dd>Contract term defining the ticket-volume range within which the fixed fee holds. Defaults to &plusmn;15% of modelled Y1 demand.</dd></div>
       <div><dt>QUBO</dt><dd>Quadratic Unconstrained Binary Optimisation. A problem stated as minimising <code>x'Qx</code> over binary <code>x</code>, with constraints folded in as penalty terms. The native input format for quantum annealers and QAOA.</dd></div>
+      <div><dt>Transition</dt><dd>Knowledge transfer, shadow and reverse shadow before service start. Sized in person-months beside the estimate, never inside Y1 FTE.</dd></div>
+      <div><dt>Net FTE saved</dt><dd>FTE freed by the selected AIOps solutions, minus the AIOps engineers needed to build and run them.</dd></div>
+      <div><dt>Service credit / gain-share</dt><dd>Outcome-model bands around the savings target: a credit below the floor, a shared saving above the trigger. Expressed in person-months here, not money.</dd></div>
       <div><dt>P80</dt><dd>The value 80% of Monte Carlo samples fall below. The number to commit to on a fixed fee, rather than the point estimate.</dd></div>
     </dl>
   </section>
@@ -682,3 +731,5 @@ function spy(){
 }
 addEventListener("scroll",spy,{passive:true}); spy();
 </script>
+
+</body></html>
