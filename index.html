@@ -1175,7 +1175,14 @@ function runEngine(S,opts){
     const deflCapped = d>0 && Math.abs(d-ceil_)<1e-9;   // automation ceiling is binding, not the curve
     const delivery=pre*(1-d);
     const ratio=aiopsRatio(S,delivery);
-    const aiopsFTE = aiopsOn ? Math.ceil(delivery/ratio) : 0;
+    // Reported: engineers used to be charged every year AIOps was in scope,
+    // from Y1, even in scenarios where the AIOps timeline (and O1's own
+    // Transformation POD capacity) doesn't start until Y2 - real headcount
+    // cost with no roadmap item behind it and no deflection benefit that
+    // year. Phased in with the roadmap instead: only once deflection is
+    // actually non-zero, whether that's the scenario curve's own start year
+    // or (in calculator-driving mode) the earliest selected solution's start.
+    const aiopsFTE = (aiopsOn && d>0) ? Math.ceil(delivery/ratio) : 0;
     const total=delivery+aiopsFTE;
 
     // role split of the delivery team
@@ -1731,11 +1738,15 @@ function aiopsCalcRun(S,trad){
     const after=baseDel-gross;
     const active=S.eng.aiops && sh.shares.some(s=>s>0);
     const ratio=aiopsRatio(S,after);
-    // Embedded AIOps engineers on exactly runEngine's rule: every year AIOps is in
-    // scope, from Y1, whether or not a selected solution is live yet - they build
-    // the tooling before it deflects anything. Charging them only in "live" years
-    // made Y1 look free here while the headline estimate paid for it.
-    const overhead=S.eng.aiops?Math.ceil(after/ratio):0;
+    // Reported: engineers used to be charged from Y1 regardless of whether
+    // anything was actually live yet, which put 4+ embedded AIOps engineers
+    // on the bill in years where O1's own Transformation POD capacity is
+    // exactly zero (nothing funded, nothing being built) - real cost, no
+    // roadmap item to point to. Now phased in with the roadmap: matches
+    // runEngine's rule exactly (gate on `active`, same signal as `d>0`
+    // there), so the calculator's overhead stays consistent with the
+    // headline estimate whether or not it's driving.
+    const overhead=active?Math.ceil(after/ratio):0;
     years.push({y:y,base:baseDel,baseTotal:tr?tr.total:0,defl:S.eng.aiops?sh.combined:0,raw:sh.raw,capped:sh.capped,
                 gross:gross,after:after,ratio:ratio,overhead:overhead,net:gross-overhead,active:active});
   }
@@ -3571,8 +3582,29 @@ function selfTests(){
   const Id=seedRoles(defaults()); Id.towers[0].inc=600; Id.towers[0].sr=200; Id.aiopsCalc.drive=true;
   const idB=runEngine(Id,{}), idT=runEngine(Id,{aiops:false}), idC=aiopsCalcRun(Id,idT);
   const idOk=idC.years.every((y,i)=>Math.abs(y.net-(idT.years[i].total-idB.years[i].total))<1e-9);
-  out.push({n:"Calculator matches the estimate: applied, its net saving equals no-AIOps FTE minus estimate FTE every year (AIOps engineers counted from Y1)",
-            exp:"equal every year",got:idOk?"equal every year (Y1 net "+fmt(idC.years[0].net)+")":"differs",ok:idOk&&idC.years[0].overhead>0});
+  out.push({n:"Calculator matches the estimate: applied, its net saving equals no-AIOps FTE minus estimate FTE every year",
+            exp:"equal every year",got:idOk?"equal every year (Y2 net "+fmt(idC.years[1].net)+")":"differs",ok:idOk&&idC.years[1].overhead>0});
+
+  // Reported bug: AIOps engineers used to be charged from Y1 regardless of
+  // whether anything was actually live yet - real headcount cost with zero
+  // roadmap item behind it in a year O1's own Transformation POD capacity is
+  // exactly zero. Now phased in with the roadmap: zero engineers before
+  // deflection actually starts, in both the headline estimate and the
+  // calculator, and the two stay consistent with each other throughout.
+  out.push({n:"AIOps engineers are phased in with the roadmap, not charged before deflection starts (Y1 here, since Scenario 3 starts AIOps from Y2)",
+            exp:"0 engineers, 0% deflection in Y1; >0 from Y2",
+            got:"Y1: "+idB.years[0].aiopsFTE+" eng / "+pct0(idB.years[0].defl)+", Y2: "+idB.years[1].aiopsFTE+" eng / "+pct0(idB.years[1].defl),
+            ok:idB.years[0].aiopsFTE===0&&idB.years[0].defl===0&&idB.years[1].aiopsFTE>0&&idB.years[1].defl>0});
+
+  const o1CapY1=o1Data(Id,idB).cap[0];
+  out.push({n:"Y1 AIOps engineer count matches O1's own Y1 Transformation POD capacity (both zero before the scenario's AIOps timeline starts)",
+            exp:"0 engineers, 0 capacity",got:idB.years[0].aiopsFTE+" engineers, "+fmt(o1CapY1,1)+" capacity (pw)",
+            ok:idB.years[0].aiopsFTE===0&&near(o1CapY1,0,1e-9)});
+
+  const Tliv=seedRoles(defaults()); Tliv.eng.aiMaturity="moderate"; Tliv.eng.volumetrics="available"; // Scenario 4: aiopsFrom Y1
+  const bLiv=runEngine(Tliv,{});
+  out.push({n:"When AIOps is live from Y1 (Scenario 4), engineers are still charged in Y1 - the gate is on deflection being active, not on the year number",
+            exp:">0 engineers in Y1",got:String(bLiv.years[0].aiopsFTE),ok:bLiv.years[0].aiopsFTE>0});
 
   let xOk=false, xGot="unreadable";
   try{
