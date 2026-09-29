@@ -62,12 +62,17 @@ const ALLOWED_VALUES =
 const UNIT_NOTES =
   "Unit notes:\n" +
   "- towers[].inc (incidents), towers[].sr (service requests) and towers[].cr (change requests) are each MONTHLY figures - " +
-  "count per month, never a running or period total. If the source only gives a total over a longer or shorter span (e.g. " +
-  "\"719 incidents over the full year\", \"3,575 SRs\", \"376 CRs\", \"six months of data\"), divide by the number of months " +
-  "that span actually covers before writing the field - do not write the period total directly into inc, sr or cr. State the " +
-  "period you found and the conversion you applied in docSummary (e.g. \"719 incidents over 12 months ≈ 60/month\"), so it " +
-  "can be checked against the source. If the period covered is genuinely unclear from the text, say so in docSummary and omit " +
-  "the field rather than guessing which period applies.\n" +
+  "count per month, never a running or period total. First check whether the source states or implies ANY reporting period for " +
+  "these totals (a date range, \"full year\", \"six months of data\", a quarter, etc). If it does, divide by the number of " +
+  "months that period actually covers before writing the field - do not write the period total directly into inc, sr or cr - " +
+  "and state the period you found and the conversion you applied in docSummary (e.g. \"719 incidents over 12 months ≈ " +
+  "60/month\"), so it can be checked against the source. If NO reporting period is stated or implied ANYWHERE in the text for " +
+  "these figures - no dates, no \"per year\"/\"per month\"/\"over N months\" language, nothing - do not silently treat the raw " +
+  "number as already monthly and describe it as a plain fact; that is exactly how a real annual total got miscounted as a " +
+  "monthly one previously. Instead: write the raw number into the field as given (it is still the best available number), but " +
+  "you MUST flag the assumption explicitly and unmissably in docSummary, in words close to \"No reporting period was stated " +
+  "for these figures - treating them as already monthly by assumption; verify this against the source before relying on it\" - " +
+  "never phrase an assumed-monthly figure as if it were a confirmed one.\n" +
   "- towers[].mix (P1-P4) must always be genuine percentages of TOTAL INCIDENT volume, summing to 100 (+/-1 for rounding) - " +
   "never raw counts. Different documents report this in different shapes - a table of counts per severity, an already-stated " +
   "percentage split, or a label set other than P1-P4 entirely (Sev A/B/C/D, Critical/High/Medium/Low, Priority 1-4, etc). " +
