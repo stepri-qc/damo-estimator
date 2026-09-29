@@ -383,7 +383,7 @@ function defaults(){return{
     region:"ime",
     locMix:{
       eu:  {onshore:20,nearshore:30,offshore:50},
-      apac:{china:50,australia:50},      // PROPOSED - no framework guidance for APAC
+      apac:{china:50,australia:50,singapore:0}, // PROPOSED - no framework guidance for APAC
       na:  {nearshore:40,offshore:60}    // PROPOSED - mirrors EU's nearshore+offshore preset
     }
   },
@@ -522,6 +522,11 @@ function seedRoles(st){
       lm.eu=flat;
     }
     e.locMix=Object.assign({},defaults().eng.locMix,e.locMix||{});
+    // The line above is shallow at the region level, so a legacy apac locMix
+    // (pre-dating Singapore) would wholesale-replace defaults' apac object,
+    // silently dropping singapore:0 for anyone reloading an old link - same
+    // class of bug already fixed for bench.are/bench.structCpx below.
+    e.locMix.apac=Object.assign({},defaults().eng.locMix.apac,e.locMix.apac||{});
   }
   if(st){
     // Backfill any bench field missing from an older saved hash/import (shallow,
@@ -648,7 +653,8 @@ const LOC_CATALOG={
         {key:"nearshore",label:"Nearshore (Romania)"},
         {key:"offshore", label:"Offshore (India)"}],
   apac:[{key:"china",    label:"China"},
-        {key:"australia",label:"Australia"}],
+        {key:"australia",label:"Australia"},
+        {key:"singapore",label:"Singapore"}],
   na:  [{key:"nearshore",label:"Nearshore (LATAM/Ecuador)"},
         {key:"offshore", label:"Offshore (India)"}]
 };
@@ -660,9 +666,10 @@ const LOC_PRESETS={
     {id:"all3",    n:"Onshore + Nearshore + Offshore", mix:{onshore:20,nearshore:30,offshore:50}}
   ],
   apac:[
-    {id:"cn",  n:"China only",     mix:{china:100,australia:0},  proposed:true},
-    {id:"au",  n:"Australia only", mix:{china:0,  australia:100},proposed:true},
-    {id:"even",n:"Even split",     mix:{china:50, australia:50}, proposed:true}
+    {id:"cn",  n:"China only",     mix:{china:100,australia:0,  singapore:0},  proposed:true},
+    {id:"au",  n:"Australia only", mix:{china:0,  australia:100,singapore:0},  proposed:true},
+    {id:"sg",  n:"Singapore only", mix:{china:0,  australia:0,  singapore:100},proposed:true},
+    {id:"even",n:"Even split",     mix:{china:34, australia:33, singapore:33}, proposed:true}
   ],
   na:[
     {id:"off",     n:"Offshore only",       mix:{nearshore:0, offshore:100},proposed:true},
@@ -2669,6 +2676,43 @@ function selfTests(){
   out.push({n:"APAC location split conserves headcount per role and in total",
             exp:r1(apAllocTotal)+" FTE",got:r1(apTotal)+" FTE",
             ok:apConserved&&Math.abs(apTotal-apAllocTotal)<0.02});
+
+  // 22a-sg. Singapore is a real APAC location (catalogue + preset), and a
+  // "complete APAC solution" (100% Singapore) conserves headcount exactly
+  // like every other location split - locMix stays purely informational,
+  // never changes total FTE, role selection or grade mix.
+  out.push({n:"LOC_CATALOG.apac includes Singapore",
+    exp:"true",got:String(LOC_CATALOG.apac.some(l=>l.key==="singapore")),
+    ok:LOC_CATALOG.apac.some(l=>l.key==="singapore"&&l.label==="Singapore")});
+
+  const sgPreset=LOC_PRESETS.apac.find(p=>p.id==="sg");
+  out.push({n:"\"Singapore only\" APAC preset sets 100% singapore, 0% elsewhere",
+    exp:'{"china":0,"australia":0,"singapore":100}',got:JSON.stringify(sgPreset&&sgPreset.mix),
+    ok:!!sgPreset&&sgPreset.mix.china===0&&sgPreset.mix.australia===0&&sgPreset.mix.singapore===100});
+
+  const Tsg=seedRoles(defaults()); Tsg.eng.region="apac"; Tsg.eng.locMix.apac=Object.assign({},sgPreset.mix);
+  const bSg=runEngine(Tsg,{}), rpSg=rolePlan(Tsg,bSg), locSg=locationSplit(rpSg[0].alloc,Tsg);
+  let sgConserved=true, sgTotal=0, sgAllocTotal=0;
+  Object.keys(rpSg[0].alloc).forEach(id=>{
+    const a=rpSg[0].alloc[id]||0, l=locSg[id]||{};
+    if(Math.abs((l.singapore||0)-a)>0.01) sgConserved=false;   // a complete APAC solution: 100% lands on singapore, china/australia are 0
+    sgTotal+=(l.china||0)+(l.australia||0)+(l.singapore||0); sgAllocTotal+=a;
+  });
+  out.push({n:"A complete APAC solution (100% Singapore) conserves headcount and puts every role's FTE on Singapore",
+    exp:r1(sgAllocTotal)+" FTE, all on Singapore",got:r1(sgTotal)+" FTE total, "+sgConserved,
+    ok:sgConserved&&Math.abs(sgTotal-sgAllocTotal)<0.02});
+
+  const bMixTotalSg=runEngine(Tsg,{}).years[0].total;
+  const TsgNoMix=seedRoles(defaults()); TsgNoMix.eng.region="apac";
+  const bMixTotalNoSg=runEngine(TsgNoMix,{}).years[0].total;
+  out.push({n:"Location mix (Singapore or otherwise) is purely informational - never changes total FTE",
+    exp:fmt(bMixTotalNoSg,4)+" FTE (unchanged)",got:fmt(bMixTotalSg,4)+" FTE",
+    ok:near(bMixTotalNoSg,bMixTotalSg,1e-9)});
+
+  const legacyApac=seedRoles(Object.assign(defaults(),{eng:Object.assign({},defaults().eng,{region:"apac",locMix:Object.assign({},defaults().eng.locMix,{apac:{china:60,australia:40}})})}));
+  out.push({n:"seedRoles backfills locMix.apac.singapore missing from an old saved hash",
+    exp:"0",got:String(legacyApac.eng.locMix.apac.singapore),
+    ok:legacyApac.eng.locMix.apac.singapore===0&&legacyApac.eng.locMix.apac.china===60&&legacyApac.eng.locMix.apac.australia===40});
 
   // 22b. NA location split conserves headcount, same guarantee.
   const Tna=seedRoles(defaults()); Tna.eng.region="na"; Tna.eng.locMix.na={nearshore:40,offshore:60};
