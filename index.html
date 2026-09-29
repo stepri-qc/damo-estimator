@@ -3676,6 +3676,37 @@ function selfTests(){
   out.push({n:"[F p3] regression state (T1) is unaffected by the SR/CR ARE features - still reproduces 3.3 FTE",
     exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
 
+  // Reported: the sharp Y1->Y2 drop (hypercare + Brownfield uplift + AIOps
+  // deflection timing all easing after Y1) had no explanation anywhere in
+  // the tool's own output - added as a note derived from the model state.
+  const T110=seedRoles(defaults()); // brownfield + hypercare on + Scenario 3 (aiopsFrom Y2) - all three factors apply
+  const b110=runEngine(T110,{});
+  const sd110=y1toY2StepDown(b110);
+  out.push({n:"y1toY2StepDown fires for the default brownfield/hypercare/aiopsFrom-2 state, naming all three factors",
+    exp:"Hypercare, Brownfield Y1 uplift, AIOps deflection",
+    got:sd110?sd110.parts.map(p=>p.k).join(", "):"null",
+    ok:!!sd110&&sd110.parts.length===3&&sd110.parts.some(p=>p.k==="Hypercare")&&
+       sd110.parts.some(p=>p.k==="Brownfield Y1 uplift")&&sd110.parts.some(p=>p.k==="AIOps deflection")});
+
+  const T111=seedRoles(defaults()); T111.eng.engagementType="greenfield";
+  T111.bench.hypercareMonths=0; T111.eng.aiMaturity="moderate"; T111.eng.volumetrics="available"; // Scenario 4: aiopsFrom Y1, already live
+  const b111=runEngine(T111,{});
+  const sd111=y1toY2StepDown(b111);
+  out.push({n:"y1toY2StepDown returns null when hypercare is off, engagement is greenfield, and AIOps is already live in Y1",
+    exp:"null",got:sd111?JSON.stringify(sd111):"null",ok:sd111===null});
+
+  out.push({n:"y1toY2StepDownNote renders the callout only when the factors apply",
+    exp:"non-empty / empty",
+    got:(y1toY2StepDownNote(b110)?"non-empty":"empty")+" / "+(y1toY2StepDownNote(b111)?"non-empty":"empty"),
+    ok:!!y1toY2StepDownNote(b110)&&y1toY2StepDownNote(b111)===""});
+
+  const S_saved110=S; S=T110;
+  const reg110=buildRegister(b110,null,null,rolePlan(T110,b110));
+  S=S_saved110;
+  out.push({n:"buildRegister includes the Y1-is-not-the-run-rate note when the factors apply",
+    exp:"present",got:/Y1 is not the run-rate/.test(reg110)?"present":"absent",
+    ok:/Y1 is not the run-rate/.test(reg110)});
+
   return out;
 }
 
@@ -4268,6 +4299,35 @@ function chartSparsity(Q){
   return s;
 }
 
+/* Reported: the sharp Y1->Y2 drop looked alarming with no explanation
+   anywhere in the tool's own output. Hypercare, the Brownfield Y1 uplift and
+   AIOps deflection timing are all temporary or Y1-loaded effects that
+   specifically ease starting Y2 - they explain why Y1 is unusually HIGH, not
+   why Y2 is unusually low. Shared by the Year-by-year card's callout and the
+   register/print report, so the explanation is derived from the actual model
+   state (any engagement type, any hypercare setting, any scenario) rather
+   than hardcoded to one estimate. Returns null when none of the three apply
+   (e.g. greenfield, no hypercare, AIOps already live in Y1), so the note
+   only surfaces when it's actually informative. */
+function y1toY2StepDown(base){
+  if(!base.years || base.years.length<2) return null;
+  const y1=base.years[0], y2=base.years[1];
+  const hyperOn=y1.hyper>1.001, upliftOn=y1.engUplift>0.001, deflStart=y2.defl>0.001&&y1.defl<0.001;
+  if(!hyperOn && !upliftOn && !deflStart) return null;
+  const parts=[];
+  if(hyperOn) parts.push({k:"Hypercare",v:fmt(y1.hyper,2)+"\u00d7 in Y1, gone by Y2"});
+  if(upliftOn) parts.push({k:"Brownfield Y1 uplift",v:"+"+pct0(y1.engUplift)+" in Y1, "+(y2.engUplift>0.001?"+"+pct0(y2.engUplift)+" in Y2":"gone by Y2")});
+  if(deflStart) parts.push({k:"AIOps deflection",v:"starts in Y2 ("+pct0(y2.defl)+"), none in Y1"});
+  return {parts:parts,drop:y1.total>0?clamp(1-y2.total/y1.total,0,1):0};
+}
+function y1toY2StepDownNote(base){
+  const d=y1toY2StepDown(base); if(!d) return "";
+  return '<div class="callout" style="margin-top:12px"><b>Y1 is not the run-rate.</b> '+
+    'The Y1\u2192Y2 drop ('+pct0(d.drop)+') comes from '+d.parts.map(p=>'<b>'+esc(p.k)+'</b> ('+esc(p.v)+')').join(', ')+
+    ' &mdash; each is a temporary, Y1-loaded effect that eases specifically after Y1, not a sign the team is being cut too aggressively. '+
+    'Treat Y2/Y3 as closer to the steady-state run cost.</div>';
+}
+
 /* ---------- register ---------- */
 function buildRegister(base,mc,o1,rp){
   const B=S.bench, sc=base.sc, n=base.scenario, eff=effScore(S), bd=bandOf(eff);
@@ -4292,6 +4352,12 @@ function buildRegister(base,mc,o1,rp){
       f0(y.vol)+" tickets/mo, "+f0(y.A+y.B+y.G)+" hrs/mo, productivity vs Y1 "+pct0(y.prod)+".");
   });
   if(mc) L.push("- Y"+Math.min(S.eng.term,3)+" P80 estimate: "+fmt(mc.bands[Math.min(S.eng.term,3)-1].p80)+" FTE (Monte Carlo, "+mc.N+" samples, CV "+pct(mc.cv)+").");
+  const stepDown=y1toY2StepDown(base);
+  if(stepDown){
+    L.push("- **Y1 is not the run-rate.** The Y1\u2192Y2 drop ("+pct0(stepDown.drop)+") comes from "+
+      stepDown.parts.map(p=>"**"+p.k+"** ("+p.v+")").join(", ")+
+      " \u2014 each is a temporary, Y1-loaded effect that eases specifically after Y1, not a sign the team is being cut too aggressively. Treat Y2/Y3 as closer to the steady-state run cost.");
+  }
   L.push("");
   L.push("## Confidence posture [F Annexures 1\u20132]");
   L.push("- Weighted driver score "+confScore(S).toFixed(1)+" \u2212 risk drag "+riskDrag(S).toFixed(1)+" = effective "+eff.toFixed(1)+" ("+bd.name+").");
@@ -5061,6 +5127,7 @@ function renderCanvas(){
   if(base.years.some(y=>y.floorBinds))
     h+='<div class="callout" style="margin-top:12px"><b>Coverage binds.</b> The shift roster ('+esc(base.years[0].floorNote)+
        ') requires more people than the ticket workload does. Headcount is set by the support window, not by demand &mdash; the lever is coverage, not volume.</div>';
+  h+=y1toY2StepDownNote(base);
   h+='</div></div>';
 
   /* coverage */
