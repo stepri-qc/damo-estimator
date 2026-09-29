@@ -42,6 +42,23 @@ const ALLOWED_VALUES =
   "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n" +
   "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", or \"24x7\"\n";
 
+// Reported bug: a document stating a period total (e.g. "719 incidents" from an
+// annual or six-month table) got written straight into inc/sr, which the app
+// treats as a MONTHLY rate (rawVolume() sums them directly, no period logic of
+// its own) - inflating demand, and therefore FTE, by however many months the
+// source total actually spanned. The model has no way to know these fields are
+// monthly unless told explicitly, since the schema example's bare numbers (180,
+// 70) carry no visible unit.
+const UNIT_NOTES =
+  "Unit notes:\n" +
+  "- towers[].inc (incidents) and towers[].sr (service requests) are MONTHLY figures - incidents/service requests per month, " +
+  "never a running or period total. If the source only gives a total over a longer or shorter span (e.g. \"719 incidents over " +
+  "the full year\", \"3,575 SRs\", \"six months of data\"), divide by the number of months that span actually covers before " +
+  "writing the field - do not write the period total directly into inc or sr. State the period you found and the conversion " +
+  "you applied in docSummary (e.g. \"719 incidents over 12 months ≈ 60/month\"), so it can be checked against the source. " +
+  "If the period covered is genuinely unclear from the text, say so in docSummary and omit inc/sr rather than guessing which " +
+  "period applies.\n";
+
 function buildPrompt(text: string): string {
   return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
     "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you " +
@@ -52,6 +69,7 @@ function buildPrompt(text: string): string {
     "text gives nothing to summarize.\n\n" +
     "Target schema (example values, not the answer):\n" + JSON.stringify(SCHEMA_EXAMPLE, null, 2) + "\n\n" +
     ALLOWED_VALUES + "\n" +
+    UNIT_NOTES + "\n" +
     "Document text:\n" + text;
 }
 
