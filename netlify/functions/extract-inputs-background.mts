@@ -68,10 +68,15 @@ const UNIT_NOTES =
   "period you found and the conversion you applied in docSummary (e.g. \"719 incidents over 12 months ≈ 60/month\"), so it " +
   "can be checked against the source. If the period covered is genuinely unclear from the text, say so in docSummary and omit " +
   "the field rather than guessing which period applies.\n" +
-  "- towers[].mix (P1-P4) accepts either real percentages or raw counts (e.g. severity/priority ticket counts) - the app " +
-  "normalises whatever is given. If the source gives counts (\"Sev A 155, Sev B 557, Sev C 7\"), write those counts directly " +
-  "into P1/P2/P3/P4 rather than pre-computing and rounding a percentage yourself; that rounding loses precision the app " +
-  "doesn't need. mix always represents incident severity/priority only - never blend service-request or change-request " +
+  "- towers[].mix (P1-P4) must always be genuine percentages of TOTAL INCIDENT volume, summing to 100 (+/-1 for rounding) - " +
+  "never raw counts. Different documents report this in different shapes - a table of counts per severity, an already-stated " +
+  "percentage split, or a label set other than P1-P4 entirely (Sev A/B/C/D, Critical/High/Medium/Low, Priority 1-4, etc). " +
+  "Whatever shape is found: (1) identify each severity/priority category's raw count or share, (2) map it onto P1-P4 in " +
+  "descending severity order (P1 = most severe/highest priority, regardless of what the source itself calls it), (3) compute " +
+  "each category's percentage of the total incident count. Keep one or two decimal places rather than rounding to a whole " +
+  "number - on a lopsided split (e.g. 7 of 719) whole-number rounding can distort the smallest category by half or more. " +
+  "State the raw counts found, the P1-P4 mapping applied, and the resulting percentages in docSummary so they can be checked " +
+  "against the source. mix always represents incident severity/priority only - never blend service-request or change-request " +
   "volume into it, since those are extracted separately into sr/cr and costed on their own ARE, not this mix.\n";
 
 function buildPrompt(text: string): string {
