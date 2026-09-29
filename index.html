@@ -3826,6 +3826,12 @@ function renderIntake(){
       '<p class="hint">Pattern-matching above is automatic but it is not comprehension. For a genuine narrative summary, either '+
       'click \u201cExtract with AI now\u201d below (calls Claude directly from this deployment), or hand the document text to Claude in a '+
       'fresh chat yourself and paste its JSON reply back in.</p>'+
+      '<div class="field"><label>Reporting period these volumetrics cover, in months (optional)</label>'+
+      '<input type="number" min="1" step="1" id="intakePeriodMonths" placeholder="e.g. 12">'+
+      '<p class="hint">If your document\u2019s incident/SR/CR figures cover a specific span \u2014 a year, six months, a quarter \u2014 '+
+      'tell the tool directly here instead of leaving it to find and interpret that from the text. This takes precedence over '+
+      'whatever period language (or lack of it) is in the document. Leave blank to let AI extraction detect the period itself '+
+      '\u2014 it will flag it clearly in the summary if it can\u2019t find one, rather than silently assuming monthly.</p></div>'+
       '<div class="field"><label>Passphrase (if set by the operator)</label><input type="password" id="aiExtractPassphrase"></div>'+
       '<div class="btnrow"><button class="btn primary" type="button" id="btnAIExtract">Extract with AI now</button></div>'+
       '<span class="hint" id="aiExtractStatus"></span>'+
@@ -3876,20 +3882,60 @@ function combinedIntakeText(){
    must be complete because deepMergeState replaces arrays wholesale rather
    than merging per-element - a partial tower object would leave undefined
    fields that NaN out the engine downstream. */
+/* Kept in sync by hand with the server-side prompt in
+   netlify/functions/extract-inputs-background.mts (buildPrompt/UNIT_NOTES) -
+   there is no shared module between this static page and that Netlify
+   function, so the same fixes (cr field, period-conversion, mix precision,
+   the user-specified-period override below) have to be applied in both
+   places or this fallback path silently regresses to the bugs already fixed
+   in the direct "Extract with AI now" call. */
 function buildClaudePrompt(){
   const schema={
     docSummary:"2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
     eng:{term:3,aiMaturity:"low",volumetrics:"available",aiops:true,estate:"modern",region:"ime"},
-    towers:[{type:"AMS",mode:"history",inc:180,sr:70,mix:{P1:4,P2:16,P3:50,P4:30},
+    towers:[{type:"AMS",mode:"history",inc:180,sr:70,cr:20,mix:{P1:4,P2:16,P3:50,P4:30},
              sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
              avail:99.5,coverage:"16x5",mau:50000,own:{L1:"us",L2:"us",L3:"us"}}]
   };
+  const allowedValues=
+    "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language onto "+
+    "the nearest allowed value rather than inventing a new one):\n"+
+    "- eng.term: 1, 2, 3, 4, or 5 (years) - round to the nearest of these\n"+
+    "- eng.aiMaturity: \"low\" or \"moderate\" only\n"+
+    "- eng.volumetrics: \"available\" or \"unavailable\"\n"+
+    "- eng.estate: \"modern\" or \"legacy\"\n"+
+    "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n"+
+    "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n"+
+    "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n"+
+    "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\"\n";
+  const periodEl=document.getElementById("intakePeriodMonths");
+  const periodMonths=periodEl?(+periodEl.value||0):0;
+  const unitNotes=
+    "Unit notes:\n"+
+    "- towers[].inc (incidents), towers[].sr (service requests) and towers[].cr (change requests) are each MONTHLY figures - "+
+    (periodMonths>0
+      ? "the user has explicitly stated these volumetrics cover exactly "+periodMonths+" month(s): use inc = total incidents / "+periodMonths+
+        ", sr = total SRs / "+periodMonths+", cr = total CRs / "+periodMonths+". This takes precedence over any period language "+
+        "in the text - do not infer a different period, and do not add an assumption caveat about the period in docSummary since "+
+        "this was explicitly provided, not guessed. You may still state it as fact in docSummary (e.g. \"volumetrics cover "+periodMonths+" months as specified\").\n"
+      : "count per month, never a running or period total. First check whether the source states or implies ANY reporting period "+
+        "for these totals (a date range, \"full year\", \"six months of data\", a quarter, etc). If it does, divide by the number "+
+        "of months that period actually covers before writing the field, and state the period found and the conversion applied "+
+        "in docSummary. If NO reporting period is stated or implied anywhere in the text, do not silently treat the raw number as "+
+        "already monthly and describe it as fact - write it through as given (still the best available number) but flag the "+
+        "assumption explicitly and unmissably in docSummary, in words close to \"No reporting period was stated - treating these "+
+        "as already monthly by assumption; verify against the source\".\n")+
+    "- towers[].mix (P1-P4) must always be genuine percentages of TOTAL INCIDENT volume, summing to 100 (+/-1 for rounding) - never "+
+    "raw counts. Map whatever severity/priority labels the source uses (Sev A/B/C/D, Critical/High/Medium/Low, Priority 1-4, etc) "+
+    "onto P1-P4 in descending severity order, then compute each category's percentage of the total incident count at 1-2 decimal "+
+    "places rather than rounding to a whole number. mix represents incident severity only - never blend sr/cr volume into it.\n";
   return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object "+
     "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you "+
     "can't find evidence for rather than guessing - omitted fields keep their existing default. towers[] entries must be COMPLETE "+
     "objects (every field shown in the example), one per service tower actually described (type is one of AMS/IMS/DMS). docSummary "+
     "should be a short narrative in your own words, not copied verbatim from the source.\n\n"+
     "Target schema (example values, not the answer):\n"+JSON.stringify(schema,null,2)+"\n\n"+
+    allowedValues+"\n"+unitNotes+"\n"+
     "Document text:\n"+combinedIntakeText();
 }
 /* .docx/.xlsx/.pdf parsing is async, so file upload can't be a synchronous
@@ -5647,6 +5693,8 @@ document.addEventListener("click",e=>{
     case "btnAIExtract":{
       const status=$("#aiExtractStatus"); status.textContent="Extracting\u2026";
       const pw=$("#aiExtractPassphrase").value;
+      const periodEl=$("#intakePeriodMonths");
+      const periodMonths=periodEl?(+periodEl.value||0):0;
       try{ localStorage.setItem("aiExtractPassphrase",pw); }catch(e){}
       // Kicks off a Background Function (15-min execution limit) rather than
       // waiting on one request/response - a real 23-page RFP needed longer than
@@ -5658,7 +5706,7 @@ document.addEventListener("click",e=>{
         try{
           const jobId=Date.now()+"-"+Math.random().toString(36).slice(2);
           await fetch("/.netlify/functions/extract-inputs-background",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({jobId:jobId,text:combinedIntakeText(),passphrase:pw})});
+            body:JSON.stringify({jobId:jobId,text:combinedIntakeText(),passphrase:pw,periodMonths:periodMonths})});
           const started=Date.now();
           let d=null;
           for(let attempt=0;attempt<90;attempt++){ // ~3 minutes at 2s/poll

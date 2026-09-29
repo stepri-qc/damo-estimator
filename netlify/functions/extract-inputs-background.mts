@@ -33,14 +33,14 @@ const SCHEMA_EXAMPLE = {
 const ALLOWED_VALUES =
   "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language, e.g. " +
   "\"aggressive automation\" or \"heavy AI use\", onto the nearest allowed value rather than inventing a new one like \"high\"):\n" +
-  "- eng.term: 1, 3, or 5 (years) - round to the nearest of these\n" +
+  "- eng.term: 1, 2, 3, 4, or 5 (years) - round to the nearest of these\n" +
   "- eng.aiMaturity: \"low\" or \"moderate\" only\n" +
   "- eng.volumetrics: \"available\" or \"unavailable\"\n" +
   "- eng.estate: \"modern\" or \"legacy\"\n" +
   "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n" +
   "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n" +
   "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n" +
-  "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", or \"24x7\"\n";
+  "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\" (the x7 variants extend the same daily hours across weekends too)\n";
 
 // Reported bug: a document stating a period total (e.g. "719 incidents" from an
 // annual or six-month table) got written straight into inc/sr, which the app
@@ -84,7 +84,22 @@ const UNIT_NOTES =
   "against the source. mix always represents incident severity/priority only - never blend service-request or change-request " +
   "volume into it, since those are extracted separately into sr/cr and costed on their own ARE, not this mix.\n";
 
-function buildPrompt(text: string): string {
+// When the caller (the intake screen's "Reporting period" field) already
+// knows the span these volumetrics cover, that takes precedence over asking
+// the model to infer or flag it - removes the whole class of guessing error
+// UNIT_NOTES otherwise has to hedge around.
+function periodOverride(periodMonths?: number): string {
+  if (!periodMonths || periodMonths <= 0) return "";
+  const n = Math.round(periodMonths);
+  return "IMPORTANT - the user has explicitly stated the reporting period: all volumetrics (incidents, service requests, " +
+    "change requests) in the document text below cover exactly " + n + " month(s). Use inc = total incidents / " + n +
+    ", sr = total SRs / " + n + ", cr = total CRs / " + n + ". This takes precedence over any period language you find in " +
+    "the text, or the lack of it - do not infer a different period, and do not add an assumption caveat about the period in " +
+    "docSummary, since this number was explicitly provided by the user rather than guessed. You may still state it as fact " +
+    "in docSummary (e.g. \"volumetrics cover " + n + " months as specified\").\n\n";
+}
+
+function buildPrompt(text: string, periodMonths?: number): string {
   return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
     "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you " +
     "can't find evidence for rather than guessing - never invent a plausible-sounding value, and never use a value outside an " +
@@ -95,6 +110,7 @@ function buildPrompt(text: string): string {
     "Target schema (example values, not the answer):\n" + JSON.stringify(SCHEMA_EXAMPLE, null, 2) + "\n\n" +
     ALLOWED_VALUES + "\n" +
     UNIT_NOTES + "\n" +
+    periodOverride(periodMonths) +
     "Document text:\n" + text;
 }
 
@@ -109,7 +125,7 @@ const ENUM_FIELDS: Record<string, readonly string[]> = {
   region: ["ime", "eu", "apac", "na"],
   type: ["AMS", "IMS", "DMS"],
   mode: ["history", "proxy", "mau"],
-  coverage: ["8x5", "16x5", "24x5", "24x7"],
+  coverage: ["8x5", "16x5", "24x5", "8x7", "16x7", "24x7"],
 };
 function sanitizeExtraction(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(sanitizeExtraction);
@@ -117,7 +133,7 @@ function sanitizeExtraction(v: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
       if (k === "term" && typeof val === "number") {
-        out.term = [1, 3, 5].reduce((best, t) => (Math.abs(t - val) < Math.abs(best - val) ? t : best));
+        out.term = [1, 2, 3, 4, 5].reduce((best, t) => (Math.abs(t - val) < Math.abs(best - val) ? t : best));
         continue;
       }
       if (k in ENUM_FIELDS) {
@@ -144,7 +160,7 @@ function jobStore() {
 }
 
 export default async (req: Request, context: Context) => {
-  let body: { jobId?: string; text?: string; passphrase?: string };
+  let body: { jobId?: string; text?: string; passphrase?: string; periodMonths?: number };
   try {
     body = await req.json();
   } catch {
@@ -178,7 +194,7 @@ export default async (req: Request, context: Context) => {
     const response = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 6000,
-      messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000)) }],
+      messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000), body.periodMonths) }],
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
