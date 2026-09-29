@@ -398,7 +398,14 @@ function defaults(){return{
       // the incident severity mix - previously sr volume was silently
       // lumped into inc and cascaded through the incident P1-P4/ARE model,
       // wildly inflating FTE for any tower with meaningful SR volume.
-      sr:0.5},
+      sr:0.5,
+      // PROPOSED - change requests are planned implementation work, not a
+      // support-tier bucket: costed at their own flat ARE (default 8h/CR,
+      // a full working day for assessment+implementation+basic testing),
+      // added to ticketing effort as a genuinely separate line - never
+      // folded into h1/h2/h3 - so it stays visible on its own rather than
+      // silently inflating whichever tier it landed in.
+      cr:8},
     // PROPOSED: P1-P4 -> tier-of-entry routing, % of that priority's volume.
     routing:{P1:[0,40,60],P2:[10,60,30],P3:[55,40,5],P4:[85,15,0]},
     // [F 1.4] benchmark pass-through by year: inflow 100/90/85, L1->L2 70/65/60, L2->L3 20/20/15
@@ -556,6 +563,10 @@ function mkTower(type){
     // number move immediately, rather than the floor being invisibly
     // dominated by demand as the previous 180/70 default always was.
     inc:40, sr:15,
+    // cr defaults to 0 - a fresh/existing tower's coverage-floor calibration
+    // (see the 55-tickets/mo comment above) is unaffected unless CRs are
+    // explicitly entered.
+    cr:0,
     mix:{P1:4,P2:16,P3:50,P4:30},
     sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
     avail:99.5,
@@ -1071,8 +1082,10 @@ function runEngine(S,opts){
       // incident model unchanged - zero regression for those modes).
       const incRaw = t.mode==="history" ? (+t.inc||0) : rawVolume(t,B);
       const srRaw  = t.mode==="history" ? (+t.sr||0)  : 0;
+      const crRaw  = t.mode==="history" ? (+t.cr||0)  : 0;
       const incEff = incRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const srEff  = srRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
+      const crEff  = crRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const v   = incEff;
       const cas = tierCascade(t,B,yi,opts.routing,v);
       const t1inc=cas.l1, t2=cas.l2, t3=cas.l3;
@@ -1087,7 +1100,13 @@ function runEngine(S,opts){
       const h1=isOurs(t,"L1") ? t1inc*B.are.L1*tw.l1 + hSr : 0;
       const h2=isOurs(t,"L2") ? t2*B.are.L2*smp.are2*tw.l23*(1+sm.l2) : 0;
       const h3=isOurs(t,"L3") ? t3*B.are.L3*smp.are3*tw.l23*(1+sm.l3) : 0;
-      const raw=h1+h2+h3;
+      // PROPOSED - CRs are planned implementation work, tracked as a fourth,
+      // genuinely separate effort bucket rather than folded into h1/h2/h3 (per
+      // reported requirement). Gated on L2 ownership - change assessment and
+      // implementation is engineering-tier work, so a tower where we hold
+      // neither L2 nor L3 is not the party sizing/doing that work.
+      const hCr=(isOurs(t,"L2")||isOurs(t,"L3")) ? crEff*(B.are.cr||0) : 0;
+      const raw=h1+h2+h3+hCr;
       const bnd=boundariesOf(t);
       const handoff=bnd*(B.handoffPct||0);           // coordination cost of split ownership
       const a=raw/B.util*(1+handoff);                // [F 1.1] utilisation, not 100%
@@ -1102,11 +1121,11 @@ function runEngine(S,opts){
       const cpxBump=structCpxBump(t,B);
       const b=a*bf*(1+cpxBump);                      // [F 1.1] non-ticketing effort
       const g=B.govPerTower;
-      A+=a; Bh+=b; G+=g; vol+=v+srEff;
+      A+=a; Bh+=b; G+=g; vol+=v+srEff+crEff;
       tk=[tk[0]+t1,tk[1]+t2,tk[2]+t3];
       const fte=(a+b+g)/B.hoursMonth;
       baseFTE+=fte;
-      rows.push({id:t.id,type:t.type,vol:v+srEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,A:a,B:b,G:g,fte:fte,sla:sm,
+      rows.push({id:t.id,type:t.type,vol:v+srEff+crEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,crVol:crEff,hCr:hCr,A:a,B:b,G:g,fte:fte,sla:sm,
                  cpxTier:cpxTier,cpxBump:cpxBump,
                  own:{L1:ownerOf(t,"L1"),L2:ownerOf(t,"L2"),L3:ownerOf(t,"L3")},bnd:bnd,handoff:handoff});
     });
@@ -3560,7 +3579,57 @@ function selfTests(){
     exp:String(defaults().bench.are.sr),got:String(legacyAre90.bench.are.sr),
     ok:legacyAre90.bench.are.sr===defaults().bench.are.sr});
 
-  out.push({n:"[F p3] regression state (T1) is unaffected by the SR ARE feature - still reproduces 3.3 FTE",
+  // Reported bug: CRs (Change Requests) had no input or ARE at all - the
+  // reported eServices table had a distinct CRs column with no way to model
+  // it. Also: severity counts (Sev A/B/C) had been converted to rounded
+  // whole-number percentages before being written into mix, losing precision
+  // - tierCascade normalises whatever it's given (e1/=tot etc.), so raw
+  // counts work identically and more precisely; the rail's mix label and
+  // extraction prompt now say so explicitly rather than requiring the caller
+  // to pre-compute percentages.
+  out.push({n:"defaults().bench.are.cr defaults to 8 (a full working day per CR)",
+    exp:"8",got:String(defaults().bench.are.cr),ok:defaults().bench.are.cr===8});
+
+  const Tcr=seedRoles(defaults()); Tcr.towers=[mkTower("AMS")];
+  Object.assign(Tcr.towers[0],{inc:0,sr:0,cr:100,coverage:"8x5",ftePerShift:0.001});
+  Tcr.eng.term=1; Tcr.eng.aiops=false; Tcr.eng.engagementType="greenfield";
+  Tcr.bench.govBase=0; Tcr.bench.govPerTower=0; Tcr.bench.hypercareMonths=0; Tcr.bench.handoffPct=0;
+  const ycr=runEngine(Tcr,{}).years[0];
+  const expACr=100*8/0.85, expFteCr=(expACr+expACr*0.22)/160;
+  out.push({n:"CR-only tower: 100 CRs x 8h flat ARE, tracked as its own bucket (not h1/h2/h3)",
+    exp:fmt(expFteCr,3)+" FTE",got:fmt(ycr.total,3)+" FTE",
+    ok:near(ycr.total,expFteCr,0.005)&&ycr.rows[0].h1===0&&ycr.rows[0].h2===0&&ycr.rows[0].h3===0&&near(ycr.rows[0].hCr,800,0.01)});
+
+  const Tcr2=JSON.parse(JSON.stringify(Tcr)); Tcr2.bench.are.cr=16;
+  const ycr2=runEngine(Tcr2,{}).years[0];
+  out.push({n:"Doubling bench.are.cr doubles CR-only effort (confirms it's actually wired, not a fixed constant)",
+    exp:fmt(ycr.total*2,3)+" FTE",got:fmt(ycr2.total,3)+" FTE",ok:near(ycr2.total,ycr.total*2,0.005)});
+
+  const Tcr3=seedRoles(defaults()); Tcr3.towers=[mkTower("AMS")];
+  Object.assign(Tcr3.towers[0],{inc:100,sr:0,cr:50,mix:{P1:0,P2:0,P3:100,P4:0},coverage:"8x5",ftePerShift:0.001});
+  Tcr3.eng.term=1; Tcr3.eng.aiops=false; Tcr3.eng.engagementType="greenfield";
+  Tcr3.bench.govBase=0; Tcr3.bench.govPerTower=0; Tcr3.bench.hypercareMonths=0; Tcr3.bench.handoffPct=0; Tcr3.bench.routing.P3=[100,0,0];
+  const r3=runEngine(Tcr3,{}).years[0].rows[0];
+  const Tcr3b=JSON.parse(JSON.stringify(Tcr3)); Tcr3b.towers[0].cr=0;
+  const r3b=runEngine(Tcr3b,{}).years[0].rows[0];
+  out.push({n:"CR volume changes hCr only - h1/h2/h3 for the same incident volume are unaffected",
+    exp:"h1="+fmt(r3b.h1,2)+" h2="+fmt(r3b.h2,2)+" h3="+fmt(r3b.h3,2)+" (unchanged)",
+    got:"h1="+fmt(r3.h1,2)+" h2="+fmt(r3.h2,2)+" h3="+fmt(r3.h3,2),
+    ok:near(r3.h1,r3b.h1,1e-9)&&near(r3.h2,r3b.h2,1e-9)&&near(r3.h3,r3b.h3,1e-9)&&r3.hCr>0&&r3b.hCr===0});
+
+  const TcrNoOwn=seedRoles(defaults()); TcrNoOwn.towers=[mkTower("AMS")];
+  Object.assign(TcrNoOwn.towers[0],{inc:0,sr:0,cr:100,own:{L1:"us",L2:"customer",L3:"customer"}});
+  const rNoOwn=runEngine(TcrNoOwn,{}).years[0].rows[0];
+  out.push({n:"CR effort is zero when we own neither L2 nor L3 (assessment/implementation is engineering-tier work)",
+    exp:"0 hrs",got:fmt(rNoOwn.hCr,2)+" hrs",ok:rNoOwn.hCr===0});
+
+  const oldAreCr=Object.assign({},defaults().bench.are); delete oldAreCr.cr;
+  const legacyAreCr=seedRoles(Object.assign(defaults(),{bench:Object.assign({},defaults().bench,{are:oldAreCr})}));
+  out.push({n:"seedRoles backfills bench.are.cr missing from an old saved hash",
+    exp:String(defaults().bench.are.cr),got:String(legacyAreCr.bench.are.cr),
+    ok:legacyAreCr.bench.are.cr===defaults().bench.are.cr});
+
+  out.push({n:"[F p3] regression state (T1) is unaffected by the SR/CR ARE features - still reproduces 3.3 FTE",
     exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
 
   return out;
@@ -3794,9 +3863,10 @@ function renderRail(){
     const p="towers."+i;
     let demand="";
     if(t.mode==="history"){
-      demand='<div class="row c2">'+num(p+".inc","Incidents / mo")+num(p+".sr","Service reqs / mo")+'</div>'+
-        '<div class="field"><label>Severity mix (% of volume)</label><div class="row c4">'+
-        num(p+".mix.P1","P1")+num(p+".mix.P2","P2")+num(p+".mix.P3","P3")+num(p+".mix.P4","P4")+'</div></div>';
+      demand='<div class="row c3">'+num(p+".inc","Incidents / mo")+num(p+".sr","Service reqs / mo")+num(p+".cr","Change reqs / mo")+'</div>'+
+        '<div class="field"><label>Severity mix (P1-P4, counts or % &mdash; normalised automatically)</label><div class="row c4">'+
+        num(p+".mix.P1","P1")+num(p+".mix.P2","P2")+num(p+".mix.P3","P3")+num(p+".mix.P4","P4")+'</div>'+
+        '<p class="hint">Incidents only &mdash; service requests and change requests never inherit this mix, each is costed at its own flat ARE below.</p></div>';
     }else if(t.mode==="proxy" && t.type==="AMS"){
       demand='<div class="field"><label>Apps by complexity <span class="flag">proxy</span></label><div class="row c3">'+
         num(p+".apps.S","S 3-5")+num(p+".apps.M","M 8-12")+num(p+".apps.L","L 15-20")+'</div><div class="row c2" style="margin-top:9px">'+
@@ -3960,9 +4030,10 @@ function renderRail(){
 
   const rt=(p,l)=>'<td><input type="number" step="1" data-p="'+p+'" value="'+gp(S,p)+'"></td>';
   h+=sec("bench","Benchmarks & assumptions",
-    '<div class="field"><label>Average resolution effort, hours</label><div class="row c4">'+
-      num("bench.are.L1","L1",0.05)+num("bench.are.L2","L2",0.5)+num("bench.are.L3","L3",0.5)+num("bench.are.sr","SR",0.05)+'</div>'+
-      '<p class="hint">[F 1.5] L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h. SR (service requests) is flat and separate from the incident severity cascade <span class="flag">proposed</span> &mdash; no P1-P4 classification, always costed at L1.</p></div>'+
+    '<div class="field"><label>Average resolution effort, hours</label><div class="row c3">'+
+      num("bench.are.L1","L1",0.05)+num("bench.are.L2","L2",0.5)+num("bench.are.L3","L3",0.5)+'</div>'+
+      '<div class="row c2" style="margin-top:9px">'+num("bench.are.sr","SR",0.05)+num("bench.are.cr","CR",0.5)+'</div>'+
+      '<p class="hint">[F 1.5] L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h. SR and CR are flat, separate from the incident severity cascade <span class="flag">proposed</span> &mdash; no P1-P4 classification. SR is costed at L1 (fulfilment); CR is tracked as its own line, gated on L2/L3 ownership (assessment/implementation).</p></div>'+
     '<div class="field"><label>P1&ndash;P4 tier of entry, % <span class="flag">proposed</span></label>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th></th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>'+
       ["P1","P2","P3","P4"].map(p=>'<tr><td>'+p+'</td>'+rt("bench.routing."+p+".0")+rt("bench.routing."+p+".1")+rt("bench.routing."+p+".2")+'</tr>').join("")+
@@ -5102,12 +5173,13 @@ function renderCanvas(){
 
   /* per tower */
   h+='<div class="card"><header><h2>Tower breakdown</h2><span class="note">Year 1. Multipliers are proposed defaults pending calibration.</span></header><div class="cardbody"><div class="tablewrap"><table>'+
-    '<thead><tr><th>Tower</th><th>Tickets/mo</th><th>L1 hrs</th><th>L2 hrs</th><th>L3 hrs</th><th>A</th><th>B</th><th>SLA L2/L3</th><th>FTE</th></tr></thead><tbody>';
+    '<thead><tr><th>Tower</th><th>Tickets/mo</th><th>L1 hrs</th><th>L2 hrs</th><th>L3 hrs</th><th>CRs/mo</th><th>CR hrs</th><th>A</th><th>B</th><th>SLA L2/L3</th><th>FTE</th></tr></thead><tbody>';
   base.years[0].rows.forEach(r=>{
     h+='<tr><td>'+r.type+'</td><td>'+f0(r.vol)+'</td><td>'+f0(r.h1)+'</td><td>'+f0(r.h2)+'</td><td>'+f0(r.h3)+'</td>'+
+      '<td class="sub-td">'+f0(r.crVol||0)+'</td><td>'+f0(r.hCr||0)+'</td>'+
       '<td>'+f0(r.A)+'</td><td>'+f0(r.B)+'</td><td>'+(r.sla.l2?"+"+pct0(r.sla.l2)+" / +"+pct0(r.sla.l3):"\u2013")+'</td><td>'+fmt(r.fte)+'</td></tr>';
   });
-  h+='<tr class="total"><td>Total</td><td>'+f0(base.years[0].vol)+'</td><td colspan="4"></td><td>'+f0(base.years[0].B)+'</td><td></td><td>'+fmt(base.years[0].baseFTE)+'</td></tr>';
+  h+='<tr class="total"><td>Total</td><td>'+f0(base.years[0].vol)+'</td><td colspan="6"></td><td>'+f0(base.years[0].B)+'</td><td></td><td>'+fmt(base.years[0].baseFTE)+'</td></tr>';
   h+='</tbody></table></div></div></div>';
 
   /* ---- optimization ---- */

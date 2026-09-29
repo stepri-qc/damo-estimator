@@ -15,7 +15,7 @@ const SCHEMA_EXAMPLE = {
   docSummary: "2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
   eng: { term: 3, aiMaturity: "low", volumetrics: "available", aiops: true, estate: "modern", region: "ime" },
   towers: [{
-    type: "AMS", mode: "history", inc: 180, sr: 70,
+    type: "AMS", mode: "history", inc: 180, sr: 70, cr: 20,
     mix: { P1: 4, P2: 16, P3: 50, P4: 30 },
     sla: { P1r: 15, P1x: 120, P2r: 30, P2x: 480, P3r: 240, P3x: 2880, P4r: 480, P4x: 5760 },
     avail: 99.5, coverage: "16x5", mau: 50000, own: { L1: "us", L2: "us", L3: "us" },
@@ -49,15 +49,30 @@ const ALLOWED_VALUES =
 // source total actually spanned. The model has no way to know these fields are
 // monthly unless told explicitly, since the schema example's bare numbers (180,
 // 70) carry no visible unit.
+// Reported bug 2: towers[].cr (change requests) didn't exist as a field at
+// all, so a document with a distinct CRs column (separate from incidents and
+// service requests) had nowhere for that number to go and was silently
+// dropped. Extract it whenever the source reports it, same as inc/sr.
+//
+// Reported bug 3: severity/priority counts (e.g. "Sev A 155, Sev B 557, Sev C
+// 7") were being converted to rounded whole-number percentages before being
+// written into mix ("155/719 -> 22"), losing precision for no reason - the
+// app's own tierCascade() normalises whatever it's given, so raw counts work
+// identically and more precisely. Write counts straight through instead.
 const UNIT_NOTES =
   "Unit notes:\n" +
-  "- towers[].inc (incidents) and towers[].sr (service requests) are MONTHLY figures - incidents/service requests per month, " +
-  "never a running or period total. If the source only gives a total over a longer or shorter span (e.g. \"719 incidents over " +
-  "the full year\", \"3,575 SRs\", \"six months of data\"), divide by the number of months that span actually covers before " +
-  "writing the field - do not write the period total directly into inc or sr. State the period you found and the conversion " +
-  "you applied in docSummary (e.g. \"719 incidents over 12 months ≈ 60/month\"), so it can be checked against the source. " +
-  "If the period covered is genuinely unclear from the text, say so in docSummary and omit inc/sr rather than guessing which " +
-  "period applies.\n";
+  "- towers[].inc (incidents), towers[].sr (service requests) and towers[].cr (change requests) are each MONTHLY figures - " +
+  "count per month, never a running or period total. If the source only gives a total over a longer or shorter span (e.g. " +
+  "\"719 incidents over the full year\", \"3,575 SRs\", \"376 CRs\", \"six months of data\"), divide by the number of months " +
+  "that span actually covers before writing the field - do not write the period total directly into inc, sr or cr. State the " +
+  "period you found and the conversion you applied in docSummary (e.g. \"719 incidents over 12 months ≈ 60/month\"), so it " +
+  "can be checked against the source. If the period covered is genuinely unclear from the text, say so in docSummary and omit " +
+  "the field rather than guessing which period applies.\n" +
+  "- towers[].mix (P1-P4) accepts either real percentages or raw counts (e.g. severity/priority ticket counts) - the app " +
+  "normalises whatever is given. If the source gives counts (\"Sev A 155, Sev B 557, Sev C 7\"), write those counts directly " +
+  "into P1/P2/P3/P4 rather than pre-computing and rounding a percentage yourself; that rounding loses precision the app " +
+  "doesn't need. mix always represents incident severity/priority only - never blend service-request or change-request " +
+  "volume into it, since those are extracted separately into sr/cr and costed on their own ARE, not this mix.\n";
 
 function buildPrompt(text: string): string {
   return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
