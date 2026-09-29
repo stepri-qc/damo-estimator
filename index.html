@@ -390,7 +390,15 @@ function defaults(){return{
   towers:[mkTower("AMS")],
   bench:{
     // [F 1.5] ARE by tier. L2 range 2-4h, L3 range 8-12h -> midpoints.
-    are:{L1:0.25,L2:3,L3:10},
+    are:{L1:0.25,L2:3,L3:10,
+      // PROPOSED - service requests are fulfilment work (account access,
+      // provisioning), not severity-triaged incidents: they carry no P1-P4
+      // classification and don't escalate L1->L2->L3 the way an incident
+      // does. Costed at a flat ARE, attributed to L1, instead of inheriting
+      // the incident severity mix - previously sr volume was silently
+      // lumped into inc and cascaded through the incident P1-P4/ARE model,
+      // wildly inflating FTE for any tower with meaningful SR volume.
+      sr:0.5},
     // PROPOSED: P1-P4 -> tier-of-entry routing, % of that priority's volume.
     routing:{P1:[0,40,60],P2:[10,60,30],P3:[55,40,5],P4:[85,15,0]},
     // [F 1.4] benchmark pass-through by year: inflow 100/90/85, L1->L2 70/65/60, L2->L3 20/20/15
@@ -516,6 +524,10 @@ function seedRoles(st){
     // added since (e.g. brownfieldUplift) for anyone reloading or revisiting a
     // tab/bookmark/shared link carrying an old #hash.
     st.bench=Object.assign({},defaults().bench,st.bench||{});
+    // The top-level Object.assign above is shallow, so a legacy bench.are
+    // (pre-dating the sr field) would otherwise wholesale-replace defaults'
+    // whole are object, silently dropping sr for anyone reloading an old link.
+    st.bench.are=Object.assign({},defaults().bench.are,st.bench.are||{});
   }
   if(st){
     // calculator/outcome/transition arrived after links were already being shared;
@@ -1051,14 +1063,28 @@ function runEngine(S,opts){
 
     towers.forEach(t=>{
       const tw=B.tower[t.type];
-      const eff = rawVolume(t,B)*(1-autoDeflator(t.autoCov))*smp.vol;
-      const v   = eff*B.inflowMul[yi]*(smp.pass||1);
+      const deflFac = (1-autoDeflator(t.autoCov))*smp.vol;
+      // PROPOSED - service requests are split out from incidents before the
+      // severity cascade. History mode is the only demand basis with a real
+      // inc/sr distinction (proxy/mau give one blended number with no way to
+      // tell the two apart, so the entire volume there still goes through the
+      // incident model unchanged - zero regression for those modes).
+      const incRaw = t.mode==="history" ? (+t.inc||0) : rawVolume(t,B);
+      const srRaw  = t.mode==="history" ? (+t.sr||0)  : 0;
+      const incEff = incRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
+      const srEff  = srRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
+      const v   = incEff;
       const cas = tierCascade(t,B,yi,opts.routing,v);
-      const t1=cas.l1, t2=cas.l2, t3=cas.l3;
+      const t1inc=cas.l1, t2=cas.l2, t3=cas.l3;
+      const t1=t1inc+srEff;                          // L1 ticket count for display includes SR fulfilment tickets
       const sm=slaMod(t,B);
       // Tiers provided by the customer, another vendor or the product team still carry
       // volume through the cascade, but we do not size or staff them.
-      const h1=isOurs(t,"L1") ? t1*B.are.L1*tw.l1 : 0;
+      // PROPOSED - SRs never touch the incident severity mix/routing matrix:
+      // they're fulfilled directly at L1, at their own flat ARE (B.are.sr,
+      // default 30 min), not the incident L1 ARE.
+      const hSr=isOurs(t,"L1") ? srEff*(B.are.sr||0)*tw.l1 : 0;
+      const h1=isOurs(t,"L1") ? t1inc*B.are.L1*tw.l1 + hSr : 0;
       const h2=isOurs(t,"L2") ? t2*B.are.L2*smp.are2*tw.l23*(1+sm.l2) : 0;
       const h3=isOurs(t,"L3") ? t3*B.are.L3*smp.are3*tw.l23*(1+sm.l3) : 0;
       const raw=h1+h2+h3;
@@ -1076,11 +1102,11 @@ function runEngine(S,opts){
       const cpxBump=structCpxBump(t,B);
       const b=a*bf*(1+cpxBump);                      // [F 1.1] non-ticketing effort
       const g=B.govPerTower;
-      A+=a; Bh+=b; G+=g; vol+=v;
+      A+=a; Bh+=b; G+=g; vol+=v+srEff;
       tk=[tk[0]+t1,tk[1]+t2,tk[2]+t3];
       const fte=(a+b+g)/B.hoursMonth;
       baseFTE+=fte;
-      rows.push({id:t.id,type:t.type,vol:v,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,A:a,B:b,G:g,fte:fte,sla:sm,
+      rows.push({id:t.id,type:t.type,vol:v+srEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,A:a,B:b,G:g,fte:fte,sla:sm,
                  cpxTier:cpxTier,cpxBump:cpxBump,
                  own:{L1:ownerOf(t,"L1"),L2:ownerOf(t,"L2"),L3:ownerOf(t,"L3")},bnd:bnd,handoff:handoff});
     });
@@ -3497,6 +3523,46 @@ function selfTests(){
   }catch(e){ xGot=e.message; }
   out.push({n:"Excel export round-trips through this page's own zip reader (B2, CRC)",exp:"2.5",got:xGot,ok:xOk});
 
+  // Reported bug: service requests had no ARE of their own - rawVolume() summed
+  // inc+sr into one pool that inherited the incident P1-P4 severity mix and
+  // L1/L2/L3 ARE, wildly inflating FTE for any tower with meaningful SR volume.
+  // SRs are now costed at a flat, separate ARE (bench.are.sr, default 30 min),
+  // attributed to L1, and never touch the severity cascade at all.
+  out.push({n:"defaults().bench.are.sr defaults to 0.5 (30 min flat SR ARE)",
+    exp:"0.5",got:String(defaults().bench.are.sr),ok:defaults().bench.are.sr===0.5});
+
+  const Tsr=seedRoles(defaults()); Tsr.towers=[mkTower("AMS")];
+  // ftePerShift:0.001, not 0 - effShiftsPerWeek/floor reads +t.ftePerShift||1,
+  // so an exact 0 falls back to 1 (falsy) and leaves a 1.0 FTE coverage floor
+  // in place, silently swamping the sub-1-FTE ticketing effort this isolates.
+  Object.assign(Tsr.towers[0],{inc:0,sr:100,mix:{P1:100,P2:0,P3:0,P4:0},coverage:"8x5",ftePerShift:0.001});
+  Tsr.eng.term=1; Tsr.eng.aiops=false; Tsr.eng.engagementType="greenfield";
+  Tsr.bench.govBase=0; Tsr.bench.govPerTower=0; Tsr.bench.hypercareMonths=0; Tsr.bench.handoffPct=0;
+  const ysr=runEngine(Tsr,{}).years[0];
+  const expA=100*0.5/0.85, expFte=(expA+expA*0.22)/160;
+  out.push({n:"SR-only tower: 100 SRs x 0.5h flat ARE at L1, ignoring an adversarial 100% P1 severity mix",
+    exp:fmt(expFte,3)+" FTE",got:fmt(ysr.total,3)+" FTE",ok:near(ysr.total,expFte,0.005)});
+
+  const Tsr2=JSON.parse(JSON.stringify(Tsr)); Tsr2.bench.are.sr=1.0;
+  const ysr2=runEngine(Tsr2,{}).years[0];
+  out.push({n:"Doubling bench.are.sr doubles SR-only tower effort (confirms it's actually wired, not a fixed constant)",
+    exp:fmt(ysr.total*2,3)+" FTE",got:fmt(ysr2.total,3)+" FTE",ok:near(ysr2.total,ysr.total*2,0.005)});
+
+  const TincA=seedRoles(defaults()); TincA.towers=[mkTower("AMS")]; TincA.towers[0].sr=0; TincA.towers[0].inc=100;
+  const TincB=JSON.parse(JSON.stringify(TincA)); TincB.bench.are.sr=5;
+  const rIncA=runEngine(TincA,{}).years[0].total, rIncB=runEngine(TincB,{}).years[0].total;
+  out.push({n:"An incident-only tower (sr=0) is completely unaffected by bench.are.sr",
+    exp:fmt(rIncA,4)+" FTE (unchanged)",got:fmt(rIncB,4)+" FTE",ok:near(rIncA,rIncB,1e-9)});
+
+  const oldAre90=Object.assign({},defaults().bench.are); delete oldAre90.sr;
+  const legacyAre90=seedRoles(Object.assign(defaults(),{bench:Object.assign({},defaults().bench,{are:oldAre90})}));
+  out.push({n:"seedRoles backfills bench.are.sr missing from an old saved hash",
+    exp:String(defaults().bench.are.sr),got:String(legacyAre90.bench.are.sr),
+    ok:legacyAre90.bench.are.sr===defaults().bench.are.sr});
+
+  out.push({n:"[F p3] regression state (T1) is unaffected by the SR ARE feature - still reproduces 3.3 FTE",
+    exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
+
   return out;
 }
 
@@ -3894,9 +3960,9 @@ function renderRail(){
 
   const rt=(p,l)=>'<td><input type="number" step="1" data-p="'+p+'" value="'+gp(S,p)+'"></td>';
   h+=sec("bench","Benchmarks & assumptions",
-    '<div class="field"><label>Average resolution effort, hours</label><div class="row c3">'+
-      num("bench.are.L1","L1",0.05)+num("bench.are.L2","L2",0.5)+num("bench.are.L3","L3",0.5)+'</div>'+
-      '<p class="hint">[F 1.5] L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h.</p></div>'+
+    '<div class="field"><label>Average resolution effort, hours</label><div class="row c4">'+
+      num("bench.are.L1","L1",0.05)+num("bench.are.L2","L2",0.5)+num("bench.are.L3","L3",0.5)+num("bench.are.sr","SR",0.05)+'</div>'+
+      '<p class="hint">[F 1.5] L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h. SR (service requests) is flat and separate from the incident severity cascade <span class="flag">proposed</span> &mdash; no P1-P4 classification, always costed at L1.</p></div>'+
     '<div class="field"><label>P1&ndash;P4 tier of entry, % <span class="flag">proposed</span></label>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th></th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>'+
       ["P1","P2","P3","P4"].map(p=>'<tr><td>'+p+'</td>'+rt("bench.routing."+p+".0")+rt("bench.routing."+p+".1")+rt("bench.routing."+p+".2")+'</tr>').join("")+
