@@ -12,14 +12,88 @@ import { getStore } from "@netlify/blobs";
 // Blobs job record instead, and the frontend (extract-status.mts) polls for it.
 
 const SCHEMA_EXAMPLE = {
-  docSummary: "2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
-  eng: { term: 3, aiMaturity: "low", volumetrics: "available", aiops: true, estate: "modern", region: "ime" },
-  towers: [{
-    type: "AMS", mode: "history", inc: 180, sr: 70, cr: 20,
-    mix: { P1: 4, P2: 16, P3: 50, P4: 30 },
-    sla: { P1r: 15, P1x: 120, P2r: 30, P2x: 480, P3r: 240, P3x: 2880, P4r: 480, P4x: 5760 },
-    avail: 99.5, coverage: "16x5", mau: 50000, own: { L1: "us", L2: "us", L3: "us" },
-  }],
+  "docSummary": "2-4 sentence plain-English narrative summary of the document set - scope, client context, what is being asked for, and any assumptions you made.",
+  "eng": {
+    "term": 3,
+    "aiMaturity": "low",
+    "volumetrics": "available",
+    "aiops": true,
+    "estate": "modern",
+    "engagementType": "brownfield",
+    "complexity": "medium",
+    "region": "apac",
+    "locMix": {
+      "apac": {
+        "china": 0,
+        "australia": 0,
+        "singapore": 100
+      }
+    },
+    "pass12": 70,
+    "pass23": 20,
+    "incumbentFTE": 40
+  },
+  "towers": [
+    {
+      "label": "short name of what this tower covers, e.g. eServices (21 services)",
+      "type": "AMS",
+      "mode": "history",
+      "inc": 180,
+      "sr": 70,
+      "cr": 20,
+      "mix": {
+        "P1": 4,
+        "P2": 16,
+        "P3": 50,
+        "P4": 30
+      },
+      "srMix": {
+        "low": 60,
+        "medium": 30,
+        "high": 10
+      },
+      "crMix": {
+        "low": 50,
+        "medium": 35,
+        "high": 15
+      },
+      "sla": {
+        "P1r": 15,
+        "P1x": 120,
+        "P2r": 30,
+        "P2x": 480,
+        "P3r": 240,
+        "P3x": 2880,
+        "P4r": 480,
+        "P4x": 5760
+      },
+      "avail": 99.5,
+      "coverage": "16x5",
+      "mau": 50000,
+      "own": {
+        "L1": "us",
+        "L2": "us",
+        "L3": "us"
+      }
+    }
+  ],
+  "opportunities": [
+    {
+      "name": "short name of a separate automation/improvement effort",
+      "note": "one line: current effort, volume, pain point"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "towers.0.inc",
+      "value": 60,
+      "quote": "exact words copied from the document",
+      "basis": "stated"
+    }
+  ],
+  "warnings": [
+    "anything the user should check: conflicts, suspect figures, assumptions, things you could not determine"
+  ]
 };
 
 // Several fields are closed enums in the app's own UI (segmented controls with
@@ -31,16 +105,40 @@ const SCHEMA_EXAMPLE = {
 // the app doesn't recognize) - each constrained field's full allowed set is
 // spelled out explicitly below rather than relying on the example to imply it.
 const ALLOWED_VALUES =
-  "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language, e.g. " +
-  "\"aggressive automation\" or \"heavy AI use\", onto the nearest allowed value rather than inventing a new one like \"high\"):\n" +
+  "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language onto the nearest allowed value rather than inventing a new one like \"high\" for aiMaturity):\n" +
   "- eng.term: 1, 2, 3, 4, or 5 (years) - round to the nearest of these\n" +
   "- eng.aiMaturity: \"low\" or \"moderate\" only\n" +
   "- eng.volumetrics: \"available\" or \"unavailable\"\n" +
   "- eng.estate: \"modern\" or \"legacy\"\n" +
+  "- eng.engagementType: \"greenfield\" or \"brownfield\"\n" +
+  "- eng.complexity: \"low\", \"medium\" or \"high\"\n" +
   "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n" +
   "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n" +
   "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n" +
-  "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\" (the x7 variants extend the same daily hours across weekends too)\n";
+  "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\" (the x7 variants extend the same daily hours across weekends too)\n" +
+  "- towers[].own.L1 / L2 / L3: \"us\", \"customer\", \"vendor\" or \"product\"\n" +
+  "- evidence[].basis: \"stated\", \"inferred\" or \"assumed\"\n";
+
+// What to include and how (tower-type inference, scope, conflicts, tables) - kept identical to the in-page
+// buildClaudePrompt() by construction; change both together.
+const EXTRACTION_RULES =
+  "What to include and how:\n" +
+  "- Include every field you can support from the text; omit fields you cannot support rather than guessing - omitted fields keep the app's default. Never invent a plausible-sounding value. towers[] entries need at least type and mode; nested objects (mix, srMix, crMix, own, sla) may be partial.\n" +
+  "- Tower type is decided by WHAT IS BEING SUPPORTED, not by keywords. AMS = application management: incidents, service requests and change requests against applications/services/portals, application releases, batch jobs, tech debt. IMS = infrastructure management: servers, cloud/hosting, network, databases operations, observability and platform operations the bidder itself runs. DMS = data management: data platforms, pipelines, warehouses, data products, data quality. Words like \"infrastructure\", \"data\", \"AWS\" or \"database\" appearing in a description of an application estate do NOT make an IMS or DMS tower. Create a tower only for work the bidder is being asked to support. If the infrastructure or platform is run by another party (a hosting vendor, an enterprise IT team) it is not a tower; say so in warnings.\n" +
+  "- When a document lists many services, packages or applications with their own counts, combine them into ONE tower per tower type (sum the counts) unless the document itself defines separate towers or separately-owned groups to be sized independently; describe the combination in the tower label and in warnings.\n" +
+  "- towers[].own says who provides each support tier for that tower: \"us\" (the bidder), \"customer\", \"vendor\" (another supplier) or \"product\" (the client's product/dev team). A tier the document says is out of the bidder's scope or run by the agency/client is \"customer\" (or \"vendor\" if a named supplier runs it). Intermediate or special teams (for example an L1.5 team) are context for warnings, not a tier.\n" +
+  "- towers[].srMix and crMix describe how complex service requests / change requests are: low (simple, routine), medium, high (complex, urgent, multi-team). Use counts or percentages. Map the document's own words (\"majority simple\", \"10-20% urgent or complex\") onto low/medium/high; if only two classes are described, medium may be 0. Only include them when the document says something about request complexity.\n" +
+  "- eng.engagementType: \"brownfield\" if an incumbent team or existing build is being taken over, \"greenfield\" if built from scratch by the bidder. eng.complexity is YOUR judgement of how hard the estate is to run (low / medium / high) from technology mix, integrations, legacy, migrations, regulation; always basis \"inferred\" and quote the strongest evidence. eng.estate is \"legacy\" for complex legacy or mid-migration estates, \"modern\" for modern/SaaS.\n" +
+  "- eng.region and eng.locMix: only when the document states where delivery happens. locMix keys depend on the region: eu {onshore, nearshore, offshore}, apac {china, australia, singapore}, na {nearshore, offshore}; percentages summing to 100; omit locMix if the split is unknown.\n" +
+  "- eng.pass12 / eng.pass23 (percent, 0-100): only when the document states an OBSERVED escalation or resolution rate. pass12 = share of tickets reaching L1 that go on to L2 (100 minus the L1 resolution rate); pass23 = share of tickets handled at L2 that escalate to L3. Do not derive them from guesses.\n" +
+  "- eng.incumbentFTE: the size of the existing/incumbent team the client quoted for the in-scope work, if any (a single number; use the midpoint of a range, and say so in warnings).\n" +
+  "- Work that is a SEPARATE effort from running the in-scope service (an automation tool to build, a manual review process, monitoring or reporting improvements) is not a tower: list it in opportunities[] with its current effort or volume where stated.\n" +
+  "- Several dated sessions or versions of the same fact may disagree (a count that changes, a figure later flagged as wrong). Use the most recent, explicitly-corrected value, and put the conflict in warnings. Content that is clearly analysis, a model, a proposal or an AI-generated estimate written about the data (for example an FTE or pod breakdown) is NOT client-stated fact: never take values from it.\n" +
+  "- Figures that look wrong (one item holding most of a platform-wide total, a ratio that cannot be right, a total that does not equal its rows) are still extracted as stated, but must be flagged in warnings with what you checked.\n" +
+  "- Tables arrive as lines with cells separated by \" | \"; use the header row to identify columns, and check any total row against the rows. A table that continues after a [page N] marker is the same table.\n";
+
+const EVIDENCE_RULES =
+  "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output, add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 200 characters, copied EXACTLY from the document text - same words and numbers, never paraphrased), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
 
 // Reported bug: a document stating a period total (e.g. "719 incidents" from an
 // annual or six-month table) got written straight into inc/sr, which the app
@@ -100,15 +198,13 @@ function periodOverride(periodMonths?: number): string {
 }
 
 function buildPrompt(text: string, periodMonths?: number): string {
-  return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object " +
-    "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you " +
-    "can't find evidence for rather than guessing - never invent a plausible-sounding value, and never use a value outside an " +
-    "allowed set (below) even if the text suggests something more specific. towers[] entries must be COMPLETE objects (every " +
-    "field shown in the example), one per service tower actually described; if no towers are described, omit the towers key " +
-    "entirely. docSummary should be a short narrative in your own words, not copied verbatim from the source; omit it if the " +
-    "text gives nothing to summarize.\n\n" +
+  return "You are helping fill in a DAMO managed-services sizing tool. Read the document text below (an RFP, meeting notes or other client material) and return ONLY a JSON object " +
+    "(no prose, no markdown fences) that matches this shape. docSummary should be a short narrative in your own words, not copied verbatim from the source; " +
+    "omit it if the text gives nothing to summarize.\n\n" +
     "Target schema (example values, not the answer):\n" + JSON.stringify(SCHEMA_EXAMPLE, null, 2) + "\n\n" +
     ALLOWED_VALUES + "\n" +
+    EXTRACTION_RULES + "\n" +
+    EVIDENCE_RULES + "\n" +
     UNIT_NOTES + "\n" +
     periodOverride(periodMonths) +
     "Document text:\n" + text;
@@ -122,6 +218,9 @@ const ENUM_FIELDS: Record<string, readonly string[]> = {
   aiMaturity: ["low", "moderate"],
   volumetrics: ["available", "unavailable"],
   estate: ["modern", "legacy"],
+  engagementType: ["greenfield", "brownfield"],
+  complexity: ["low", "medium", "high"],
+  basis: ["stated", "inferred", "assumed"],
   region: ["ime", "eu", "apac", "na"],
   type: ["AMS", "IMS", "DMS"],
   mode: ["history", "proxy", "mau"],
@@ -134,6 +233,10 @@ function sanitizeExtraction(v: unknown): unknown {
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
       if (k === "term" && typeof val === "number") {
         out.term = [1, 2, 3, 4, 5].reduce((best, t) => (Math.abs(t - val) < Math.abs(best - val) ? t : best));
+        continue;
+      }
+      if ((k === "pass12" || k === "pass23") && typeof val === "number") {
+        out[k] = Math.min(100, Math.max(0, val));
         continue;
       }
       if (k in ENUM_FIELDS) {
@@ -193,7 +296,7 @@ export default async (req: Request, context: Context) => {
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 6000,
+      max_tokens: 16000,
       messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000), body.periodMonths) }],
     });
 

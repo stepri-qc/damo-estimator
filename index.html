@@ -375,6 +375,13 @@ function defaults(){return{
     // Y1 / Y2+ contingency and a promotion of the severity mix toward P1/P2 (see
     // bench.cpx). contPct / cont2 are optional overrides (null = take the tier's value).
     complexity:"", contPct:null, cont2:null,
+    // PROPOSED - observed pass-through for THIS deal (percent, null = use the benchmark): the share
+    // of tickets reaching a tier that are escalated to the next (L1->L2, L2->L3). Y1 takes the
+    // value; later years keep the benchmark's own year-on-year improvement (see passAt).
+    pass12:null, pass23:null,
+    // Existing/incumbent team the client stated (FTE, null = not given): sanity check only,
+    // never changes the estimate.
+    incumbentFTE:null,
     // delivery region: ime -> whole team shown as India, no further config.
     // eu/apac/na -> percentage split across that region's own location catalogue
     // (see LOC_CATALOG). Informational staffing-location layer only - never
@@ -504,7 +511,10 @@ function defaults(){return{
   // deal-level manual roles (L1.5, SRE, QA, advisory, custom) - applicable to every
   // tower, counted separately from tower-driven sizing and added on top of Total FTE.
   // [{id,name,fte,years:[]}] - years[] is an optional per-year override (blank = use fte).
-  specialRoles:[]
+  specialRoles:[],
+  // adjacent automation opportunities noted in the source documents (not run-service sizing):
+  // [{name, note}] - shown in the register only
+  opportunities:[]
 };}
 /* Also the single universal choke point for migrating legacy state shapes -
    called from every place S gets rebuilt (init, loadHash, Import, RFP-intake
@@ -562,6 +572,7 @@ function seedRoles(st){
     if(e2.complexity!=="low"&&e2.complexity!=="medium"&&e2.complexity!=="high") e2.complexity="";
     if(e2.contPct===undefined||e2.contPct==="") e2.contPct=null;
     if(e2.cont2===undefined||e2.cont2==="") e2.cont2=null;
+    ["pass12","pass23","incumbentFTE"].forEach(k=>{ if(e2[k]===undefined||e2[k]===""||isNaN(+e2[k])) e2[k]=null; });
   }
   if(st){
     // calculator/outcome/transition arrived after links were already being shared;
@@ -578,13 +589,15 @@ function seedRoles(st){
   // old links/imports pre-date Special roles; also tolerate hand-edited junk
   st.specialRoles=(Array.isArray(st.specialRoles)?st.specialRoles:[]).filter(r=>r&&typeof r==="object")
     .map(r=>({id:r.id||uid(),kind:String(r.kind||"custom"),name:String(r.name||"Special role"),fte:Math.max(+r.fte||0,0),years:Array.isArray(r.years)?r.years:[]}));
+  if(st) st.opportunities=(Array.isArray(st.opportunities)?st.opportunities:[]).filter(o=>o&&typeof o==="object")
+    .map(o=>({name:String(o.name||"").slice(0,200),note:String(o.note||"").slice(0,600)})).filter(o=>o.name);
   // role catalogue/weights were removed (fixed per-tower role map); drop stale state
   if(st){ delete st.roles; delete st.roleW; }
   return st;
 }
 
 function mkTower(type){
-  return {id:uid(),type:type,enabled:true,
+  return {id:uid(),type:type,enabled:true,label:"",
     mode:"history",                 // history | proxy | mau
     // PROPOSED - a modest starting demand (55 tickets/mo) chosen so a fresh
     // default tower's own coverage floor genuinely binds at the default 16x5
@@ -1001,9 +1014,9 @@ function structCpxBump(t,B){
    (14 tickets x 10h = 140h, additive). Total 357.5h raw -> /0.85 = 421h.
    The P1-P4 matrix sets where each priority ENTERS the stack; the framework
    pass-through rates then cascade the L1-entering stream downward. */
-function tierCascade(t,B,yi,routingOverride,volume){
+function tierCascade(t,B,yi,routingOverride,volume,pass){
   const R=routingOverride||B.routing;
-  const p12=B.p12[yi], p23=B.p23[yi];
+  const p12=(pass&&pass.p12!=null)?pass.p12:B.p12[yi], p23=(pass&&pass.p23!=null)?pass.p23:B.p23[yi];
   let e1=0,e2=0,e3=0;
   for(const p of ["P1","P2","P3","P4"]){
     const s=(+t.mix[p]||0)/100;
@@ -1103,6 +1116,17 @@ function contPctFor(S,y){
   return Math.max(num(e.cont2)?+e.cont2:Math.min(y1,+S.bench.contTaperCap||6),0);
 }
 
+function rowName(r){ return r.type+(r.label?" ("+r.label+")":""); }
+
+/* Deal-level observed pass-through (percent entered on Benchmarks): Y1 takes the observed value,
+   later years keep the benchmark's own year-on-year improvement (ratio to its Y1 figure).
+   null = no override (the benchmark applies unchanged). */
+function passAt(S,yi){
+  const e=S.eng, B=S.bench, num=v=>(v!=null&&v!==""&&!isNaN(+v));
+  const adj=(obs,arr)=>!num(obs)?null:clamp((+obs/100)*(arr[0]>0?arr[yi]/arr[0]:1),0,1);
+  return {p12:adj(e.pass12,B.p12), p23:adj(e.pass23,B.p23)};
+}
+
 /* SR / CR complexity mixes: {low,medium,high} entered counts or %, normalised, then tilted by
    the estate complexity exactly like the severity mix (a fraction bench.cpx[..].sev of each
    lower band moves one level up: Low->Medium->High). Returns shares summing to 1; an empty
@@ -1166,7 +1190,7 @@ function runEngine(S,opts){
       const srEff  = srRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const crEff  = crRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const v   = incEff;
-      const cas = tierCascade(effectiveMix(t,S)===t.mix?t:Object.assign({},t,{mix:effectiveMix(t,S)}),B,yi,opts.routing,v);
+      const cas = tierCascade(effectiveMix(t,S)===t.mix?t:Object.assign({},t,{mix:effectiveMix(t,S)}),B,yi,opts.routing,v,passAt(S,yi));
       const t1inc=cas.l1, t2=cas.l2, t3=cas.l3;
       const t1=t1inc+srEff;                          // L1 ticket count for display includes SR fulfilment tickets
       const sm=slaMod(t,B);
@@ -1205,7 +1229,7 @@ function runEngine(S,opts){
       tk=[tk[0]+t1,tk[1]+t2,tk[2]+t3];
       const fte=(a+b+g)/B.hoursMonth;
       baseFTE+=fte;
-      rows.push({id:t.id,type:t.type,hSr:hSr,vol:v+srEff+crEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,crVol:crEff,hCr:hCr,A:a,B:b,G:g,fte:fte,sla:sm,
+      rows.push({id:t.id,type:t.type,label:t.label||"",hSr:hSr,vol:v+srEff+crEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,crVol:crEff,hCr:hCr,A:a,B:b,G:g,fte:fte,sla:sm,
                  cpxTier:cpxTier,cpxBump:cpxBump,
                  own:{L1:ownerOf(t,"L1"),L2:ownerOf(t,"L2"),L3:ownerOf(t,"L3")},bnd:bnd,handoff:handoff});
     });
@@ -2332,7 +2356,16 @@ function deepMergeState(base,partial){
    to make prompt wording alone reliable. */
 function backfillTowers(towers){
   if(!Array.isArray(towers)) return towers;
-  return towers.map(t=>Object.assign({},mkTower((t&&t.type)||"AMS"),t||{}));
+  return towers.map(t=>{
+    const base=mkTower((t&&t.type)||"AMS"), out=Object.assign({},base,t||{});
+    // one level deeper: a partial sla / mix / own / srMix / crMix / apps / active object
+    // (a model that omits what it can't support) must keep the template's other keys
+    Object.keys(base).forEach(k=>{
+      const bv=base[k], tv=t&&t[k];
+      if(bv&&typeof bv==="object"&&!Array.isArray(bv)&&tv&&typeof tv==="object"&&!Array.isArray(tv)) out[k]=Object.assign({},bv,tv);
+    });
+    return out;
+  });
 }
 
 /* =====================  DOCUMENT PARSING  =====================
@@ -2482,31 +2515,38 @@ function ensurePdfWorker(){
   pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(blob);
   PDF_WORKER_READY=true;
 }
+/* pdf.js text items -> text. A gap wider than a word space between two runs on one line is a
+   table column boundary: write it as " | " so a row stays one line with its cells separated
+   (a flat join would run "162 - 6 - 10 -" together and lose which column each figure sits in).
+   Bullet glyphs and list numbers are not columns, so no pipe is written after them. */
+function pdfItemsToText(items,colGap){
+  const gap=colGap||12;
+  let text="",lineY=null,lastEndX=null,lastStr="";
+  items.forEach(it=>{
+    const x=it.transform[4],y=it.transform[5];
+    const sameLine=lineY!=null&&Math.abs(y-lineY)<2;
+    if(!sameLine){ text+="\n"; lastEndX=null; }
+    else if(lastEndX!=null&&(x-lastEndX)>gap&&!/^[\u25cf\u25cb\u25a0\u2022\u25aa\u25ab\-\u2013\u2014*]$|^\(?\d+[.)]$|^\(?[a-z][.)]$|^[ivx]+[.)]$/i.test(lastStr.trim())&&it.str.trim()) text+=" | ";
+    else if(lastEndX!=null&&(x-lastEndX)>1) text+=" ";
+    text+=it.str;
+    if(it.str.trim()) lastStr=it.str;
+    lastEndX=x+(it.width||0); lineY=y;
+    if(it.hasEOL){ text+="\n"; lineY=null; lastEndX=null; }
+  });
+  return text;
+}
 async function parsePdfText(arrayBuffer){
-  // pdf.js splits text into positioned glyph runs, not words - a naive
-  // join(" ") between every run inserts spaces INSIDE words whenever a
-  // single word happens to be split across two runs (font/kerning changes
-  // do this often), silently corrupting keyword matches downstream. Use
-  // each run's actual x/y position instead: only insert a space when
-  // there's a real horizontal gap, and start a new line on a y-shift or
-  // pdf.js's own end-of-line marker.
+  // pdf.js splits text into positioned glyph runs, not words - a naive join(" ") inserts spaces
+  // INSIDE words whenever a word is split across two runs, silently corrupting keyword matches.
+  // Use each run's actual x/y position instead (see pdfItemsToText), and mark page breaks so a
+  // table that continues across pages can be followed.
   ensurePdfWorker();
   const doc=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
   let text="";
   for(let p=1;p<=doc.numPages;p++){
     const page=await doc.getPage(p);
     const content=await page.getTextContent();
-    let lineY=null,lastEndX=null;
-    content.items.forEach(it=>{
-      const x=it.transform[4],y=it.transform[5];
-      const sameLine=lineY!=null&&Math.abs(y-lineY)<2;
-      if(!sameLine){ text+="\n"; lastEndX=null; }
-      else if(lastEndX!=null&&(x-lastEndX)>1) text+=" ";
-      text+=it.str;
-      lastEndX=x+(it.width||0); lineY=y;
-      if(it.hasEOL){ text+="\n"; lineY=null; lastEndX=null; }
-    });
-    text+="\n";
+    text+="\n[page "+p+"]"+pdfItemsToText(content.items)+"\n";
   }
   return text;
 }
@@ -3880,6 +3920,77 @@ function selfTests(){
   out.push({n:"CR effort is zero when we own neither L2 nor L3 (assessment/implementation is engineering-tier work)",
     exp:"0 hrs",got:fmt(rNoOwn.hCr,2)+" hrs",ok:rNoOwn.hCr===0});
 
+  // Observed pass-through, tower labels, incumbent baseline and opportunities (extraction-driven inputs)
+  const ptBase=isoT({inc:100}, T=>{ T.eng.term=3; });
+  const bPt0=runEngine(ptBase,{});
+  const ptSame=JSON.parse(JSON.stringify(ptBase)); ptSame.eng.pass23=ptBase.bench.p23[0]*100; ptSame.eng.pass12=ptBase.bench.p12[0]*100;
+  const bPtSame=runEngine(ptSame,{});
+  const ptLow=JSON.parse(JSON.stringify(ptBase)); ptLow.eng.pass23=5;
+  const bPtLow=runEngine(ptLow,{});
+  out.push({n:"Observed pass-through: blank = benchmark; entering the benchmark's own Y1 value changes nothing in any year",
+    exp:"identical h2/h3 in Y1-Y3",got:bPtSame.years.map(y=>fmt(y.rows[0].h3,2)).join("/")+" vs "+bPt0.years.map(y=>fmt(y.rows[0].h3,2)).join("/"),
+    ok:bPtSame.years.every((y,i)=>near(y.rows[0].h3,bPt0.years[i].rows[0].h3,1e-9)&&near(y.rows[0].h2,bPt0.years[i].rows[0].h2,1e-9))});
+  out.push({n:"Observed L2->L3 pass-through of 5% (vs the 20% benchmark) cuts L3 effort in every year, and leaves L2 effort alone",
+    exp:"L3 hours lower each year; L2 unchanged",got:bPtLow.years.map((y,i)=>fmt(y.rows[0].h3,1)+"<"+fmt(bPt0.years[i].rows[0].h3,1)).join(" "),
+    ok:bPtLow.years.every((y,i)=>y.rows[0].h3<bPt0.years[i].rows[0].h3-1e-6&&near(y.rows[0].h2,bPt0.years[i].rows[0].h2,1e-9))});
+  const ptStr=JSON.parse(JSON.stringify(ptBase)); ptStr.eng.pass23=""; ptStr.eng.pass12="abc";
+  const ptSeed=seedRoles(ptStr);
+  out.push({n:"A blank or junk pass-through value is treated as 'not set' (null), never as 0%",
+    exp:"null / null",got:String(ptSeed.eng.pass23)+" / "+String(ptSeed.eng.pass12),ok:ptSeed.eng.pass23===null&&ptSeed.eng.pass12===null});
+  const lbT=seedRoles(defaults()); lbT.towers[0].label="eServices (5 packages)";
+  const bLb=runEngine(lbT,{});
+  out.push({n:"A tower label is carried on the year rows and shown by rowName()",
+    exp:"AMS (eServices (5 packages))",got:rowName(bLb.years[0].rows[0]),ok:rowName(bLb.years[0].rows[0])==="AMS (eServices (5 packages))"&&rowName({type:"IMS",label:""})==="IMS"});
+  const opS=seedRoles(Object.assign(defaults(),{opportunities:[null,{name:"Account review",note:"10 man-days/month"},{note:"no name"},{name:"Log analysis"}]}));
+  out.push({n:"Opportunities are cleaned on load: junk and nameless entries dropped, legacy state gets []",
+    exp:"2 entries; legacy []",got:opS.opportunities.length+" / "+JSON.stringify(seedRoles(defaults()).opportunities),
+    ok:opS.opportunities.length===2&&opS.opportunities[0].name==="Account review"&&seedRoles(Object.assign(defaults(),{opportunities:undefined})).opportunities.length===0});
+  const rgS=seedRoles(defaults()); rgS.eng.incumbentFTE=57; rgS.eng.pass23=5; rgS.opportunities=[{name:"Account review",note:"10 man-days/month"}];
+  const S_rg=S; S=rgS; const regRg=buildRegister(runEngine(rgS,{}),null,null,rolePlan(rgS,runEngine(rgS,{}))); S=S_rg;
+  out.push({n:"Register shows the existing-team sanity check, the observed pass-through and the adjacent opportunities",
+    exp:"all three present",got:[/Existing team stated by the client: 57/.test(regRg),/Observed pass-through/.test(regRg),/Adjacent automation opportunities/.test(regRg)].join(","),
+    ok:/Existing team stated by the client: 57/.test(regRg)&&/Observed pass-through/.test(regRg)&&/Adjacent automation opportunities[\s\S]*Account review/.test(regRg)});
+
+  // Extraction tuning: table-aware PDF text, quote verification, review model, partial towers, prompt markers
+  const mkIt=(str,x,y,w,eol)=>({str:str,transform:[1,0,0,1,x,y],width:w,hasEOL:!!eol});
+  const pdfRows=pdfItemsToText([
+    mkIt("No.",0,700,20),mkIt("eService",40,700,40),mkIt("SRs",200,700,20),mkIt("CRs",260,700,20),
+    mkIt("2",0,680,6),mkIt("MyCallup",40,680,45),mkIt("80",200,680,10),mkIt("31",260,680,10),
+    mkIt("\u25cf",0,660,6),mkIt("A bulleted line of text",20,660,90)]).split("\n").filter(Boolean);
+  out.push({n:"PDF table rows keep their cells apart (' | ') while bullets and plain sentences stay unbroken",
+    exp:"No. | eService | SRs | CRs / 2 | MyCallup | 80 | 31 / bullet line without pipe",got:pdfRows.join(" // "),
+    ok:pdfRows[0]==="No. | eService | SRs | CRs"&&pdfRows[1]==="2 | MyCallup | 80 | 31"&&pdfRows[2].indexOf("|")<0});
+  const srcX=xrNorm("FY25 figures: SRs 3,575 | Sev A 155 | Sev B 557 | Sev C 7 | CRs 376. Platform team 22 people; eServices team 35-40 people");
+  out.push({n:"Quote verification: exact text is found, right numbers with different wording are partial, invented numbers are missing",
+    exp:"found / partial / missing",
+    got:[xrQuoteStatus("Sev B 557 | Sev C 7",srcX),xrQuoteStatus("eServices team of 35-40 people on the platform",srcX),xrQuoteStatus("Sev B 900 and Sev C 7",srcX)].join(" / "),
+    ok:xrQuoteStatus("Sev B 557 | Sev C 7",srcX)==="found"&&xrQuoteStatus("eServices team of 35-40 people on the platform",srcX)==="partial"&&xrQuoteStatus("Sev B 900 and Sev C 7",srcX)==="missing"});
+  const xrJson={eng:{complexity:"high",pass23:5,term:3},towers:[{type:"AMS",mode:"history",inc:60,sr:298,mix:{P1:30,P2:30,P3:30,P4:0}}],
+    evidence:[{path:"towers.0.sr",value:298,quote:"SRs 3,575",basis:"stated"},{path:"eng.complexity",value:"high",quote:"Not in the doc at all",basis:"inferred"},
+              {path:"eng.nothere",value:1,quote:"x",basis:"stated"}],warnings:["a conflict"],opportunities:[{name:"Account review"}]};
+  const xrM=buildExtractReview(xrJson,"SRs 3,575 and more");
+  const xrPaths=xrM.items.map(i=>i.path);
+  out.push({n:"Review model: evidence rows kept, evidence for a field that is not in the reply ignored, unsupported fields listed as assumed, warnings raised",
+    exp:"sr stated; complexity unverified; inc/mix/pass23/term listed as assumed; mix sum + missing-quote warnings",
+    got:xrM.items.length+" items; "+xrM.warnings.length+" warnings",
+    ok:xrPaths.indexOf("eng.nothere")<0&&xrM.items.find(i=>i.path==="towers.0.sr").quoteStatus==="found"&&xrM.items.find(i=>i.path==="eng.complexity").quoteStatus==="missing"&&
+       xrM.items.find(i=>i.path==="towers.0.inc").basis==="assumed"&&xrM.items.find(i=>i.path==="eng.pass23")&&
+       xrM.warnings.some(w=>/sums to 90/.test(w))&&xrM.warnings.some(w=>/not found in the document/.test(w))&&xrM.warnings.indexOf("a conflict")>=0&&xrM.opportunities.length===1});
+  const xrClean=cleanExtractedForApply(xrJson,["eng.complexity","towers.0.mix"]);
+  out.push({n:"Applying: evidence/warnings are stripped and unticked inputs are removed; ticked inputs and opportunities remain",
+    exp:"no evidence/warnings, no eng.complexity, no mix; sr and pass23 kept",
+    got:Object.keys(xrClean).join(",")+" | "+JSON.stringify(xrClean.eng)+" | tower keys "+Object.keys(xrClean.towers[0]).join(","),
+    ok:xrClean.evidence===undefined&&xrClean.warnings===undefined&&xrClean.eng.complexity===undefined&&xrClean.eng.pass23===5&&xrClean.towers[0].mix===undefined&&xrClean.towers[0].sr===298&&xrClean.opportunities.length===1});
+  const bfT=backfillTowers([{type:"AMS",mode:"history",inc:10,own:{L1:"customer"},srMix:{low:80}}])[0];
+  out.push({n:"A partial own / srMix from an extraction keeps the template's other keys instead of leaving them undefined",
+    exp:"own L1 customer, L2/L3 us; srMix low 80, medium/high from defaults",got:JSON.stringify(bfT.own)+" "+JSON.stringify(bfT.srMix),
+    ok:bfT.own.L1==="customer"&&bfT.own.L2==="us"&&bfT.own.L3==="us"&&bfT.srMix.low===80&&bfT.srMix.medium===30&&bfT.srMix.high===10});
+  const clientPrompt=buildClaudePrompt();
+  const promptMarkers=["Tower type is decided by WHAT IS BEING SUPPORTED","ONE tower per tower type","evidence[]","eng.pass12 / eng.pass23","opportunities[]","srMix and crMix","NOT client-stated fact","Tables arrive as lines"];
+  out.push({n:"The in-page extraction prompt carries the same rule blocks as the server prompt (tower-type inference, evidence, scope, tables)",
+    exp:"all "+promptMarkers.length+" markers present",got:promptMarkers.filter(m=>clientPrompt.indexOf(m)>=0).length+" present",
+    ok:promptMarkers.every(m=>clientPrompt.indexOf(m)>=0)&&clientPrompt.indexOf("\"engagementType\"")>=0});
+
   out.push({n:"[F p3] regression state (T1) is unaffected by the SR/CR ARE features - still reproduces 3.3 FTE",
     exp:"3.3",got:fmt(runEngine(T1,{}).years[0].total),ok:near(runEngine(T1,{}).years[0].total,3.3,0.05)});
 
@@ -4010,7 +4121,9 @@ function renderIntake(){
       '<textarea id="claudePromptText" readonly style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"></textarea>'+
       '<div class="field"><label>Prepared JSON (paste Claude\u2019s response here)</label><textarea class="reg" id="intakeJson" placeholder="{\u2026}" style="min-height:120px"></textarea></div>'+
       '<div class="btnrow"><button class="btn" type="button" id="btnIntakeJsonFile">Upload .json</button>'+
-      '<button class="btn primary" type="button" id="btnIntakeJsonApply">Apply prepared inputs</button></div>'
+      '<button class="btn" type="button" id="btnIntakeJsonReview">Review proposed inputs</button>'+
+      '<button class="btn primary" type="button" id="btnIntakeJsonApply">Apply prepared inputs</button></div>'+
+      '<div id="extractReview"></div>'
     ,false)+
     '<div id="intakeResults"></div>'+
   '</div>';
@@ -4042,6 +4155,107 @@ function syncIntakeDocsFromDom(){
     if(ta) d.text=ta.value;
   });
 }
+/* =====================  EXTRACTION REVIEW  =====================
+   AI extraction (or a pasted reply from Claude) returns the inputs plus, for each, the source
+   quote and how it was arrived at (stated / inferred / assumed), and a list of warnings. The
+   review lists them so the user applies only what they accept. Quotes are checked against the
+   document text the tool itself holds - a model can paraphrase or invent a quote, and a number
+   that is not in the document should be seen as unverified before it reaches an estimate. */
+const XR_LABEL={inc:"Incidents / month",sr:"Service requests / month",cr:"Change requests / month",mix:"Severity mix",srMix:"SR complexity mix",
+  crMix:"CR complexity mix",own:"Service responsibility",coverage:"Coverage window",type:"Tower type",label:"Tower label",mode:"Demand basis",
+  sla:"SLAs",avail:"Availability target",mau:"MAU",term:"Term (years)",aiMaturity:"Client AI maturity",volumetrics:"Volumetrics",aiops:"AIOps in scope",
+  estate:"Estate profile",engagementType:"Engagement type",complexity:"Estate complexity",region:"Customer region",locMix:"Location mix",
+  pass12:"Observed L1 to L2 pass-through %",pass23:"Observed L2 to L3 pass-through %",incumbentFTE:"Existing team size (FTE)",
+  opportunities:"Adjacent opportunities",docSummary:"Document summary"};
+function xrNorm(t){ return String(t||"").toLowerCase().replace(/[|\u2022\u25cf\u25cb\u25a0]/g," ").replace(/[^a-z0-9%.\/ ]+/g," ").replace(/\s+/g," ").trim(); }
+/* "found" (quote is in the text), "partial" (its numbers and most of its words are), "missing" */
+function xrQuoteStatus(quote,srcNorm){
+  const q=xrNorm(quote); if(!q) return "missing";
+  if(srcNorm.indexOf(q)>=0) return "found";
+  const nums=q.match(/\d[\d.,]*/g)||[], words=q.split(" ").filter(w=>w.length>2);
+  const numsOk=nums.every(n=>srcNorm.indexOf(n.replace(/[.,]+$/,""))>=0);
+  const wordsOk=words.length?words.filter(w=>srcNorm.indexOf(w)>=0).length/words.length:0;
+  return (numsOk&&wordsOk>=0.8)?"partial":"missing";
+}
+function xrGetPath(o,path){ return path.split(".").reduce((a,k)=>a==null?undefined:a[k],o); }
+function xrDeletePath(o,path){
+  const ks=path.split("."), last=ks.pop(), par=ks.reduce((a,k)=>a==null?undefined:a[k],o);
+  if(par!=null&&typeof par==="object") delete par[last];
+}
+function xrLabelFor(path){
+  const ks=path.split("."), leaf=ks[ks.length-1], par=ks[ks.length-2];
+  const base=XR_LABEL[par&&/^(mix|srMix|crMix|own|sla|locMix)$/.test(par)?par:leaf]||XR_LABEL[leaf]||leaf;
+  const t=/^towers\.(\d+)\./.exec(path);
+  return (t?"Tower "+(+t[1]+1)+": ":"")+base+(par&&/^(mix|srMix|crMix|own|sla)$/.test(par)?" ("+leaf+")":"");
+}
+function xrValueText(v){ return (v!==null&&typeof v==="object")?JSON.stringify(v):String(v); }
+/* Build the review model from a parsed reply and the source text. */
+function buildExtractReview(json,srcText){
+  const srcNorm=xrNorm(srcText), items=[], warnings=[];
+  (Array.isArray(json&&json.warnings)?json.warnings:[]).forEach(w=>{ if(w) warnings.push(String(w)); });
+  (Array.isArray(json&&json.evidence)?json.evidence:[]).forEach(e=>{
+    if(!e||typeof e.path!=="string") return;
+    const cur=xrGetPath(json,e.path);
+    if(cur===undefined) return;                       // evidence for a field that is not in the reply
+    const basis=/^(stated|inferred|assumed)$/.test(e.basis)?e.basis:"inferred";
+    items.push({path:e.path,label:xrLabelFor(e.path),value:cur,basis:basis,quote:String(e.quote||""),
+                quoteStatus:srcNorm?xrQuoteStatus(e.quote,srcNorm):"unchecked"});
+  });
+  // anything proposed without evidence still has to be visible: list it, flagged as unsupported
+  const seen={}; items.forEach(i=>{ seen[i.path]=true; });
+  const add=(path,val)=>{ if(!seen[path]&&val!==undefined){ items.push({path:path,label:xrLabelFor(path),value:val,basis:"assumed",quote:"",quoteStatus:"none"}); seen[path]=true; } };
+  if(json&&json.eng) Object.keys(json.eng).forEach(k=>add("eng."+k,json.eng[k]));
+  if(json&&Array.isArray(json.towers)) json.towers.forEach((t,i)=>Object.keys(t||{}).forEach(k=>{ if(k!=="id"&&k!=="enabled") add("towers."+i+"."+k,t[k]); }));
+  // mechanical sanity checks, independent of what the model said about itself
+  (json&&Array.isArray(json.towers)?json.towers:[]).forEach((t,i)=>{
+    ["mix","srMix","crMix"].forEach(k=>{
+      if(!t||!t[k]) return;
+      const vals=Object.keys(t[k]).map(x=>+t[k][x]||0), tot=sum(vals);
+      if(tot<=0) warnings.push("Tower "+(i+1)+": "+XR_LABEL[k]+" sums to zero.");
+      else if(k==="mix"&&Math.abs(tot-100)>1.5) warnings.push("Tower "+(i+1)+": severity mix sums to "+fmt(tot,1)+", not 100 - the tool will normalise it, but check the source counts.");
+    });
+  });
+  items.forEach(i=>{
+    if(i.quoteStatus==="missing") warnings.push(i.label+": the quoted source text was not found in the document - treat the value as unverified.");
+  });
+  return {items:items,warnings:warnings,opportunities:(json&&Array.isArray(json.opportunities))?json.opportunities:[]};
+}
+/* Reply -> object to merge: evidence/warnings removed, unticked paths removed. */
+function cleanExtractedForApply(json,uncheckedPaths){
+  const o=JSON.parse(JSON.stringify(json));
+  delete o.evidence; delete o.warnings;
+  (uncheckedPaths||[]).forEach(p=>xrDeletePath(o,p));
+  if(Array.isArray(o.towers)) o.towers=o.towers.filter(t=>t&&typeof t==="object");
+  return o;
+}
+let XR_MODEL=null;
+function renderExtractReview(){
+  const host=document.getElementById("extractReview"); if(!host) return;
+  let json; try{ json=JSON.parse(document.getElementById("intakeJson").value); }catch(e){ XR_MODEL=null; host.innerHTML=""; return; }
+  if(!json||typeof json!=="object"||Array.isArray(json)){ XR_MODEL=null; host.innerHTML=""; return; }
+  const m=buildExtractReview(json,combinedIntakeText());
+  XR_MODEL=m;
+  if(!m.items.length&&!m.warnings.length){ host.innerHTML=""; return; }
+  const badge={stated:"good",inferred:"warn",assumed:"crit"};
+  const qtxt={found:"found in document",partial:"numbers found, wording differs",missing:"NOT found in document",none:"no source quote",unchecked:""};
+  let h='<div class="callout acc"><b>Review before applying.</b> Each proposed input is listed with how it was arrived at and the source text behind it. Untick anything you do not accept; only ticked inputs are applied. <em>Assumed</em> inputs start unticked.</div>';
+  if(m.warnings.length) h+='<div class="callout warn"><b>Warnings</b><ul style="margin:6px 0 0;padding-left:18px">'+m.warnings.map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul></div>';
+  h+='<div class="tablewrap"><table><thead><tr><th></th><th>Input</th><th>Proposed</th><th>Basis</th><th>Source</th></tr></thead><tbody>'+
+    m.items.map((i,ix)=>'<tr><td><input type="checkbox" data-xr="'+ix+'" '+(i.basis==="assumed"||i.quoteStatus==="missing"?"":"checked")+'></td>'+
+      '<td>'+esc(i.label)+'</td><td class="num" style="white-space:normal">'+esc(xrValueText(i.value))+'</td>'+
+      '<td><span class="pill '+badge[i.basis]+'">'+i.basis+'</span></td>'+
+      '<td style="white-space:normal">'+(i.quote?'<em>'+esc(i.quote)+'</em><br>':"")+'<span class="hint"'+(i.quoteStatus==="missing"?' style="color:var(--crit)"':"")+'>'+esc(qtxt[i.quoteStatus]||"")+'</span></td></tr>').join("")+
+    '</tbody></table></div>';
+  if(m.opportunities.length) h+='<div class="callout"><b>Adjacent opportunities noted (not part of the run sizing, kept for the register):</b><ul style="margin:6px 0 0;padding-left:18px">'+
+    m.opportunities.map(o=>'<li><b>'+esc(o&&o.name||"")+'</b>'+(o&&o.note?' &mdash; '+esc(o.note):"")+'</li>').join("")+'</ul></div>';
+  host.innerHTML=h;
+}
+function xrUnchecked(){
+  if(!XR_MODEL) return [];
+  const out=[]; document.querySelectorAll("#extractReview input[data-xr]").forEach(cb=>{ if(!cb.checked) out.push(XR_MODEL.items[+cb.dataset.xr].path); });
+  return out;
+}
+
 function combinedIntakeText(){
   syncIntakeDocsFromDom();
   return INTAKE_DOCS.filter(d=>d.text&&d.text.trim()).map(d=>"=== "+d.label+" ===\n"+d.text).join("\n\n");
@@ -4062,23 +4276,120 @@ function combinedIntakeText(){
    in the direct "Extract with AI now" call. */
 function buildClaudePrompt(){
   const schema={
-    docSummary:"2-4 sentence plain-English narrative summary of the RFP/document set - scope, client context, what's being asked for.",
-    eng:{term:3,aiMaturity:"low",volumetrics:"available",aiops:true,estate:"modern",region:"ime"},
-    towers:[{type:"AMS",mode:"history",inc:180,sr:70,cr:20,mix:{P1:4,P2:16,P3:50,P4:30},
-             sla:{P1r:15,P1x:120,P2r:30,P2x:480,P3r:240,P3x:2880,P4r:480,P4x:5760},
-             avail:99.5,coverage:"16x5",mau:50000,own:{L1:"us",L2:"us",L3:"us"}}]
-  };
+  "docSummary": "2-4 sentence plain-English narrative summary of the document set - scope, client context, what is being asked for, and any assumptions you made.",
+  "eng": {
+    "term": 3,
+    "aiMaturity": "low",
+    "volumetrics": "available",
+    "aiops": true,
+    "estate": "modern",
+    "engagementType": "brownfield",
+    "complexity": "medium",
+    "region": "apac",
+    "locMix": {
+      "apac": {
+        "china": 0,
+        "australia": 0,
+        "singapore": 100
+      }
+    },
+    "pass12": 70,
+    "pass23": 20,
+    "incumbentFTE": 40
+  },
+  "towers": [
+    {
+      "label": "short name of what this tower covers, e.g. eServices (21 services)",
+      "type": "AMS",
+      "mode": "history",
+      "inc": 180,
+      "sr": 70,
+      "cr": 20,
+      "mix": {
+        "P1": 4,
+        "P2": 16,
+        "P3": 50,
+        "P4": 30
+      },
+      "srMix": {
+        "low": 60,
+        "medium": 30,
+        "high": 10
+      },
+      "crMix": {
+        "low": 50,
+        "medium": 35,
+        "high": 15
+      },
+      "sla": {
+        "P1r": 15,
+        "P1x": 120,
+        "P2r": 30,
+        "P2x": 480,
+        "P3r": 240,
+        "P3x": 2880,
+        "P4r": 480,
+        "P4x": 5760
+      },
+      "avail": 99.5,
+      "coverage": "16x5",
+      "mau": 50000,
+      "own": {
+        "L1": "us",
+        "L2": "us",
+        "L3": "us"
+      }
+    }
+  ],
+  "opportunities": [
+    {
+      "name": "short name of a separate automation/improvement effort",
+      "note": "one line: current effort, volume, pain point"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "towers.0.inc",
+      "value": 60,
+      "quote": "exact words copied from the document",
+      "basis": "stated"
+    }
+  ],
+  "warnings": [
+    "anything the user should check: conflicts, suspect figures, assumptions, things you could not determine"
+  ]
+};
   const allowedValues=
-    "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language onto "+
-    "the nearest allowed value rather than inventing a new one):\n"+
-    "- eng.term: 1, 2, 3, 4, or 5 (years) - round to the nearest of these\n"+
-    "- eng.aiMaturity: \"low\" or \"moderate\" only\n"+
-    "- eng.volumetrics: \"available\" or \"unavailable\"\n"+
-    "- eng.estate: \"modern\" or \"legacy\"\n"+
-    "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n"+
-    "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n"+
-    "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n"+
-    "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\"\n";
+    "Allowed values - use ONLY these for the listed fields, never a value outside this set (map close-but-different language onto the nearest allowed value rather than inventing a new one like \"high\" for aiMaturity):\n" +
+    "- eng.term: 1, 2, 3, 4, or 5 (years) - round to the nearest of these\n" +
+    "- eng.aiMaturity: \"low\" or \"moderate\" only\n" +
+    "- eng.volumetrics: \"available\" or \"unavailable\"\n" +
+    "- eng.estate: \"modern\" or \"legacy\"\n" +
+    "- eng.engagementType: \"greenfield\" or \"brownfield\"\n" +
+    "- eng.complexity: \"low\", \"medium\" or \"high\"\n" +
+    "- eng.region: \"ime\", \"eu\", \"apac\", or \"na\"\n" +
+    "- towers[].type: \"AMS\", \"IMS\", or \"DMS\"\n" +
+    "- towers[].mode: \"history\" (real incident/ticket counts given), \"proxy\" (only app counts/sizes given, no ticket volume), or \"mau\" (only active-user counts given)\n" +
+    "- towers[].coverage: \"8x5\", \"16x5\", \"24x5\", \"8x7\", \"16x7\", or \"24x7\" (the x7 variants extend the same daily hours across weekends too)\n" +
+    "- towers[].own.L1 / L2 / L3: \"us\", \"customer\", \"vendor\" or \"product\"\n" +
+    "- evidence[].basis: \"stated\", \"inferred\" or \"assumed\"\n";
+  const extractionRules=
+    "What to include and how:\n" +
+    "- Include every field you can support from the text; omit fields you cannot support rather than guessing - omitted fields keep the app's default. Never invent a plausible-sounding value. towers[] entries need at least type and mode; nested objects (mix, srMix, crMix, own, sla) may be partial.\n" +
+    "- Tower type is decided by WHAT IS BEING SUPPORTED, not by keywords. AMS = application management: incidents, service requests and change requests against applications/services/portals, application releases, batch jobs, tech debt. IMS = infrastructure management: servers, cloud/hosting, network, databases operations, observability and platform operations the bidder itself runs. DMS = data management: data platforms, pipelines, warehouses, data products, data quality. Words like \"infrastructure\", \"data\", \"AWS\" or \"database\" appearing in a description of an application estate do NOT make an IMS or DMS tower. Create a tower only for work the bidder is being asked to support. If the infrastructure or platform is run by another party (a hosting vendor, an enterprise IT team) it is not a tower; say so in warnings.\n" +
+    "- When a document lists many services, packages or applications with their own counts, combine them into ONE tower per tower type (sum the counts) unless the document itself defines separate towers or separately-owned groups to be sized independently; describe the combination in the tower label and in warnings.\n" +
+    "- towers[].own says who provides each support tier for that tower: \"us\" (the bidder), \"customer\", \"vendor\" (another supplier) or \"product\" (the client's product/dev team). A tier the document says is out of the bidder's scope or run by the agency/client is \"customer\" (or \"vendor\" if a named supplier runs it). Intermediate or special teams (for example an L1.5 team) are context for warnings, not a tier.\n" +
+    "- towers[].srMix and crMix describe how complex service requests / change requests are: low (simple, routine), medium, high (complex, urgent, multi-team). Use counts or percentages. Map the document's own words (\"majority simple\", \"10-20% urgent or complex\") onto low/medium/high; if only two classes are described, medium may be 0. Only include them when the document says something about request complexity.\n" +
+    "- eng.engagementType: \"brownfield\" if an incumbent team or existing build is being taken over, \"greenfield\" if built from scratch by the bidder. eng.complexity is YOUR judgement of how hard the estate is to run (low / medium / high) from technology mix, integrations, legacy, migrations, regulation; always basis \"inferred\" and quote the strongest evidence. eng.estate is \"legacy\" for complex legacy or mid-migration estates, \"modern\" for modern/SaaS.\n" +
+    "- eng.region and eng.locMix: only when the document states where delivery happens. locMix keys depend on the region: eu {onshore, nearshore, offshore}, apac {china, australia, singapore}, na {nearshore, offshore}; percentages summing to 100; omit locMix if the split is unknown.\n" +
+    "- eng.pass12 / eng.pass23 (percent, 0-100): only when the document states an OBSERVED escalation or resolution rate. pass12 = share of tickets reaching L1 that go on to L2 (100 minus the L1 resolution rate); pass23 = share of tickets handled at L2 that escalate to L3. Do not derive them from guesses.\n" +
+    "- eng.incumbentFTE: the size of the existing/incumbent team the client quoted for the in-scope work, if any (a single number; use the midpoint of a range, and say so in warnings).\n" +
+    "- Work that is a SEPARATE effort from running the in-scope service (an automation tool to build, a manual review process, monitoring or reporting improvements) is not a tower: list it in opportunities[] with its current effort or volume where stated.\n" +
+    "- Several dated sessions or versions of the same fact may disagree (a count that changes, a figure later flagged as wrong). Use the most recent, explicitly-corrected value, and put the conflict in warnings. Content that is clearly analysis, a model, a proposal or an AI-generated estimate written about the data (for example an FTE or pod breakdown) is NOT client-stated fact: never take values from it.\n" +
+    "- Figures that look wrong (one item holding most of a platform-wide total, a ratio that cannot be right, a total that does not equal its rows) are still extracted as stated, but must be flagged in warnings with what you checked.\n" +
+    "- Tables arrive as lines with cells separated by \" | \"; use the header row to identify columns, and check any total row against the rows. A table that continues after a [page N] marker is the same table.\n";
+  const evidenceRules=
+    "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output, add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 200 characters, copied EXACTLY from the document text - same words and numbers, never paraphrased), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
   const periodEl=document.getElementById("intakePeriodMonths");
   const periodMonths=periodEl?(+periodEl.value||0):0;
   const unitNotes=
@@ -4100,13 +4411,11 @@ function buildClaudePrompt(){
     "raw counts. Map whatever severity/priority labels the source uses (Sev A/B/C/D, Critical/High/Medium/Low, Priority 1-4, etc) "+
     "onto P1-P4 in descending severity order, then compute each category's percentage of the total incident count at 1-2 decimal "+
     "places rather than rounding to a whole number. mix represents incident severity only - never blend sr/cr volume into it.\n";
-  return "You are helping fill in a DAMO managed-services sizing tool. Read the RFP/document text below and return ONLY a JSON object "+
-    "(no prose, no markdown fences) that matches this shape. Include every field you can support from the text; omit fields you "+
-    "can't find evidence for rather than guessing - omitted fields keep their existing default. towers[] entries must be COMPLETE "+
-    "objects (every field shown in the example), one per service tower actually described (type is one of AMS/IMS/DMS). docSummary "+
-    "should be a short narrative in your own words, not copied verbatim from the source.\n\n"+
+  return "You are helping fill in a DAMO managed-services sizing tool. Read the document text below (an RFP, meeting notes or other client material) and return ONLY a JSON object "+
+    "(no prose, no markdown fences) that matches this shape. docSummary should be a short narrative in your own words, not copied verbatim from the source; "+
+    "omit it if the text gives nothing to summarize.\n\n"+
     "Target schema (example values, not the answer):\n"+JSON.stringify(schema,null,2)+"\n\n"+
-    allowedValues+"\n"+unitNotes+"\n"+
+    allowedValues+"\n"+extractionRules+"\n"+evidenceRules+"\n"+unitNotes+"\n"+
     "Document text:\n"+combinedIntakeText();
 }
 /* .docx/.xlsx/.pdf parsing is async, so file upload can't be a synchronous
@@ -4170,6 +4479,9 @@ function renderRail(){
       '\u2018Hidden work content\u2019, \u2018Complexity &amp; tech debt misread\u2019 (risk) below \u2014 a proposed calibration, not from [F]. '+
       'Brownfield also adds a direct Y1 FTE uplift (Benchmarks panel, default +20%, tapering to none by Y3) for hidden-work/handoff friction on a build we did not do. '+
       'All five effects stay freely editable afterward.</p></div>'+
+    '<div class="field"><label>Existing team size, FTE (optional)</label>'+
+      '<input type="text" inputmode="decimal" data-p="eng.incumbentFTE" value="'+esc(String(S.eng.incumbentFTE==null?"":S.eng.incumbentFTE))+'" placeholder="as stated by the client">'+
+      '<p class="hint">The incumbent or current team the client quoted. A sanity check only (shown in the register next to the estimate); it never changes the numbers.</p></div>'+
     chk("eng.aiops","AIOps in scope")+
     chk("eng.sharedRoster","Shared roster across towers")+
     '<div class="field"><label>Customer Region</label>'+seg("eng.region",[["ime","IME"],["eu","EU"],["apac","APAC"],["na","NA"]])+
@@ -4225,6 +4537,7 @@ function renderRail(){
     tw+='<div class="towercard"><header><span class="tname">'+t.type+'</span>'+
       '<select data-p="'+p+'.type" data-struct="1" style="width:auto">'+
       ["AMS","IMS","DMS"].map(o=>'<option value="'+o+'" '+(t.type===o?"selected":"")+'>'+o+'</option>').join("")+'</select>'+
+      '<input type="text" data-p="'+p+'.label" value="'+esc(t.label||"")+'" placeholder="label (optional)" aria-label="Tower label" style="width:150px;margin-left:8px">'+
       '<span class="spacer"></span>'+
       (S.towers.length>1?'<button class="xbtn" data-del="'+i+'" type="button" aria-label="Remove tower">&times;</button>':"")+
       '</header><div class="towerbody">'+
@@ -4391,7 +4704,11 @@ function renderRail(){
     '<div class="field">'+num("bench.brownfieldUplift","Brownfield Y1 uplift",0.01)+'<p class="hint">Applied only when Engagement type is Brownfield: Y1 full, Y2 half, Y3+ none. <span class="flag">proposed</span></p></div>'+
     '<div class="field">'+num("bench.span","FTE per SDM")+'<p class="hint">SDM ratio defaults to 1:8, the manual-estimation convention. QA, SRE, L1.5 and Advisory are entered by hand under Special roles.</p></div>'+
     '<div class="field">'+num("bench.evoThreshold","AMS evolution threshold, %",5)+'<p class="hint">At or above this, Developer replaces Systems Support Engineer at AMS L3. Given as "thirty or forty percent" &mdash; defaulted to 30.</p></div>'+
-        '<div class="field"><label>Estate complexity levels <span class="flag">proposed</span></label>'+
+        '<div class="field"><label>Observed pass-through for this deal, % <span class="flag">proposed</span></label>'+
+      '<div class="row c2"><div class="field"><label>L1 &rarr; L2</label><input type="text" inputmode="decimal" data-p="eng.pass12" value="'+esc(String(S.eng.pass12==null?"":S.eng.pass12))+'" placeholder="benchmark"></div>'+
+      '<div class="field"><label>L2 &rarr; L3</label><input type="text" inputmode="decimal" data-p="eng.pass23" value="'+esc(String(S.eng.pass23==null?"":S.eng.pass23))+'" placeholder="benchmark"></div></div>'+
+      '<p class="hint">Blank = the framework benchmark (70/65/60% L1&rarr;L2 and 20/20/15% L2&rarr;L3 by year). Enter what the client actually sees (for example &ldquo;under 5% reach L3&rdquo;) for Y1; later years keep the benchmark&rsquo;s own year-on-year improvement. L3 hours are additive and large, so this moves FTE a lot.</p></div>'+
+    '<div class="field"><label>Estate complexity levels <span class="flag">proposed</span></label>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th></th><th>Y1 cont. %</th><th>Sev. tilt</th></tr></thead><tbody>'+
       ["low","medium","high"].map(k=>'<tr><td>'+k+'</td>'+
         '<td><input type="number" step="0.5" min="0" data-p="bench.cpx.'+k+'.cont" value="'+B.cpx[k].cont+'"></td>'+
@@ -4699,6 +5016,11 @@ function buildRegister(base,mc,o1,rp){
       stepDown.parts.map(p=>"**"+p.k+"** ("+p.v+")").join(", ")+
       " \u2014 each is a temporary, Y1-loaded effect that eases specifically after Y1, not a sign the team is being cut too aggressively. Treat Y2/Y3 as closer to the steady-state run cost.");
   }
+  {
+    const inc0=S.eng.incumbentFTE;
+    if(inc0!=null&&inc0!==""&&!isNaN(+inc0)&&+inc0>0)
+      L.push("- Existing team stated by the client: "+fmt(+inc0)+" FTE. Y1 estimate "+fmt(base.years[0].total)+" FTE, "+pct0(base.years[0].total/+inc0)+" of it (a sanity check only).");
+  }
   L.push("");
   {
     const cx=cpxOf(S);
@@ -4723,7 +5045,7 @@ function buildRegister(base,mc,o1,rp){
   var owR=ownedTiers(S);
   L.push("Tiers provided by Thoughtworks: "+["L1","L2","L3"].filter(function(k){return owR[k];}).join(", ")+".");
   base.years[0].rows.forEach(function(r){
-    L.push("- "+r.type+": L1 "+PARTIES[r.own.L1]+"; L2 "+PARTIES[r.own.L2]+"; L3 "+PARTIES[r.own.L3]+
+    L.push("- "+rowName(r)+": L1 "+PARTIES[r.own.L1]+"; L2 "+PARTIES[r.own.L2]+"; L3 "+PARTIES[r.own.L3]+
            (r.bnd?" \u2014 "+r.bnd+" ownership interface(s), "+pct0(r.handoff)+" coordination uplift applied.":" \u2014 single-party stack."));
   });
   ["L1","L2","L3"].forEach(function(k){
@@ -4790,6 +5112,11 @@ function buildRegister(base,mc,o1,rp){
       L.push("  - "+sr.name+": "+by+" FTE.");
     });
     L.push("- Special roles total: "+base.years.map(function(y){return "Y"+y.y+" "+fmt(y.special||0);}).join(", ")+" FTE.");
+    L.push("");
+  }
+  if((S.opportunities||[]).length){
+    L.push("## Adjacent automation opportunities (noted in the source documents, not part of the run-service sizing)");
+    S.opportunities.forEach(function(o){ L.push("- **"+o.name+"**"+(o.note?" \u2014 "+o.note:"")); });
     L.push("");
   }
   L.push("## Delivery location");
@@ -4885,6 +5212,12 @@ function buildRegister(base,mc,o1,rp){
   L.push("");
   L.push("## Proposed defaults requiring calibration");
   L.push("These are derived from the framework's ranges but are not in the source. Calibrate against real engagements before committing.");
+  {
+    const p12o=S.eng.pass12, p23o=S.eng.pass23, hv=v=>v!=null&&v!==""&&!isNaN(+v);
+    if(hv(p12o)||hv(p23o))
+      L.push("- Observed pass-through for this deal (overrides the framework benchmark in Y1; later years keep the benchmark's year-on-year improvement): "+
+        (hv(p12o)?"L1\u2192L2 "+p12o+"%":"")+(hv(p12o)&&hv(p23o)?", ":"")+(hv(p23o)?"L2\u2192L3 "+p23o+"%":"")+". Client-stated, not framework-sourced.");
+  }
   L.push("- SR and CR effort: each tower carries a Low/Medium/High complexity mix for service requests and for change requests (history demand mode). SR ARE "+B.are.srLvl.low+"/"+B.are.srLvl.medium+"/"+B.are.srLvl.high+" h and CR ARE "+B.are.crLvl.low+"/"+B.are.crLvl.medium+"/"+B.are.crLvl.high+" h (Low/Medium/High), weighted by the tower mix"+(cpxOf(S)&&+cpxOf(S).sev>0?", after the "+cpxOf(S).key+" estate-complexity tilt":"")+". SRs go to L1 (Low), L2 (Medium) or L3 (High), moving to the next tier we own when the intended one is not ours; CRs are a separate bucket, gated on L2/L3 ownership. Not framework-sourced.");
   L.push("- P1\u2013P4 tier-of-entry matrix: P1 "+B.routing.P1.join("/")+", P2 "+B.routing.P2.join("/")+", P3 "+B.routing.P3.join("/")+", P4 "+B.routing.P4.join("/")+".");
   ["AMS","IMS","DMS"].forEach(k=>L.push("- "+k+": L1 \u00d7"+B.tower[k].l1+", L2/L3 \u00d7"+B.tower[k].l23+", B-factor "+pct0(B.tower[k].bModern)+"/"+pct0(B.tower[k].bLegacy)+", automation ceiling "+pct0(B.tower[k].ceiling)+"."));
@@ -4955,7 +5288,7 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
     '</tbody></table></section>';
 
   h+='<section><h2>Service responsibility</h2><table><thead><tr><th>Tower</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>'+
-    base.years[0].rows.map(r=>'<tr><td>'+r.type+'</td><td>'+esc(PARTIES[r.own.L1])+'</td><td>'+esc(PARTIES[r.own.L2])+'</td><td>'+esc(PARTIES[r.own.L3])+'</td></tr>').join("")+
+    base.years[0].rows.map(r=>'<tr><td>'+esc(rowName(r))+'</td><td>'+esc(PARTIES[r.own.L1])+'</td><td>'+esc(PARTIES[r.own.L2])+'</td><td>'+esc(PARTIES[r.own.L3])+'</td></tr>').join("")+
     '</tbody></table></section>';
 
   h+='<section><h2>Delivery location</h2><table><tbody>';
@@ -5009,7 +5342,7 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
   h+='</tbody></table></section>';
 
   h+='<section><h2>Tower breakdown (Y1)</h2><table><thead><tr><th>Tower</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">FTE</th></tr></thead><tbody>'+
-    base.years[0].rows.map(r=>'<tr><td>'+r.type+'</td><td class="num">'+f0(r.vol)+'</td><td class="num">'+f0(r.A)+'</td><td class="num">'+f0(r.B)+'</td><td class="num">'+fmt(r.fte)+'</td></tr>').join("")+
+    base.years[0].rows.map(r=>'<tr><td>'+esc(rowName(r))+'</td><td class="num">'+f0(r.vol)+'</td><td class="num">'+f0(r.A)+'</td><td class="num">'+f0(r.B)+'</td><td class="num">'+fmt(r.fte)+'</td></tr>').join("")+
     '</tbody></table></section>';
 
   if(mc){
@@ -5427,7 +5760,7 @@ function renderCanvas(){
       '<div class="tablewrap"><table><thead><tr><th>Tower</th><th>L1</th><th>L2</th><th>L3</th><th>Interfaces</th><th>Coordination uplift</th><th>Our effort/mo</th></tr></thead><tbody>';
     r0.forEach(r=>{
       const cell=k=>'<td class="'+(r.own[k]==="us"?"":"sub-td")+'">'+(r.own[k]==="us"?"<b>DAMO</b>":esc(PARTIES[r.own[k]]))+'</td>';
-      h+='<tr><td>'+r.type+'</td>'+cell("L1")+cell("L2")+cell("L3")+
+      h+='<tr><td>'+esc(rowName(r))+'</td>'+cell("L1")+cell("L2")+cell("L3")+
          '<td>'+r.bnd+'</td><td>'+(r.handoff?"+"+pct0(r.handoff):"\u2013")+'</td><td>'+f0(r.A+r.B)+' h</td></tr>';
     });
     h+='</tbody></table></div>';
@@ -5674,7 +6007,7 @@ function renderCanvas(){
   h+='<div class="card"><header><h2>Tower breakdown</h2><span class="note">Year 1. Multipliers are proposed defaults pending calibration.</span></header><div class="cardbody"><div class="tablewrap"><table>'+
     '<thead><tr><th>Tower</th><th>Tickets/mo</th><th>L1 hrs</th><th>L2 hrs</th><th>L3 hrs</th><th>CRs/mo</th><th>CR hrs</th><th>A</th><th>B</th><th>SLA L2/L3</th><th>FTE</th></tr></thead><tbody>';
   base.years[0].rows.forEach(r=>{
-    h+='<tr><td>'+r.type+'</td><td>'+f0(r.vol)+'</td><td>'+f0(r.h1)+'</td><td>'+f0(r.h2)+'</td><td>'+f0(r.h3)+'</td>'+
+    h+='<tr><td>'+esc(rowName(r))+'</td><td>'+f0(r.vol)+'</td><td>'+f0(r.h1)+'</td><td>'+f0(r.h2)+'</td><td>'+f0(r.h3)+'</td>'+
       '<td class="sub-td">'+f0(r.crVol||0)+'</td><td>'+f0(r.hCr||0)+'</td>'+
       '<td>'+f0(r.A)+'</td><td>'+f0(r.B)+'</td><td>'+(r.sla.l2?"+"+pct0(r.sla.l2)+" / +"+pct0(r.sla.l3):"\u2013")+'</td><td>'+fmt(r.fte)+'</td></tr>';
   });
@@ -5857,8 +6190,10 @@ function syncCpxBadge(path){
   const t=S.towers[+m[1]], el=document.getElementById("cpxbadge-"+m[1]);
   if(t && el) el.innerHTML=structCpxBadge(t);
 }
+let XR_TIMER=null;
 document.addEventListener("input",e=>{
   const el=e.target;
+  if(el.id==="intakeJson"){ clearTimeout(XR_TIMER); XR_TIMER=setTimeout(renderExtractReview,500); return; }
   if(el.dataset && el.dataset.p){
     sp(S,el.dataset.p,coerce(el));
     if(el.type==="range"){ const pts=el.parentElement.querySelector(".pts");
@@ -6000,12 +6335,13 @@ document.addEventListener("click",e=>{
     case "btnIntakeJsonFile":{
       const i=document.createElement("input"); i.type="file"; i.accept=".json";
       i.onchange=()=>{ const f=i.files[0]; if(!f) return; const rd=new FileReader();
-        rd.onload=()=>{ $("#intakeJson").value=rd.result; };
+        rd.onload=()=>{ $("#intakeJson").value=rd.result; renderExtractReview(); };
         rd.readAsText(f); };
       i.click(); break; }
+    case "btnIntakeJsonReview": renderExtractReview(); break;
     case "btnIntakeJsonApply":{
       try{
-        const merged=deepMergeState(defaults(),JSON.parse($("#intakeJson").value));
+        const merged=deepMergeState(defaults(),cleanExtractedForApply(JSON.parse($("#intakeJson").value),xrUnchecked()));
         merged.towers=backfillTowers(merged.towers);
         S=seedRoles(merged); hideIntake(); refresh(true);
       }catch(err){ alert("That doesn't look like valid Claude-prepared JSON input."); }
@@ -6037,8 +6373,8 @@ document.addEventListener("click",e=>{
             d=await r.json();
             if(d.status==="pending") continue;
             if(d.status==="error") throw new Error(d.error||"Extraction failed");
-            $("#intakeJson").value=JSON.stringify(d.json,null,2);
-            status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens, "+elapsed+"s). Review the JSON below, then click Apply prepared inputs.";
+            $("#intakeJson").value=JSON.stringify(d.json,null,2); renderExtractReview();
+            status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens, "+elapsed+"s). Review the proposed inputs below, untick anything you do not accept, then click Apply prepared inputs.";
             d=null; // signal success below without re-throwing
             break;
           }

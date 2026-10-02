@@ -1,0 +1,66 @@
+=== Meeting notes (synthetic fixture - invented client "Agency X", invented numbers) ===
+[page 1]
+Session 1 - 3 March 2026 - Agency X office
+Attendees: Agency X: A. Tan (programme manager), B. Lim (ops). Vendor: team of four.
+TL;DR: Two automation gaps discussed.
+Account review
+ - About 12 man-days per month, around 5,000 accounts processed per month, no central database.
+ - Manual collation into Excel; no audit trail.
+Log analysis
+ - Weekly log review, 5 manual use cases, one person handles it, email and Excel workflow.
+Short-term path: a standalone two-month tool, modular so it can plug into an AIOps pipeline later. Commercial green light still pending.
+Scope of the account-review solution: 10 systems in scope.
+
+[page 2]
+Session 2 - 10 March 2026 - Agency X office
+Intake process, service catalog and ops model:
+ - L1 is out of scope for the vendor. Supported by the agency's own help desk.
+ - There is an L1.5 team of 3 to 4 people working on call 24x7; they filter and route tickets. Their work is manual.
+ - Fewer than 1000 users are supported. Most tickets are non-technical.
+ - Out of 100 tickets, 20-30% are handled at the L1.5 level; of the remaining, less than 5% are handled at L3. The rest is handled by L2.
+ - Support hours = business hours. After-hours work is handled by the agency.
+SRs:
+ - 10-20% are urgent or complex. The majority are simple.
+ - SRs are under SLAs.
+CRs:
+ - Changes are mostly policy driven. CR assessment is time consuming because vendors estimate and then ask sub-contractors.
+Governance:
+ - 4000 concurrent users at maximum.
+Existing teams: the incumbent services team is 30 to 36 people; the platform team is 18 people (platform is a separate tender).
+
+[page 3]
+Session 3 - 17 March 2026 - Agency X office
+Anchor slide and scope baseline:
+ - 12 eServices in total; one (Booklet) is being decommissioned.
+ - Platform to eService mapping is captured in a database. Two versions of Java; migration from 11 to 17 is in progress.
+ - Hardware is on a public cloud in the Singapore region, run by a separate hosting vendor. Four environments: DEV, QA, PRE-PROD, PRD.
+ - Dynatrace is used for monitoring. Tech debt is tracked manually in Excel.
+ - Cloud migration happened four years ago; hybrid, not a pure lift and shift. Monolith to microservices change happened at that time.
+ - Security incidents are handled by a separate enterprise team.
+Update from session 3: the account review now covers 12 sources across 5 categories (updated from 10 shown before).
+
+[page 4]
+Session 4 - 24 March 2026 - Agency X office
+eServices Summary Table (FY25 = April 2025 to 31 March 2026)
+No. | eService | SRs | Sev A | Sev B | Sev C | CRs | Job Failures
+1 | Portal | 160 | - | 6 | - | 10 | -
+2 | Callup | 80 | 140 | - | - | 30 | -
+3 | Manning | 70 | 15 | - | - | 3 | -
+4 | Deferment | 3 | - | - | - | 4 | -
+5 | Payslip | 33 | - | - | - | 18 | -
+6 | Registration | 114 | - | 220 | - | 20 | -
+7 | Clearance | 45 | - | 210 | 3 | 28 | -
+8 | Pay | 20 | - | - | - | 38 | 30
+9 | Awards | 37 | - | 38 | 4 | 21 | 8
+10 | Leave and Claims | 1600 | - | - | - | 10 | -
+11 | Retail | 890 | - | - | - | 1 | 54
+12 | Posting | 14 | - | - | - | 19 | 0
+Total | 3066 | 155 | 474 | 7 | 202 | 92
+Note: platform-wide Sev A was reported as 6 for FY25 in the earlier session.
+Interfaces: 1,200 APIs, 150 file interfaces, 12 databases across the 12 eServices.
+Next step: obtain six-month manning data to set the year-one baseline as a full 12 months.
+
+[page 5]
+Analysis appended by the bid team (not client-stated; AI-generated estimate - take with salt)
+Indicative pods: six pods, 28 FTE in total. Staffing derived with a 0.5 FTE floor per service.
+Five numbers to challenge: Callup Sev A = 140, Leave and Claims 1600 requests but only 10 CRs, Retail 890 requests with 1 CR and 54 batch failures.
