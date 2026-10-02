@@ -296,11 +296,22 @@ export default async (req: Request, context: Context) => {
 
   try {
     const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
+    // Streamed (finalMessage) rather than a single blocking create(): a large document with
+    // evidence quotes can run well past the non-streaming output ceiling, and a reply cut off at
+    // max_tokens is invalid JSON - so the ceiling is generous and a cut-off is reported as such.
+    const stream = client.messages.stream({
       model: "claude-sonnet-5",
-      max_tokens: 16000,
+      max_tokens: 32000,
       messages: [{ role: "user", content: buildPrompt(text.slice(0, 200000), body.periodMonths) }],
     });
+    const response = await stream.finalMessage();
+    if (response.stop_reason === "max_tokens") {
+      await store.setJSON(jobId, {
+        status: "error",
+        error: "The extraction was cut off at the output limit - try fewer or shorter documents, or split the document and extract in parts.",
+      });
+      return;
+    }
 
     const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {

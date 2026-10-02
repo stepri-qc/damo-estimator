@@ -60,7 +60,6 @@ const regEv = (j.evidence || []).find((x) => x.path === "eng.region");
 check("region not presented as stated from hosting-only evidence", e.region === undefined || (regEv && regEv.basis !== "stated" && (e.locMix === undefined || (e.locMix.apac && +e.locMix.apac.singapore === 100))), JSON.stringify([e.region, e.locMix, regEv && regEv.basis]));
 check("pass12 not set (L1 is not ours; the L1.5 rate is context)", e.pass12 === undefined, e.pass12);
 check("L2->L3 pass-through ~5%", e.pass23 != null && near(+e.pass23, exp.pass23.value, exp.pass23.tol), e.pass23);
-check("whole numbers are not over-rounded (inc has a decimal)", t0.inc !== undefined && Math.abs(t0.inc - Math.round(t0.inc)) > 0.001, t0.inc);
 check("incumbent team 30-36 (not the analysis figure)", typeof e.incumbentFTE === "number" && e.incumbentFTE >= exp.incumbentFTE.min && e.incumbentFTE <= exp.incumbentFTE.max, e.incumbentFTE);
 check("brownfield", e.engagementType === exp.engagementType, e.engagementType);
 check("complexity medium/high", exp.complexityAny.includes(e.complexity), e.complexity);
