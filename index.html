@@ -3976,6 +3976,21 @@ function selfTests(){
     ok:xrPaths.indexOf("eng.nothere")<0&&xrM.items.find(i=>i.path==="towers.0.sr").quoteStatus==="found"&&xrM.items.find(i=>i.path==="eng.complexity").quoteStatus==="missing"&&
        xrM.items.find(i=>i.path==="towers.0.inc").basis==="assumed"&&xrM.items.find(i=>i.path==="eng.pass23")&&
        xrM.warnings.some(w=>/sums to 90/.test(w))&&xrM.warnings.some(w=>/not found in the document/.test(w))&&xrM.warnings.indexOf("a conflict")>=0&&xrM.opportunities.length===1});
+  out.push({n:"Quote verification: a quote joined with '...' is checked fragment by fragment",
+    exp:"found when every fragment is in the text, missing when one is not",
+    got:[xrQuoteStatus("Sev B ... 557",srcX),xrQuoteStatus("Sev B ... 999",srcX)].join(" / "),
+    ok:xrQuoteStatus("Sev B ... 557",srcX)==="found"&&xrQuoteStatus("Sev B ... 999",srcX)==="missing"});
+  const xrCov=buildExtractReview({towers:[{type:"AMS",mix:{P1:50,P2:50},own:{L1:"customer",L2:"us",L3:"us"}}],
+    evidence:[{path:"towers.0.mix.P1",value:50,quote:"a",basis:"stated"},{path:"towers.0.own",value:{L1:"customer",L2:"us",L3:"us"},quote:"b",basis:"stated"}]},"a b");
+  const covPaths=xrCov.items.map(i=>i.path);
+  out.push({n:"Review groups a mix/ownership into one row (evidence on one component covers the group) and lists each input once",
+    exp:"towers.0.mix, towers.0.own, towers.0.type each once; no leaf rows",got:covPaths.join(", "),
+    ok:covPaths.filter(p=>p==="towers.0.mix").length===1&&covPaths.filter(p=>p==="towers.0.own").length===1&&covPaths.indexOf("towers.0.mix.P1")<0&&covPaths.indexOf("towers.0.own.L1")<0&&covPaths.indexOf("towers.0.type")>=0});
+  const grpM=buildExtractReview({towers:[{type:"AMS",mix:{P1:30,P2:70}}],evidence:[{path:"towers.0.mix.P1",value:30,quote:"in the text",basis:"stated"},{path:"towers.0.mix.P2",value:70,quote:"not there at all",basis:"inferred"}]},"in the text");
+  const gi=grpM.items.find(i=>i.path==="towers.0.mix");
+  out.push({n:"A grouped row takes the weakest basis and quote status of its components",
+    exp:"basis inferred, quote missing, value is the whole mix",got:gi.basis+" / "+gi.quoteStatus+" / "+JSON.stringify(gi.value),
+    ok:gi.basis==="inferred"&&gi.quoteStatus==="missing"&&gi.value.P1===30&&gi.value.P2===70});
   const xrClean=cleanExtractedForApply(xrJson,["eng.complexity","towers.0.mix"]);
   out.push({n:"Applying: evidence/warnings are stripped and unticked inputs are removed; ticked inputs and opportunities remain",
     exp:"no evidence/warnings, no eng.complexity, no mix; sr and pass23 kept",
@@ -4170,6 +4185,12 @@ const XR_LABEL={inc:"Incidents / month",sr:"Service requests / month",cr:"Change
 function xrNorm(t){ return String(t||"").toLowerCase().replace(/[|\u2022\u25cf\u25cb\u25a0]/g," ").replace(/[^a-z0-9%.\/ ]+/g," ").replace(/\s+/g," ").trim(); }
 /* "found" (quote is in the text), "partial" (its numbers and most of its words are), "missing" */
 function xrQuoteStatus(quote,srcNorm){
+  // a quote joined with "..." is several fragments: every fragment has to be in the document
+  const frags=String(quote||"").split(/\.{3}|\u2026/).map(f=>f.trim()).filter(Boolean);
+  if(frags.length>1){
+    const st=frags.map(f=>xrQuoteStatus(f,srcNorm));
+    return st.indexOf("missing")>=0?"missing":(st.indexOf("partial")>=0?"partial":"found");
+  }
   const q=xrNorm(quote); if(!q) return "missing";
   if(srcNorm.indexOf(q)>=0) return "found";
   const nums=q.match(/\d[\d.,]*/g)||[], words=q.split(" ").filter(w=>w.length>2);
@@ -4193,17 +4214,30 @@ function xrValueText(v){ return (v!==null&&typeof v==="object")?JSON.stringify(v
 function buildExtractReview(json,srcText){
   const srcNorm=xrNorm(srcText), items=[], warnings=[];
   (Array.isArray(json&&json.warnings)?json.warnings:[]).forEach(w=>{ if(w) warnings.push(String(w)); });
+  // evidence for a part of a grouped input (mix, srMix, crMix, own, sla, locMix) is shown once for the
+  // whole group - unticking one component of a severity mix would leave a half mix
+  const GRP=/^((?:towers\.\d+\.(?:mix|srMix|crMix|own|sla)|eng\.locMix))\.[^.]+/;
+  const rank={stated:0,inferred:1,assumed:2}, qrank={found:0,partial:1,none:1,unchecked:1,missing:2};
+  const byPath={};
   (Array.isArray(json&&json.evidence)?json.evidence:[]).forEach(e=>{
     if(!e||typeof e.path!=="string") return;
-    const cur=xrGetPath(json,e.path);
+    const gm=GRP.exec(e.path), path=gm?gm[1]:e.path;
+    const cur=xrGetPath(json,path);
     if(cur===undefined) return;                       // evidence for a field that is not in the reply
     const basis=/^(stated|inferred|assumed)$/.test(e.basis)?e.basis:"inferred";
-    items.push({path:e.path,label:xrLabelFor(e.path),value:cur,basis:basis,quote:String(e.quote||""),
-                quoteStatus:srcNorm?xrQuoteStatus(e.quote,srcNorm):"unchecked"});
+    const qs=srcNorm?xrQuoteStatus(e.quote,srcNorm):"unchecked", q=String(e.quote||"");
+    const ex=byPath[path];
+    if(!ex){ byPath[path]={path:path,label:xrLabelFor(path),value:cur,basis:basis,quote:q,quoteStatus:qs}; items.push(byPath[path]); }
+    else{
+      if(rank[basis]>rank[ex.basis]) ex.basis=basis;
+      if(qrank[qs]>qrank[ex.quoteStatus]) ex.quoteStatus=qs;
+      if(q&&ex.quote.indexOf(q)<0) ex.quote=ex.quote?ex.quote+" / "+q:q;
+    }
   });
   // anything proposed without evidence still has to be visible: list it, flagged as unsupported
+  const covered=path=>items.some(i=>i.path===path||i.path.indexOf(path+".")===0||path.indexOf(i.path+".")===0);
   const seen={}; items.forEach(i=>{ seen[i.path]=true; });
-  const add=(path,val)=>{ if(!seen[path]&&val!==undefined){ items.push({path:path,label:xrLabelFor(path),value:val,basis:"assumed",quote:"",quoteStatus:"none"}); seen[path]=true; } };
+  const add=(path,val)=>{ if(!seen[path]&&!covered(path)&&val!==undefined){ items.push({path:path,label:xrLabelFor(path),value:val,basis:"assumed",quote:"",quoteStatus:"none"}); seen[path]=true; } };
   if(json&&json.eng) Object.keys(json.eng).forEach(k=>add("eng."+k,json.eng[k]));
   if(json&&Array.isArray(json.towers)) json.towers.forEach((t,i)=>Object.keys(t||{}).forEach(k=>{ if(k!=="id"&&k!=="enabled") add("towers."+i+"."+k,t[k]); }));
   // mechanical sanity checks, independent of what the model said about itself
@@ -4241,7 +4275,7 @@ function renderExtractReview(){
   let h='<div class="callout acc"><b>Review before applying.</b> Each proposed input is listed with how it was arrived at and the source text behind it. Untick anything you do not accept; only ticked inputs are applied. <em>Assumed</em> inputs start unticked.</div>';
   if(m.warnings.length) h+='<div class="callout warn"><b>Warnings</b><ul style="margin:6px 0 0;padding-left:18px">'+m.warnings.map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul></div>';
   h+='<div class="tablewrap"><table><thead><tr><th></th><th>Input</th><th>Proposed</th><th>Basis</th><th>Source</th></tr></thead><tbody>'+
-    m.items.map((i,ix)=>'<tr><td><input type="checkbox" data-xr="'+ix+'" '+(i.basis==="assumed"||i.quoteStatus==="missing"?"":"checked")+'></td>'+
+    m.items.map((i,ix)=>'<tr><td><input type="checkbox" data-xr="'+ix+'" '+(((i.basis==="assumed"||i.quoteStatus==="missing")&&!/\.label$/.test(i.path))?"":"checked")+'></td>'+
       '<td>'+esc(i.label)+'</td><td class="num" style="white-space:normal">'+esc(xrValueText(i.value))+'</td>'+
       '<td><span class="pill '+badge[i.basis]+'">'+i.basis+'</span></td>'+
       '<td style="white-space:normal">'+(i.quote?'<em>'+esc(i.quote)+'</em><br>':"")+'<span class="hint"'+(i.quoteStatus==="missing"?' style="color:var(--crit)"':"")+'>'+esc(qtxt[i.quoteStatus]||"")+'</span></td></tr>').join("")+
@@ -4391,7 +4425,7 @@ function buildClaudePrompt(){
     "- Figures that look wrong (one item holding most of a platform-wide total, a ratio that cannot be right, a total that does not equal its rows) are still extracted as stated, but must be flagged in warnings with what you checked.\n" +
     "- Tables arrive as lines with cells separated by \" | \"; use the header row to identify columns, and check any total row against the rows. A table that continues after a [page N] marker is the same table.\n";
   const evidenceRules=
-    "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY from the document text - same words and numbers, never paraphrased), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
+    "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY and CONTIGUOUSLY from the document text - same words and numbers, never paraphrased, and never joined with \"...\" (if a value draws on several places, quote the single most informative contiguous passage)), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
   const periodEl=document.getElementById("intakePeriodMonths");
   const periodMonths=periodEl?(+periodEl.value||0):0;
   const unitNotes=
