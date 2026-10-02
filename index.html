@@ -4290,7 +4290,16 @@ function renderRail(){
     '<div class="field">'+num("bench.evoThreshold","AMS evolution threshold, %",5)+'<p class="hint">At or above this, Developer replaces Systems Support Engineer at AMS L3. Given as "thirty or forty percent" &mdash; defaulted to 30.</p></div>'+
     '<div class="btnrow"><button class="btn" type="button" id="btnReset">Reset to framework defaults</button></div>');
 
-  $("#rail").innerHTML=h;
+  // A structural refresh rebuilds the whole rail, which used to reset every <details>
+  // to its default (so ticking a checkbox collapsed the section you were in) and
+  // jump the scroll. Carry open/closed state and scroll position across the rebuild.
+  const railEl=$("#rail"), keep={}, top=railEl.scrollTop;
+  railEl.querySelectorAll("details[data-sec],details[data-det]").forEach(d=>{ keep[d.dataset.sec||d.dataset.det]=d.open; });
+  railEl.innerHTML=h;
+  railEl.querySelectorAll("details[data-sec],details[data-det]").forEach(d=>{
+    const k=d.dataset.sec||d.dataset.det; if(k in keep) d.open=keep[k];
+  });
+  railEl.scrollTop=top;
 }
 
 /* ---------- special roles rail ---------- */
@@ -4308,7 +4317,7 @@ function renderSpecialRail(){
         '<div class="field"><label>Role name</label><input type="text" data-p="'+p+'.name" value="'+esc(r.name)+'"></div>'+
         '<div class="field"><label>FTE (all years)</label><input type="number" step="0.5" min="0" data-p="'+p+'.fte" value="'+(+r.fte||0)+'"></div>'+
         '<button class="xbtn" type="button" data-spdel="'+i+'" aria-label="Remove '+esc(r.name)+'">&times;</button></div>'+
-      '<details><summary class="hint" style="cursor:pointer">Per-year override (blank = use the number above)</summary>'+
+      '<details data-det="spy-'+r.id+'"><summary class="hint" style="cursor:pointer">Per-year override (blank = use the number above)</summary>'+
         '<div class="row c3" style="margin-top:8px">'+yrs.join("")+'</div></details>'+
     '</div></div>';
   }).join("");
