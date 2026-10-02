@@ -165,6 +165,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#start">Start here</a>
     <a href="#intake">Starting from an RFP</a>
     <a href="#cascade">The cascade</a>
+    <a href="#demand">Incidents, SRs &amp; CRs</a>
     <a href="#scenario">Picking a scenario</a>
     <a href="#breakeven">AIOps break-even</a>
     <a href="#aiopscalc">AIOps efficiency calculator</a>
@@ -174,8 +175,8 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <a href="#inputs">Input reference</a>
     <a href="#outputs">Reading the outputs</a>
     <a href="#resp">Who provides what</a>
-    <a href="#roles">Roles &amp; grades</a>
-    <a href="#policy">Role policy</a>
+    <a href="#estatecpx">Estate complexity</a>
+    <a href="#roles">Roles, seniority &amp; special roles</a>
     <a href="#structcpx">Structural complexity</a>
     <a href="#location">Delivery location</a>
     <a href="#gotchas">Six traps</a>
@@ -186,13 +187,14 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
   <section id="start">
     <h2>Start here</h2>
-    <p class="lede">Eight steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
+    <p class="lede">Nine steps from a blank estimate to something you can put in a proposal. The tool loads with a worked default, so you always have live numbers to react to.</p>
     <div class="steps">
       <div class="step"><div><h4>Set the engagement</h4><p>Term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, Customer Region (IME/EU/APAC/NA), and engagement type. The first four choices alone select the scenario &mdash; and with it your contingency, team shape, AIOps timing and savings target.</p></div></div>
       <div class="step"><div><h4>Say whether it&rsquo;s greenfield or brownfield</h4><p>Built and run by us from day one, or an existing estate we&rsquo;re taking over? Brownfield is the conservative default &mdash; it auto-seeds four confidence/risk sliders lower <em>and</em> adds a direct Y1 FTE uplift (default +20%, tapering to zero by Y3) on top, since taking over an unfamiliar system genuinely costs more in the first year than the framework&rsquo;s sliders alone capture.</p></div></div>
       <div class="step"><div><h4>Pick the service mix</h4><p>Click <b>AMS</b>, <b>IMS</b> and/or <b>DMS</b> at the top of Service towers to say what you are proposing &mdash; any combination works. Use <b>+ Add another tower</b> only when one line needs more than one tower, such as separate estates on different SLAs. Then set who provides L1, L2 and L3 for each.</p></div></div>
-      <div class="step"><div><h4>Enter demand</h4><p>Incident history if you have it. If you do not, switch the tower to <b>Complexity</b> (apps by S/M/L/XL/XXL) or <b>MAU</b>. The tool handles all four scenarios, not just the ones with data.</p></div></div>
+      <div class="step"><div><h4>Enter demand</h4><p>Incident history if you have it &mdash; incidents with a severity mix, plus service requests and change requests, each with its own Low/Medium/High complexity mix (see <a href="#demand">Incidents, SRs &amp; CRs</a>). If you have no history, switch the tower to <b>Complexity</b> (apps by S/M/L/XL/XXL) or <b>MAU</b>. The tool handles all four scenarios, not just the ones with data.</p></div></div>
       <div class="step"><div><h4>Set SLAs and coverage</h4><p>P1 response under 15 minutes adds 25% to L2/L3 staffing. Coverage window sets a headcount <em>floor</em> through the shift maths &mdash; often the binding constraint, not the ticket volume.</p></div></div>
+      <div class="step"><div><h4>Set the estate complexity</h4><p>Low, Medium or High &mdash; one deal-level call that sets the seniority pyramid, adds contingency as real FTE, and tilts the severity, SR and CR mixes toward the harder end. Leave it <em>Not set</em> for no contingency and a 1:2:4 pyramid. Then add any <b>Special roles</b> (L1.5, SRE, QA, Advisory) by hand. See <a href="#estatecpx">Estate complexity</a>.</p></div></div>
       <div class="step"><div><h4>Score confidence and risk</h4><p>Nine drivers, nine risk categories. This is not decoration: the effective score sets your contingency posture <em>and</em> widens the Monte Carlo bands.</p></div></div>
       <div class="step"><div><h4>Choose the AIOps solutions and plan the transition</h4><p>In <b>AIOps efficiency calculator</b>, tick the solutions this deal will actually apply and see the net FTE they save once the AIOps engineers are paid for. Decide how that freed capacity is used. Under Engagement, check the <b>Transition phase</b> weeks for knowledge transfer, shadow and reverse shadow.</p></div></div>
       <div class="step"><div><h4>Export and compare</h4><p>Copy the auto-composed assumptions, exclusions, volume-band clause and risk log into the proposal annex, or use <b>Export Excel</b> for the bid team. Save versions under <b>Scenarios</b> to compare options side by side. Run <b>Verify against framework</b> in front of the client if you want to show your working.</p></div></div>
@@ -212,6 +214,9 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <div class="callout">
       <p><b>This is pattern-matching, not comprehension.</b> A published Artifact has no runtime AI access &mdash; there is no way for this page to actually read and understand a document the way a chat turn with Claude can. So <em>Detect inputs</em> is regex over known DAMO phrasing (&ldquo;P1 response within 15 minutes&rdquo;, &ldquo;24x7 coverage&rdquo;), not an AI summary. It will miss anything phrased unusually, and it will occasionally match the wrong sentence &mdash; that is exactly why every hit shows its source excerpt.</p>
     </div>
+
+    <h3>Reporting period &mdash; never assumed</h3>
+    <p>Volumes in a document are usually a total over some period (&ldquo;six-month manning data&rdquo;, &ldquo;FY25 incidents&rdquo;), not a monthly figure. The AI extraction reads the stated period and converts to monthly; if the document states none, it must say so in the summary rather than quietly treating the numbers as monthly. You can also type <b>Reporting period (months)</b> on the intake screen &mdash; a value you enter always wins over anything inferred. Severity mix is always converted to genuine percentages of total incidents, and change requests are extracted as their own monthly figure.</p>
 
     <h3>Incident-history spreadsheets are read as tables, not prose</h3>
     <p>A cell reading <code>P1, 20, 15, 120</code> does not match a sentence-shaped regex. Upload an incident-history workbook and the tool instead looks for a header row (a priority/severity column plus incident-count and response/resolution-SLA columns) and reads the data rows directly &mdash; aggregate volume, per-priority SLA in minutes, a derived mix. When both a spreadsheet and prose text mention the same field, the tabular figure wins: structured data beats a regex guess.</p>
@@ -251,6 +256,29 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     </div>
   </section>
 
+  <section id="demand">
+    <h2>Incidents, service requests &amp; change requests</h2>
+    <p class="lede">In History mode every tower carries three separate demand streams, each costed its own way. They are never blended into one pool.</p>
+    <div class="tablewrap"><table class="ref">
+      <thead><tr><th>Stream</th><th>Costed as</th><th>Done by</th></tr></thead>
+      <tbody>
+        <tr><td>Incidents</td><td>The severity cascade: P1&ndash;P4 entry matrix, then pass-through, at the L1/L2/L3 AREs.</td><td>L1, L2, L3 per the cascade</td></tr>
+        <tr><td>Service requests (SR)</td><td>A per-complexity ARE, weighted by the tower&rsquo;s SR mix. Defaults 0.25 / 0.5 / 1.5 h (Low / Medium / High).</td><td>Low &rarr; L1, Medium &rarr; L2, High &rarr; L3. A tier that is not ours passes the work to the next tier we own.</td></tr>
+        <tr><td>Change requests (CR)</td><td>A per-complexity ARE, weighted by the tower&rsquo;s CR mix. Defaults 4 / 8 / 16 h.</td><td>Their own bucket, only when we own L2 or L3</td></tr>
+      </tbody>
+    </table></div>
+    <ul>
+      <li><b>Severity mix</b> (P1&ndash;P4) takes counts or percentages and is normalised. It applies to incidents only &mdash; SRs and CRs never inherit it.</li>
+      <li><b>SR and CR complexity mixes</b> are entered per tower (counts or %, normalised). Defaults: SR 60/30/10, CR 50/35/15. The charged ARE is the mix-weighted average &mdash; a 60/30/10 SR mix costs 0.45 h per SR.</li>
+      <li><b>AREs by complexity</b> are in <em>Benchmarks &amp; assumptions</em>: three SR values and three CR values.</li>
+      <li><b>Estate complexity</b> tilts all three mixes toward the harder end (see <a href="#estatecpx">Estate complexity</a>); the effective mix is shown under each input.</li>
+      <li><b>L1 is the customer&rsquo;s by default.</b> New towers start with L1 = Customer and L2/L3 = us, so a fresh estimate has no L1 effort. Low SRs then fall to L2 rather than disappearing. Choose <em>Full stack</em> when L1 is in scope.</li>
+    </ul>
+    <div class="callout">
+      <p><b>Why separate streams.</b> SRs used to be folded into the incident pool and inherited its severity mix and L1/L2/L3 AREs, which inflated FTE badly for any tower with real SR volume. They have their own AREs and complexity now, and the incident mix never touches them.</p>
+    </div>
+  </section>
+
   <section id="scenario">
     <h2>Picking a scenario</h2>
     <p class="lede">Two questions decide it: does the client have usable volumetrics, and are they already doing anything with AI? Everything downstream follows.</p>
@@ -274,6 +302,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
   <section id="breakeven">
     <h2>AIOps break-even</h2>
+    <p class="mini"><b>Phasing.</b> AIOps engineers are charged from the year deflection actually starts (Y2 in Scenarios 1 and 3), not from Y1 &mdash; a team with no deflection to show for it has no AIOps headcount. They follow the scenario ratio automatically; they are not a Special role.</p>
     <p class="lede">An embedded AIOps engineer is added headcount. Below a threshold, adding AIOps makes the team <em>bigger</em>. Know where that threshold sits before you promise savings.</p>
     <p>At a ratio of 1:<i>r</i>, AIOps adds <code>1/r</code> to the team. The team only shrinks once deflection <i>d</i> satisfies <code>(1 &minus; d)(1 + 1/r) &lt; 1</code>, which solves to <code>d &gt; 1/(r + 1)</code>.</p>
     <div class="demo">
@@ -378,7 +407,10 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Estate profile</td><td>Non-ticketing B-factor: 20&ndash;25% for modern custom/SaaS, 30&ndash;35% for complex legacy.</td><td>[F] 1.1</td></tr>
         <tr><td>Engagement type</td><td>Greenfield or brownfield &mdash; who built and knows the system, distinct from Estate profile's tech-modernity axis. Auto-seeds four confidence/risk sliders (brownfield lower) and applies a direct Y1 FTE uplift (default +20%, tapering to 0 by Y3) that estate profile does not.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Demand basis</td><td>History, complexity proxy, or MAU &times; 0.5&ndash;2%. The complexity proxy differs by tower: AMS uses apps by T-shirt size (3&ndash;5 to 40&ndash;60 tickets/app/month); IMS/DMS instead derive volume directly from the structural-complexity score below (score &times; tickets-per-point, proposed default 4.5 for IMS / 3.4 for DMS) &mdash; the same inputs driving the B-factor bump also drive demand, instead of an unrelated apps count.</td><td>[F] Sc.1 Steps 1&ndash;2 (AMS); <span class="pill warn">proposed</span> (IMS/DMS)</td></tr>
-        <tr><td>Severity mix</td><td>Through the P1&ndash;P4 matrix, where volume <em>enters</em> the stack. P1 mostly bypasses L1 into L2/L3.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Reporting period</td><td>Months covered by the volumes you enter or upload. Converted to monthly; never assumed &mdash; a stated value beats an inferred one.</td><td>Engagement design</td></tr>
+        <tr><td>SR / CR complexity mix and AREs</td><td>Per tower, Low/Medium/High mixes for service requests and change requests; AREs by level in Benchmarks (SR 0.25/0.5/1.5 h, CR 4/8/16 h). SRs go to L1/L2/L3 by complexity; CRs are their own bucket.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Estate complexity</td><td>Low/Medium/High (or not set): seniority pyramid 1:2:4 / 1:2:3 / 1:2:2, Y1 contingency 5 / 7.5 / 10% (taper to 6% from Y2), and a 0 / 10 / 20% tilt of the severity, SR and CR mixes.</td><td>Estimation Workflow; tilt <span class="pill warn">proposed</span></td></tr>
+        <tr><td>Severity mix</td><td>Through the P1&ndash;P4 matrix, where volume <em>enters</em> the stack. P1 mostly bypasses L1 into L2/L3. Estate complexity tilts it toward P1/P2.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>SLA response / restore</td><td>P1 response &le;15 min adds 25% to L2/L3 effort; &le;30 min adds 12%. P1 restore &le;2 h adds 10% on L3. Capped at +40%. A Service Tier preset (below) can set all four priorities' response/restore fields at once.</td><td>[F] Sc.3 Step 2</td></tr>
         <tr><td>Availability Class</td><td>A&ndash;E (95% / 99% / 99.5% / 99.9% / 99.95%), a labelled preset over the same raw target-% field &mdash; &ge;99.9% still adds 10% to L2/L3 via the existing rule. Pick Custom to type the percentage directly, unchanged from before this existed.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Service tier preset</td><td>Gold / Silver / Bronze, per tower. One click sets Coverage window, Off-hours model, Availability Class and all eight SLA fields together &mdash; generic illustrative defaults, not any specific client's numbers. Everything stays fully editable afterward.</td><td><span class="pill warn">proposed</span></td></tr>
@@ -387,8 +419,8 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Shared roster</td><td>Whether towers share one follow-the-sun rota or each runs its own. Materially cheaper when shared.</td><td>Engagement design</td></tr>
         <tr><td>Productivity curve</td><td>Scenario YoY targets (conservative) or the 18%&rarr;65% cumulative template (stretch). The two do not reconcile &mdash; pick deliberately.</td><td>[F] Part 3 vs Sc.3</td></tr>
         <tr><td>Confidence &amp; risk</td><td>Contingency posture, commercial recommendation, and the width of the Monte Carlo bands.</td><td>[F] Annexures 1&ndash;2</td></tr>
-        <tr><td>Role weights</td><td>How tier headcount is distributed across whichever roles you have switched on.</td><td><span class="pill warn">proposed</span></td></tr>
-        <tr><td>Special roles</td><td>Deal-level, manual FTE for L1.5, SRE, QA, a governance layer or any custom role. Added on top of Total FTE, outside the tower-driven sizing.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Seniority mix</td><td>The Lead : Senior : Consultant pyramid per complexity level (editable) and the uplift as the team shape inverts. Changes grades, never headcount.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Special roles</td><td>Deal-level, manual FTE for L1.5, SRE, QA, Advisory or any custom role. Added on top of Total FTE, outside the tower-driven sizing, with no contingency.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Customer Region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently. Also drives which delivery location typically carries off-hours on-call, for Active-Passive towers.</td><td>Engagement design</td></tr>
         <tr><td>Out-of-office-hours coverage</td><td>IMS/DMS/AMS, shown whenever coverage isn't 8x5. Active-Active reproduces the existing shift-floor formula unchanged. Active-Passive keeps business hours fully staffed and discounts only the off-hours delta to an on-call allowance &mdash; a materially lower coverage floor for the same declared window.</td><td><span class="pill warn">proposed</span></td></tr>
@@ -409,7 +441,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
       <thead><tr><th>Card</th><th>Look at</th></tr></thead>
       <tbody>
         <tr><td>Scenario posture</td><td>Your commercial recommendation and volume-band requirement. Take this to the pricing conversation before you take numbers.</td></tr>
-        <tr><td>Year by year</td><td>The <code>Base FTE</code> column with a <span class="pill acc">cover</span> flag &mdash; it means the support window, not demand, is setting your headcount.</td></tr>
+        <tr><td>Year by year</td><td>The <code>Base FTE</code> column with a <span class="pill acc">cover</span> flag &mdash; it means the support window, not demand, is setting your headcount. Then the <code>Contingency</code> and <code>Special</code> columns, which add on top. The Y1&rarr;Y2 drop is explained in the register: hypercare, the Brownfield uplift and AIOps timing are all Y1-loaded.</td></tr>
         <tr><td>FTE trajectory</td><td>The gap between the solid line and the dashed baseline. If they touch, AIOps is not paying for itself yet.</td></tr>
         <tr><td>Traditional vs AI-driven</td><td>The break-even callout. It tells you whether the savings story survives contact with the AIOps ratio.</td></tr>
         <tr><td>Team shape</td><td>The progression pyramid &rarr; diamond &rarr; inverted across years, and the AIOps band in violet.</td></tr>
@@ -424,7 +456,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>O3 team shape IP</td><td>The deployable whole-person roster, versus the fractional commercial baseline.</td></tr>
         <tr><td>O4 uncertainty</td><td>The <b>P80</b>, not the point estimate. That is the number to commit to on a fixed fee.</td></tr>
         <tr><td>Estimate confidence</td><td>Any driver scoring 1&ndash;2 &mdash; those must become explicit due-diligence work items.</td></tr>
-        <tr><td>Verify against framework</td><td>149 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity, the AIOps calculator, transition, outcome targets and the Excel writer). Run it in front of a sceptical client.</td></tr>
+        <tr><td>Verify against framework</td><td>197 checks reproducing worked examples from the source documents, plus synthetic cases for logic with no document analogue (RFP intake extraction, role policy, structural complexity, the AIOps calculator, transition, outcome targets and the Excel writer). Run it in front of a sceptical client.</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -432,7 +464,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
   <section id="resp">
     <h2>Who provides what</h2>
     <p class="lede">Declare who runs each tier &mdash; us, the customer, another vendor or the product team. Only tiers marked DAMO are sized.</p>
-    <p>Set it per tower, or use a preset to apply one shape across the whole deal:</p>
+    <p>Set it per tower, or use a preset to apply one shape across the whole deal. <b>New towers start as L1 customer, L2/L3 DAMO</b>; saved estimates keep their own ownership. Pick <em>Full stack</em> when L1 is yours too.</p>
     <div class="tablewrap"><table class="ref">
       <thead><tr><th>Preset</th><th>L1</th><th>L2</th><th>L3</th></tr></thead>
       <tbody>
@@ -456,40 +488,49 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     </div>
   </section>
 
-  <section id="roles">
-    <h2>Roles &amp; grades</h2>
-    <p class="lede">Only eight roles are on by default &mdash; a deliberate, narrow list, not a weighted contest across the full 35-role catalogue. SRE, QA, L1.5 and any governance layer are not catalogue roles: add them as <b>Special roles</b> with manual FTE.</p>
+  <section id="estatecpx">
+    <h2>Estate complexity</h2>
+    <p class="lede">One deal-level call &mdash; <b>Not set / Low / Medium / High</b> &mdash; on how hard the estate is to run. It sets the seniority pyramid, adds contingency as real FTE, and tilts the incident severity, SR and CR mixes toward the harder end. (The per-tower IMS/DMS structural scores below keep driving the B-factor separately.)</p>
     <div class="tablewrap"><table class="ref">
-      <thead><tr><th>Tower</th><th>L1</th><th>L2</th><th>L3</th></tr></thead>
+      <thead><tr><th>Level</th><th>Pyramid L : S : C</th><th>Y1 contingency</th><th>Mix tilt <span class="pill warn">proposed</span></th></tr></thead>
       <tbody>
-        <tr><td>AMS</td><td>Product Support Engineer</td><td><b>Systems Support Engineer</b></td><td><b>SSE</b> below the evolution threshold, <b>Developer</b> at or above it</td></tr>
-        <tr><td>IMS</td><td>Product Support Engineer</td><td><b>Infrastructure Support Engineer</b></td><td><b>Infrastructure Engineer</b> (carries the whole IMS L3 share)</td></tr>
-        <tr><td>DMS</td><td>Product Support Engineer</td><td><b>Data Engineer</b> (spans L2 and L3)</td><td><b>Data Engineer</b> (spans L2 and L3)</td></tr>
+        <tr><td>Not set</td><td>1 : 2 : 4</td><td>none</td><td>none</td></tr>
+        <tr><td>Low <span class="mini">modern estate, standard apps, few integrations</span></td><td>1 : 2 : 4</td><td>5%</td><td>0</td></tr>
+        <tr><td>Medium <span class="mini">mixed estate, several integrations, some regulated flows</span></td><td>1 : 2 : 3</td><td>7.5%</td><td>10%</td></tr>
+        <tr><td>High <span class="mini">legacy or regulated core, heavy integrations, data/ML pipelines</span></td><td>1 : 2 : 2</td><td>10%</td><td>20%</td></tr>
       </tbody>
     </table></div>
-    <p>Plus <b>Machine Learning Engineer</b> for AIOps, and <b>Service Delivery Manager</b> as the only governance role, present on every engagement &mdash; every other governance role (Delivery Principal, Solution Architect, Enterprise Architect, Data Architect, and the rest of the 37) is off by default.</p>
-    <p>For most tiers there's exactly one eligible candidate, so it automatically takes 100% of that tier's headcount. The full catalogue is still there in <b>Roles &amp; grades</b> &mdash; switch on whatever a specific deal genuinely needs (a Data Scientist for an ML-heavy DMS engagement, say). Off-by-default is a starting posture, not a ceiling.</p>
+    <ul>
+      <li><b>Contingency is real FTE:</b> the % times the delivery team including SDM, added to Total FTE and spread across L1&ndash;L3. From Y2 it tapers to the lower of the Y1 value and 6%. Override Y1 and Y2+ per deal; blank means the level&rsquo;s value. Special roles and AIOps engineers carry none. Not set means no contingency.</li>
+      <li><b>Severity tilt:</b> that share of each lower band moves one level up (P4&rarr;P3, P3&rarr;P2, P2&rarr;P1) before the ticket cascade, on the original shares, renormalised to 100. Your entered mix is never changed; the effective mix is shown under it. SR and CR mixes tilt the same way (Low&rarr;Medium&rarr;High).</li>
+      <li><b>Where to edit:</b> pyramid ratios under <em>Seniority mix</em>; contingency % and tilt under <em>Benchmarks &amp; assumptions</em>. Pyramid and contingency follow the DAMO Estimation Workflow&rsquo;s complexity table; the tilt is this tool&rsquo;s own calibration.</li>
+    </ul>
     <div class="callout">
-      <p><b>The inverted pyramid is a grade story.</b> Every role splits <b>Lead : Senior : Consultant</b> at a proper pyramid ratio of <b>1 : 2 : 4</b> &mdash; no Principal grade, rarely used here. As automation strips the Consultant-heavy L1 base over the engagement, the Lead share of a shrinking team rises. The staffing card shows that movement year by year in your own ladder.</p>
+      <p><b>Check it against the confidence band.</b> The Y1 contingency here is a hint beside the scenario&rsquo;s guidance and the confidence-band wording (Low band: maximum contingency; Highest: minimum). They are not linked &mdash; if the band says &ldquo;high contingency&rdquo; and the level says 5%, say which you are using and why.</p>
     </div>
-    <p class="mini"><b>Service Delivery Manager is graded wholly Lead</b>, not split &mdash; the one deliberate exception to the uniform 1:2:4 ratio, and it falls out for free since SDM is the sole role left in governance.</p>
   </section>
 
-  <section id="policy">
-    <h2>Manual-estimation role policy</h2>
-    <p class="lede">One role is <b>genuinely gated</b> by a tower input: SSE vs Developer at AMS L3, driven by the evolution-effort threshold.</p>
+  <section id="roles">
+    <h2>Roles, seniority &amp; special roles</h2>
+    <p class="lede">Roles are a fixed map per tower &mdash; nothing to tick or weight. Seniority comes from the estate complexity. Everything else is a manual Special role.</p>
     <div class="tablewrap"><table class="ref">
-      <thead><tr><th>Input</th><th>Effect</th></tr></thead>
+      <thead><tr><th>Tower</th><th>L1 <span class="mini">(only if L1 is ours)</span></th><th>L2</th><th>L3</th></tr></thead>
       <tbody>
-        <tr><td>Evolution work expected, % <span class="mini">(AMS towers only)</span></td><td>Below the threshold (default 30%): Systems Support Engineer covers AMS L3 as well as L2 &mdash; "SSEs are capable of doing the minor enhancements." At or above it: Developer takes over L3 and SSE drops back to L2 only. Exactly one is ever eligible, never both.</td></tr>
+        <tr><td>AMS</td><td>Product Support Engineer</td><td><b>Systems Support Engineer</b></td><td><b>SSE</b> below the evolution threshold (30%), <b>Developer</b> at or above it</td></tr>
+        <tr><td>IMS</td><td>Product Support Engineer</td><td colspan="2"><b>Infrastructure Support Engineer</b> covers L2 and L3</td></tr>
+        <tr><td>DMS</td><td>Product Support Engineer</td><td colspan="2"><b>Data Support Engineer</b> covers L2 and L3</td></tr>
       </tbody>
     </table></div>
+    <p>Plus <b>Machine Learning Engineer</b> for AIOps (count follows the scenario ratio once deflection starts) and <b>Service Delivery Manager</b> as the only governance role &mdash; 1 per 8 delivery FTE. A tier we do not own has no effort, so no role appears for it. A mixed AMS+IMS deal resolves each tower against its own headcount share, not a deal-wide blend.</p>
+    <h3>Seniority mix</h3>
+    <p>Section <b>Seniority mix</b> (left rail, right after Service towers) sets the Lead : Senior : Consultant pyramid for L1&ndash;L3 from the estate complexity &mdash; Low 1:2:4, Medium 1:2:3, High 1:2:2, each editable; not set uses 1:2:4. It changes the grade split, never headcount. <b>SDMs are graded wholly Lead</b>; special roles keep 1:2:4; there is no Principal grade. <b>Seniority uplift</b> (default 0.25) layers on top: as the scenario&rsquo;s shape moves pyramid &rarr; diamond &rarr; inverted, a share of Consultant shifts to Senior and of Senior to Lead.</p>
     <div class="callout">
-      <p><b>SRE and QA are no longer tower inputs.</b> The old IMS &ldquo;SRE is the objective&rdquo; checkbox and the QA effort share are gone. Add SRE, QA, L1.5 or a governance layer under <b>Special roles</b> instead &mdash; they apply to every tower and are entered manually.</p>
+      <p><b>The inverted pyramid is a grade story.</b> As automation strips the Consultant-heavy base over the engagement years, the Lead share rises while headcount falls &mdash; the &ldquo;leaner but senior-heavy team&rdquo; narrative, visible in the Role &amp; grade staffing plan.</p>
     </div>
-    <p>Data Engineer is the one role that spans <b>both</b> the L2 and L3 headcount pools for DMS, reflecting "we use Data Engineer for L2/L3" &mdash; every other on-by-default role draws from exactly one tier.</p>
-    <p>A mixed AMS+IMS deal loads both towers' roles independently and at the same time &mdash; SSE from the AMS slice, Infrastructure Support Engineer from the IMS slice &mdash; since each tower resolves against its own headcount share, not a deal-wide blend.</p>
-    <p class="mini">SDM ratio defaults to 1:8, the manual-estimation convention, replacing the framework's vaguer 1:8&ndash;10 range.</p>
+    <h3>Special roles</h3>
+    <p>Section <b>Special roles</b> (right after Seniority mix): presets for <b>L1.5 support, SRE, QA, Advisory</b> and a <b>Custom</b> role. They apply to every tower, are entered by hand &mdash; one FTE number per role with an optional per-year override (blank years use the flat number) &mdash; and are <b>added on top of Total FTE</b>. They are not deflated by AIOps, not scaled by hypercare or the Brownfield uplift, carry no contingency, and sit outside the AIOps ratio. They are graded 1:2:4 and show in the staffing plan, location mix, register, print report and Excel.</p>
+    <p class="mini">What changed: the 35-role catalogue, role weights, the IMS &ldquo;SRE is the objective&rdquo; checkbox, the QA effort share and the Infrastructure Engineer role were removed. Old links that carry them still load; the values are ignored. AIOps engineers and governance are <em>not</em> special roles &mdash; they follow the scenario and the SDM rule.</p>
+    <p class="mini">SDM ratio is exactly 1:8, the manual-estimation convention, replacing the framework&rsquo;s vaguer 1:8&ndash;10 range.</p>
   </section>
 
   <section id="structcpx">
@@ -509,7 +550,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <p>Each tower's inputs feed a weighted score, banded into <b>Low / Medium / High</b> &mdash; shown live as a badge on the tower card. Two effects follow, both new, neither touching AMS:</p>
     <ul>
       <li><b>Effort.</b> The underlying score bumps the tower's B-factor (non-ticketing effort) <b>continuously</b>, not in three flat steps &mdash; the bump equals score &times; a per-point rate, calibrated so it lands on 10% right at the Low/Medium threshold and 20% right at Medium/High, then keeps climbing past that. A tower with 100 environments genuinely costs more than one with 10; it doesn't flatline the moment it crosses into High. Capped at a high sanity ceiling (default 200%) only against adversarial input. Stacks with the existing modern/legacy estate B-factor &mdash; a third lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower FTE); none of the three double-count.</li>
-      <li><b>Roles.</b> At <b>High</b> only, two off-by-default roles become eligible: <b>Information Security Engineer</b> on IMS, gated directly by the security checkbox. <b>Data Architect</b> and <b>Data Strategist</b> on DMS, standing in for a DataOps Architect and a Data Quality/Governance Lead. Either way, the role must <em>also</em> be switched on in <b>Roles &amp; grades</b> &mdash; a High tier alone never auto-enables it, matching how the AMS evolution threshold already works.</li>
+      <li><b>Roles.</b> The tier badge no longer gates any role (the role catalogue was removed); it drives the B-factor bump and the demand proxy. A deal that needs an architect or security specialist adds one under <b>Special roles</b>.</li>
     </ul>
 
     <div class="callout">
@@ -528,7 +569,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
       <tbody>
         <tr><td>IME</td><td>The whole team is shown as delivered from <b>India</b>. No further configuration &mdash; the Delivery location mix card just states it.</td></tr>
         <tr><td>EU</td><td>A percentage table appears: <b>Onshore (Europe)</b> / <b>Nearshore (Romania)</b> / <b>Offshore (India)</b>.</td></tr>
-        <tr><td>APAC</td><td>Two peer locations, <b>China</b> and <b>Australia</b> &mdash; no onshore/nearshore/offshore hierarchy, since APAC has none relative to India the way EU/NA do.</td></tr>
+        <tr><td>APAC</td><td>Three peer locations, <b>China</b>, <b>Australia</b> and <b>Singapore</b> &mdash; no onshore/nearshore/offshore hierarchy, since APAC has none relative to India the way EU/NA do. <em>Singapore only</em> gives a complete Singapore-delivered APAC solution.</td></tr>
         <tr><td>NA</td><td>Two locations, <b>Nearshore (LATAM/Ecuador)</b> and <b>Offshore (India)</b>.</td></tr>
       </tbody>
     </table></div>
@@ -540,9 +581,10 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Nearshore + Offshore</td><td>0 / 40 / 60</td></tr>
         <tr><td>Onshore + Offshore</td><td>30 / 0 / 70</td></tr>
         <tr><td>Onshore + Nearshore + Offshore</td><td>20 / 30 / 50</td></tr>
-        <tr><td rowspan="3">APAC <span class="pill warn">proposed</span></td><td>China only</td><td>100 / 0</td></tr>
-        <tr><td>Australia only</td><td>0 / 100</td></tr>
-        <tr><td>Even split</td><td>50 / 50</td></tr>
+        <tr><td rowspan="4">APAC <span class="pill warn">proposed</span></td><td>China only</td><td>100 / 0 / 0</td></tr>
+        <tr><td>Australia only</td><td>0 / 100 / 0</td></tr>
+        <tr><td>Singapore only</td><td>0 / 0 / 100</td></tr>
+        <tr><td>Even split</td><td>34 / 33 / 33 (China / Australia / Singapore)</td></tr>
         <tr><td rowspan="2">NA <span class="pill warn">proposed</span></td><td>Offshore only</td><td>0 / 100</td></tr>
         <tr><td>Nearshore + Offshore</td><td>40 / 60</td></tr>
       </tbody>
@@ -581,6 +623,9 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <dl class="gloss">
       <div><dt>A / B factor</dt><dd>A is ticketing effort; B is non-ticketing effort (transformation, automation, CFR), expressed as a percentage of A.</dd></div>
       <div><dt>ARE</dt><dd>Average Resolution Effort per tier. Framework benchmarks: L1 15 min, L2 2&ndash;4 h, L3 8&ndash;12 h.</dd></div>
+      <div><dt>SR / CR</dt><dd>Service request and change request. Each has its own Low/Medium/High mix per tower and its own ARE per level; neither inherits the incident severity mix.</dd></div>
+      <div><dt>Estate complexity</dt><dd>Deal-level Low/Medium/High call that sets the seniority pyramid, the contingency and a tilt of the severity, SR and CR mixes.</dd></div>
+      <div><dt>Special role</dt><dd>A manually entered role (L1.5, SRE, QA, Advisory, custom) added on top of Total FTE, outside the tower sizing.</dd></div>
       <div><dt>Pass-through rate</dt><dd>Share of tickets escalating from one tier to the next. Improves year on year as runbooks, knowledge capture and automation mature.</dd></div>
       <div><dt>FTE modifier (C)</dt><dd>Coverage adjustment from shift maths. Converts a support window into a minimum headcount.</dd></div>
       <div><dt>POD</dt><dd>Team unit: Sustain (day-to-day ops), Transformation (SRE, AI, automation &mdash; 10&ndash;20% of effort), Flex (change requests), Governance.</dd></div>

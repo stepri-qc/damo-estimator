@@ -51,6 +51,8 @@ Adds roughly 1.5 MB to the artifact (the pdf.js bundle) — well inside the 16 M
 
 On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepared inputs" section sends `combinedIntakeText()` to a real backend — `netlify/functions/extract-inputs-background.mts` — which calls the Claude API (`claude-sonnet-5`) and writes the result back for the page to pick up. No copy-paste, no second chat window.
 
+- **Reporting period — never assumed.** Volumes in a document are often a total over some period, not a monthly figure. The extractor reads the period the document states (for example "six-month manning data" or "FY25 incidents") and converts to monthly (`total ÷ months`); when the document states no period it must say so in the summary rather than silently treating the numbers as monthly. You can also type the period yourself in **Reporting period (months)** on the intake screen — a stated value always takes precedence over anything inferred, and the same instruction is sent by both the Netlify function and the *Copy prompt* path.
+- **Severity mix is always a genuine percentage.** Whatever shape the incident data arrives in (Sev A/B/C counts, a P1–P4 table, per-severity monthly totals), `towers[].mix` is converted to percentages of *total incidents* summing to 100; service requests and change requests are never folded into it, and CRs are extracted as their own monthly figure.
 - **Same schema, same apply path, by design.** The prompt the function sends to Claude is a server-side twin of `buildClaudePrompt()` — same target shape (`docSummary`, `eng{term, aiMaturity, volumetrics, aiops, estate, region}`, complete `towers[]` entries), same "omit what you can't support, never guess" instruction. A successful response lands in the same `#intakeJson` textarea and goes through the same **Apply prepared inputs** → `deepMergeState(defaults(), json)` flow the manual path already uses — no second merge implementation to keep in sync.
 - **Plain prompting, not structured outputs — a live constraint forced this, not a preference.** The first version used `output_config.format` (JSON Schema-enforced output) with every field individually nullable so the model could omit exactly what it wasn't sure about. Two schema shapes were tried and rejected by Anthropic's API before this: `type:["string","null"]` combined with `enum` (400: "Enum value does not match declared type"), then `anyOf[{type,enum},{type:"null"}]` per leaf (400: "too many parameters with union types (33) ... limit 16 ... exponential compilation cost"). The full schema genuinely needs more independently-omittable fields than that budget allows without either merging fields the framework treats as separate, or forcing the model to guess whenever it includes an object at all. Plain prompting (what the manual copy-paste path already does, and already relies on working well) has no such limit, so that's what ships — the function parses Claude's JSON reply itself (stripping a `` ```json `` fence if present) instead of the API guaranteeing the shape.
 - **The API key is never in the browser, and Claude (the assistant) never sets it.** `ANTHROPIC_API_KEY` is a Netlify environment variable read server-side via `Netlify.env.get(...)` inside the function — the frontend never sees it, and it never appears in this repo. It has to be set by whoever owns the Netlify site, directly in the Netlify dashboard or via `netlify env:set ANTHROPIC_API_KEY <value>` in their own terminal.
@@ -65,10 +67,14 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 1. Open the tool. On a fresh visit it opens on the RFP intake screen (§2, also reachable any time via **Start from RFP**) — add the RFP, an incident-history sheet, or any other supporting document (paste text or upload .docx/.pdf/.xlsx/.txt/.md) and hit Detect, or click **Skip — set up manually** to land directly on the dashboard with a single AMS tower and a worked default so you see live numbers immediately.
 2. Set **Engagement**: term, client AI maturity, whether volumetrics exist, estate profile, AIOps in or out, and Customer Region (IME, EU, APAC or NA). The first four choices select the scenario (1–4) and with it the contingency, team shape, AIOps timing and savings target; region drives the Delivery location mix card, and (for Active-Passive off-hours coverage) which location typically carries on-call.
 3. Pick the **Service mix** — AMS, IMS, DMS or any combination. Click a line to add or drop it. Use **+ Add another tower** only when one line needs more than one tower (separate estates, different SLAs).
-4. Set **Service responsibility** per tower — who provides L1, L2 and L3.
-5. Score the nine confidence drivers and nine risk categories.
-6. Read the results, then copy the **Assumptions & risk register** into the proposal.
-7. Hit **Verify against framework** at the bottom — 149 checks reproducing worked examples from the source documents, validating the role policy, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
+4. Set **Service responsibility** per tower — who provides L1, L2 and L3. New towers start with **L1 = Customer** (L2/L3 = us); pick *Full stack* when L1 is ours too.
+5. Enter demand per tower: incidents (with a severity mix), service requests and change requests, each with its own Low/Medium/High complexity mix.
+6. Set **Estate complexity** (Low/Medium/High) — it drives the seniority pyramid, the contingency and a tilt of the severity/SR/CR mixes. Optionally add **Special roles** (L1.5, SRE, QA, Advisory) by hand.
+7. Score the nine confidence drivers and nine risk categories.
+8. Read the results, then copy the **Assumptions & risk register** into the proposal.
+9. Hit **Verify against framework** at the bottom — 197 checks reproducing worked examples from the source documents, validating the role map, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
+
+The left rail is: Engagement → Estate complexity → Service towers → Seniority mix → Special roles → AIOps & run cost → AIOps efficiency calculator → Outcome model → Confidence & risk → Optimization → Benchmarks & assumptions. Sections stay open (and the rail keeps its scroll position) when you tick a box or press a button.
 
 State is saved to the URL, so you can bookmark or share an estimate. **Export JSON** / **Import** move estimates between people.
 
@@ -81,11 +87,25 @@ State is saved to the URL, so you can bookmark or share an estimate. **Export JS
 
 ### 3.2 Demand
 Three interchangeable bases per tower:
-- **History** — incidents + service requests per month
+- **History** — incidents, service requests and change requests per month, each its own stream (see below)
 - **Complexity proxy** — apps by S/M/L/XL/XXL at 3–5 / 8–12 / 15–20 / 25–35 / 40–60 tickets/app/month ([F] Sc.1 Step 1)
-- **MAU** — users × incident rate, benchmark 0.5–2% ([F] Sc.1 Step 2)
+- **MAU** — users × incident rate, benchmark 0.5–2% ([F] Sc.2 Step 2)
 
 Existing client automation then deflates volume: 20–30% coverage → −15–20%, 30–50% → −20–30% ([F] Sc.2 Step 2).
+
+**Three streams, three costs (History mode).**
+
+| Stream | Costed as | Done by |
+|---|---|---|
+| Incidents | Severity cascade (P1–P4 entry matrix → pass-through) at the tier AREs | L1/L2/L3 per the cascade |
+| Service requests (SR) | Per-complexity ARE, weighted by the tower's SR mix | Low → L1, Medium → L2, High → L3 (a tier that is not ours passes the work to the next tier we own) |
+| Change requests (CR) | Per-complexity ARE, weighted by the tower's CR mix | Their own bucket, gated on L2/L3 ownership |
+
+- **Severity mix** (P1–P4) accepts counts or percentages and is normalised; it applies to incidents only. SRs and CRs never inherit it.
+- **SR / CR complexity mix** — each tower carries a Low/Medium/High mix for SRs and one for CRs (counts or %, normalised; defaults SR 60/30/10, CR 50/35/15 `proposed`).
+- **AREs by complexity** live in *Benchmarks*: SR 0.25 / 0.5 / 1.5 h and CR 4 / 8 / 16 h (Low / Medium / High, `proposed`). The charged ARE is the mix-weighted average, so a 60/30/10 SR mix costs 0.45 h per SR.
+- **Estate complexity tilt** — Medium/High estate complexity moves a share of each lower band one level up in the severity mix *and* in the SR/CR mixes (see 3.8b); the effective mix is shown under each input.
+- SRs can be done by L2/L3 as well: where L1 is the customer's (the default), Low SRs fall to L2 rather than disappearing.
 
 ### 3.3 Tiering is a cascade, not a partition
 This is the part most people get wrong, and the framework's own page-3 illustration settles it:
@@ -96,7 +116,8 @@ So L2 effort covers every pass-through, and L3 escalations are additive. The P1�
 
 ### 3.4 Effort to FTE
 ```
-raw   = Σ_tier (tickets_at_tier × ARE_tier × tower_multiplier) × (1 + SLA modifier on L2/L3)
+raw   = Σ_tier (incident tickets_at_tier × ARE_tier × tower_multiplier) × (1 + SLA modifier on L2/L3)
+      + SR hours (per-complexity ARE, by tier) + CR hours (own bucket)
 A     = raw / utilisation                 # default 85%
 B     = A × non-ticketing %               # 20–25% modern, 30–35% legacy
 G     = governance & reporting hours
@@ -106,11 +127,13 @@ base  = (A + B + G) / hours_per_month     # default 160
 ### 3.5 Coverage, hypercare, AIOps
 - **Coverage** — `(shifts_per_week × FTE_per_shift) / 5`. Acts as a **floor**, not an addition: when the roster needs more people than the workload does, headcount is set by the support window. The tool flags this when it happens. Six windows are selectable: `8x5`/`16x5`/`24x5` (weekday) and `8x7`/`16x7`/`24x7` (every day) — the `x7` variants keep the same daily hours as their `x5` sibling but extend across weekends, computed by the same shift-count formula (`SHIFTS`). `Term (years)` runs 1–5 individually, not just 1/3/5 — every value runs the engine for exactly that many year-rows; Y4–Y5, where reached, still extend the Y3+ pass-through/inflow benchmarks.
 - **Hypercare** — Y1 carries up to 3× steady-state volume for the first few months with a step-down glide path ([F] G4).
-- **AIOps** — deflection applies to delivery FTE; AIOps engineers are added at 1:4 or 1:8 (flexing to 1:6 above 20 FTE).
+- **AIOps** — deflection applies to delivery FTE; AIOps engineers are added at 1:4 or 1:8 (flexing to 1:6 above 20 FTE), **phased in with the roadmap**: charged only from the year deflection actually starts (Y2 in Scenarios 1 and 3), not from Y1. They are driven by the scenario, not typed in; Special roles do not include them.
+- **Contingency** — once an Estate complexity is chosen, a % of the delivery team is added as real FTE (see 3.8b).
+- **Why Y1 is not the run-rate** — the Y1→Y2 drop comes from hypercare, the Brownfield Y1 uplift and AIOps deflection timing, all temporary Y1-loaded effects. The register and results explain it with the actual numbers.
 
 ### 3.6 Service responsibility
 
-Each tower declares who provides L1, L2 and L3: **DAMO (us)**, **Customer**, **Other vendor** or **Product team**. Presets cover the common shapes:
+Each tower declares who provides L1, L2 and L3: **DAMO (us)**, **Customer**, **Other vendor** or **Product team**. **New towers default to L1 = Customer, L2/L3 = us** (existing saved estimates keep their own ownership); choose *Full stack* when L1 is in scope. Presets cover the common shapes:
 
 | Preset | L1 | L2 | L3 |
 |---|---|---|---|
@@ -129,44 +152,49 @@ Effects on the estimate:
 - The rostered coverage floor only applies where we hold a front-line tier (L1 or L2). If we are the L3 escalation party only, coverage is on-call rather than a staffed rota.
 - Each adjacent tier pair under different ownership adds a **coordination uplift** to our ticketing effort (default 4% per interface, `proposed`).
 
-### 3.7 Manual-estimation role policy
+### 3.7 Role map (fixed per tower)
 
-Only **eight roles are on by default** — a deliberate, narrow list, not a weighted competition across the full 35-role catalogue. Everything else in the catalogue stays present and switchable in **Roles & grades**, but off, so a fresh estimate never over-staffs a tower with a role that's rarely actually used.
+There is no role catalogue, tick-box or weight any more. Each tower's tier headcount goes to exactly one role:
 
 | Tower | L1 | L2 | L3 |
 |---|---|---|---|
-| AMS | Product Support Engineer | **Systems Support Engineer** | **SSE** below the evolution threshold, **Developer** at or above it |
-| IMS | Product Support Engineer | **Infrastructure Support Engineer** | **Infrastructure Engineer** (carries the whole IMS L3 share) |
-| DMS | Product Support Engineer | **Data Engineer** (spans L2 and L3) | **Data Engineer** (spans L2 and L3) |
+| AMS | Product Support Engineer *(only if L1 is ours)* | **Systems Support Engineer** | **SSE** below the evolution threshold, **Developer** at or above it |
+| IMS | Product Support Engineer *(only if L1 is ours)* | **Infrastructure Support Engineer** | same role (L2 and L3) |
+| DMS | Product Support Engineer *(only if L1 is ours)* | **Data Support Engineer** | same role (L2 and L3) |
 
-Plus **Machine Learning Engineer** for AIOps, and **Service Delivery Manager** as the *only* governance role, present on **every** engagement — every other governance role (Delivery Principal, Solution Architect, Enterprise Architect, Data Architect, and the rest) is off by default.
+Plus **Machine Learning Engineer** for AIOps (count follows the scenario ratio once deflection starts) and **Service Delivery Manager** as the only governance role (1 per 8 delivery FTE, the manual-estimation convention). A tier we do not own has no effort, so no role appears for it.
 
-Two roles are **genuinely gated in or out**, not just down-weighted — if they're not eligible, they aren't candidates at all, full stop:
+**Developer** is AMS-only and takes L3 once evolution work reaches a threshold (default 30%, editable); below it, Systems Support Engineer covers AMS L3 as well as L2. A mixed AMS+IMS deal resolves each tower against its own headcount share, not a deal-wide blend. Asserted by self-tests.
 
-- **SRE and QA are not catalogue roles.** The old IMS "SRE is the client's named objective" checkbox and the QA effort share (`bench.qaShare`) were removed; a stale `tower.sre`/`qaShare` in an old link is ignored. Use **Special roles** (below) for SRE, QA, L1.5 and a governance layer.
-- **Developer is AMS-only, and only appears once evolution work reaches a threshold** (default 30%, editable — "thirty or forty percent" as given). Below it, Systems Support Engineer is deemed capable of the minor enhancements itself and covers AMS L3 as well as L2 — via a `tier2` field, the same mechanism Data Engineer uses for DMS. At or above the threshold, Developer takes over L3 and SSE drops back to L2 only. Exactly one of the two is ever eligible for AMS L3 — never both, never neither, by construction.
+Anything else — **L1.5, SRE, QA, Advisory** or a custom role — is not a tower role: add it under **Special roles**. The old 35-role catalogue, role weights, the IMS "SRE is the objective" checkbox, the QA effort share, Information Security Engineer / Data Architect / Data Strategist gating and the Infrastructure Engineer role were removed; old links that carry them load without error and the values are ignored.
 
-Data Engineer draws from **both the L2 and L3 headcount pools** for DMS rather than being confined to one tier — reflecting "we use Data Engineer for L2/L3."
+### 3.8 Seniority mix
 
-A mixed AMS+IMS deal loads both towers' roles independently and simultaneously — SSE from the AMS slice, Infrastructure Support Engineer from the IMS slice — since each tower resolves its own eligible roles against its own headcount share, not a deal-wide blend. Asserted by a self-test.
+Section *Seniority mix* (rail, right after Service towers). The Lead : Senior : Consultant pyramid for L1–L3 comes from the **Estate complexity**: Low **1:2:4**, Medium **1:2:3**, High **1:2:2** (ratios editable per level; not set = 1:2:4). It changes the grade split, never headcount. **SDMs are graded wholly Lead**; Special roles keep 1:2:4. No Principal grade.
 
-SDM ratio is the manual-estimation convention of exactly **1:8**, not the framework's vaguer 1:8–10 range.
+**Seniority uplift as shape inverts** (default 0.25) still applies on top: as the scenario's team shape moves pyramid → diamond → inverted, a fraction of Consultant shifts to Senior and of Senior to Lead — the "leaner but senior-heavy team" narrative in the Role & grade staffing plan.
 
-### 3.8 Roles and grades
+### 3.8a Special roles (manual, deal-level)
 
-Tier headcount is distributed across whichever roles you have switched on, weighted by role weight and by how much of that tier's effort comes from the towers each role serves. Each role then splits across **Lead : Senior : Consultant**, targeted at a proper pyramid ratio of **1 : 2 : 4** — no Principal grade, which is rarely used here.
+Section *Special roles* (rail, after Seniority mix): presets for **L1.5 support, SRE, QA, Advisory** and a **Custom** role. They apply to every tower, are entered by hand (one FTE number per role, with an optional per-year override; blank years use the flat number) and are **added on top of Total FTE**, shown as their own *Special* column and staffing-plan group. They are not deflated by AIOps, not scaled by hypercare or Brownfield uplift, carry no contingency, and are not part of the AIOps ratio base. They are graded 1:2:4 and flow into the delivery-location mix, the register, the print report and the Excel export. (AIOps engineers and governance are *not* special roles — they follow the scenario and the SDM rule.)
 
-The ratio is applied uniformly per tier, so "Lead" represents the tech-lead-level presence within that tier. **Service Delivery Manager is the one deliberate exception** — graded wholly Lead, not split — which falls out of the same uniform table for free, since SDM is the sole role left in governance rather than needing special-case code.
+### 3.8b Estate complexity
 
-The seniority mix still shifts upward as the team shape moves pyramid → diamond → inverted across the engagement years (Consultant → Senior → Lead), which is what carries the framework's "leaner but senior-heavy team" narrative in the Role & grade staffing plan card.
+Section *Estate complexity* (rail, right after Engagement): **Not set / Low / Medium / High**, one deal-level call on how hard the estate is to run (the per-tower IMS/DMS structural tiers in 3.11 keep driving the B-factor separately). It follows the DAMO Estimation Workflow's Stage 6 table and drives three things:
 
-The full 37-role catalogue remains available — turn any role on in **Roles & grades** for a deal that genuinely needs it (a Data Scientist on an ML-heavy DMS engagement, a QA Analyst where testing needs a named owner). Off-by-default is a starting posture, not a ceiling.
+| Level | Pyramid L:S:C | Y1 contingency | Severity / SR / CR tilt `proposed` |
+|---|---|---|---|
+| Not set | 1:2:4 | none | none |
+| Low | 1:2:4 | 5% | 0 |
+| Medium | 1:2:3 | 7.5% | 10% |
+| High | 1:2:2 | 10% | 20% |
 
-### Special roles (manual, deal-level)
+- **Contingency** is real FTE: `% × delivery team (incl. SDM)`, added to Total FTE and spread across the L1–L3 roles. From Y2 it tapers to the lower of the Y1 value and 6% (cap editable). Y1 and Y2+ can be overridden per deal (blank = take the level's value). Special roles and AIOps engineers carry none. The scenario's Y1 guidance and the confidence-band wording are shown beside it as hints, not drivers. **Not set means no contingency** (as in the Workflow).
+- **Severity tilt**: before the ticket cascade, that fraction of each lower severity band moves one level up (P4→P3, P3→P2, P2→P1), computed on the original shares and renormalised to 100. The entered mix is never changed; the effective mix is shown under it.
+- **SR/CR tilt**: the same fraction moves SR and CR mixes up (Low→Medium→High).
+- All levels (pyramid ratios under *Seniority mix*; contingency % and tilt under *Benchmarks*) are editable. The pyramid and contingency values come from the Workflow; the tilt is this tool's own calibration (`proposed`).
 
-A rail section for roles that are not driven by tower volume: **L1.5 support, SRE, QA, Governance layer**, or any **custom** role. They apply to every tower, are entered by hand (one FTE number per role, with an optional per-year override; blank years use the flat number), and are **added on top of Total FTE**, shown as their own *Special* column and staffing-plan group. They are not deflated by AIOps, not scaled by hypercare or Brownfield uplift, and not part of the AIOps engineer ratio base. They are graded 1:2:4 and flow into the delivery-location mix, the register, the print report and the Excel export.
-
-The allocation conserves headcount exactly: every tier FTE lands on one role, every role FTE lands on one grade. That is asserted by a self-test, including with Special roles present.
+The allocation conserves headcount exactly: every tier FTE (contingency included) lands on one role, every role FTE lands on one grade. Asserted by self-tests, including with Special roles present.
 
 ### 3.9 Delivery location mix
 
@@ -184,7 +212,7 @@ A third, independent split layered on top of role and grade — **where** the te
   | Onshore + Offshore | 30% | 0% | 70% |
   | Onshore + Nearshore + Offshore | 20% | 30% | 50% |
 
-- **APAC** — two peer locations, **China** and **Australia**, with no onshore/nearshore/offshore hierarchy (APAC doesn't have one relative to India the way EU/NA do). Three `proposed` presets: China only, Australia only, even split.
+- **APAC** — three peer locations, **China**, **Australia** and **Singapore**, with no onshore/nearshore/offshore hierarchy (APAC doesn't have one relative to India the way EU/NA do). Four `proposed` presets: China only, Australia only, **Singapore only** (for a complete Singapore-delivered APAC solution), even split (34/33/33). Old links without Singapore load with it at 0%.
 - **NA** — two locations, **Nearshore (LATAM/Ecuador)** and **Offshore (India)**. Two `proposed` presets: Offshore only, Nearshore + Offshore.
 
 All non-EU presets are marked `proposed` — there's no framework or client guidance for APAC/NA splits yet, only EU's presets trace to real usage. Type directly into the percentage cells for anything else. A live hint flags when a region's locations don't sum to 100%; the split still **normalises proportionally** rather than silently dropping or inventing headcount, so the underlying numbers stay correct even mid-edit, but a clean 100% is what makes the exported register read well.
@@ -236,7 +264,7 @@ All weights and cut-points are editable in the Benchmarks panel, calibrated so a
 
 **Two effects, both new, neither touching AMS:**
 1. **Effort.** `structCpxBump(t,B)` multiplies the tower's B-factor (non-ticketing effort) by `score × bumpPerPoint`, capped at `bench.structCpx.maxBump` — a **continuous** function of the same composite score that drives the tier label, not a 3-step lookup. `bumpPerPoint` is calibrated so the bump exactly equals the old flat tier values right at the cut-points (score = loMed → +10%, score = medHigh → +20%), then keeps climbing past them. This matters in practice: a tower with 100 environments must keep costing meaningfully more than one with 10, not flatline the moment it crosses into "High" — an earlier flat-per-tier version of this had exactly that defect, reported and fixed. The cap (default 200%, i.e. B-factor can at most triple) exists only as a sanity ceiling against adversarial input, not something a realistic estate reaches. Stacks multiplicatively with the existing legacy/modern B-factor, and is a third, independent lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower pre-deflection FTE) — three levers on three distinct quantities, none double-counting the others.
-2. **Roles.** At the **High** tier only (the same discrete Low/Medium/High label, unaffected by the continuous-bump fix above), two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox ; **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
+2. **Roles — removed.** The High-tier gating of Information Security Engineer (IMS) and Data Architect / Data Strategist (DMS) went away with the role catalogue; the tier badge now only drives the B-factor bump and the demand proxy. Anything such a deal needs beyond the fixed role map is added by hand under **Special roles**.
 
 A live badge on each IMS/DMS tower card shows the computed tier, the bump applied, and — at High — a one-line reminder to enable the relevant role(s). The register export and print report both narrate the same information per tower. The badge updates **instantly**, in place, on every keystroke or dropdown change — the same targeted-DOM-patch technique the delivery-location mix sum hint already used, since the rail as a whole is deliberately not re-rendered on every input event (that would drop focus mid-keystroke).
 
@@ -369,7 +397,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 149 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 197 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE
@@ -383,7 +411,7 @@ The **Verify against framework** card runs 149 checks on every render. Each is a
 14. Handing L1 to the customer removes L1 effort and L1 roles
 15. An ownership interface applies a coordination uplift
 16. AMS L3 switches cleanly from SSE to Developer at the evolution threshold — never both, never neither
-17. SRE and QA are gone from the catalogue, tower flags and benchmarks; a stale `tower.sre` changes nothing
+17. SRE and QA are gone from the role map, tower flags and benchmarks; a stale `tower.sre` changes nothing (the map is now seven roles: pse, sse, dev, isu, dse, mle, sdm)
 18. Special roles add exactly their FTE to Total FTE, never alter delivery or AIOps, honour per-year overrides, and conserve headcount (role/grade and location)
 19. A mixed AMS+IMS deal loads SSE and Infrastructure Support Engineer simultaneously
 20. Every engagement includes an SDM
@@ -441,8 +469,8 @@ The **Verify against framework** card runs 149 checks on every render. Each is a
 79. DMS B-factor bump matches the exact `score × bumpPerPoint` formula below the cap
 80. DMS B-factor bump is capped at `bench.structCpx.maxBump` only for a genuinely extreme, adversarial input
 81. AMS's B-factor is never bumped, even with contrived complexity-field values sitting unused on the shared tower shape
-82. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked
-83. Data Architect / Data Strategist need both the role switched on in Roles & grades *and* the tower's tier at High — neither alone is sufficient
+82. *(retired)* Information Security Engineer gating on the `security` checkbox — removed with the role catalogue
+83. *(retired)* Data Architect / Data Strategist gating — removed with the role catalogue
 84. `backfillTowers()` backfills the new IMS structural-complexity fields on a legacy partial tower to `mkTower()`'s defaults, landing at Medium tier
 85. `structCpxTier` does not throw and degrades safely to Low on a raw legacy tower object missing the new fields entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
 86. `seedRoles` backfills the entire `bench.structCpx` sub-object for an old saved hash/import predating this feature — same shallow top-level pattern already relied on for `brownfieldUplift`
@@ -497,6 +525,7 @@ The **Verify against framework** card runs 149 checks on every render. Each is a
 147. Portfolio vs. curve: on a 5-year Scenario 3 term, the default calculator solutions under-deflect the scenario curve only in Y3–Y5 (where the curve keeps compounding and the fixed portfolio has levelled off) — and never when AIOps itself is off
 148. Applying the calculator matches the headline estimate exactly: its net FTE saved equals no-AIOps FTE minus the driven estimate's FTE, every year, with AIOps engineers counted from Y1 in both
 149. Excel export round-trips through this file's own zip reader — a cell value and its CRC32 checksum both survive a full write-then-read cycle
+150–197. Later additions (summarised): SR and CR AREs by complexity, mix weighting, normalisation of counts, SR tier routing and fall-through, the estate-complexity tilt, and legacy-link backfill; the CR bucket and its L2/L3 ownership gate; Singapore and the 'Singapore only' preset; AIOps phased in with deflection and the Y1→Y2 step-down note; the reporting-period override and extraction prompt parity; Special roles (add exactly their FTE, per-year override, conservation, legacy backfill); the fixed role map (SRE/QA gone, IMS L2+L3 one role, Developer threshold); estate complexity (pyramid per level, contingency Y1/Y2+, overrides, exclusions, headcount conservation, effective severity mix, register section); AIOps engineers follow the scenario and add to Total FTE; new-tower defaults (L1 = Customer, SR/CR mixes)
 
 ---
 
@@ -507,8 +536,9 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - P1–P4 tier-of-entry matrix
 - Per-tower ARE multipliers, B-factors and automation ceilings for AMS / IMS / DMS
 - Team-shape splits (pyramid 45/35/20, diamond 25/50/25, inverted 15/45/40)
-- Role policy: which eight roles are on by default, the AMS evolution threshold (default 30%) that switches SSE to Developer at L3, and the 1:2:4 grade ratio itself
-- Role weights and role→tier assignment for anything you switch on beyond the default eight
+- Role policy: the fixed per-tower role map, the AMS evolution threshold (default 30%) that switches SSE to Developer at L3, and the estate-complexity pyramids (1:2:4 / 1:2:3 / 1:2:2)
+- Estate complexity: the Y1 contingency % per level (5 / 7.5 / 10, from the Estimation Workflow), the Y2+ cap (6%), and the severity / SR / CR tilt (0 / 10% / 20%, this tool's own calibration)
+- SR and CR AREs by complexity (SR 0.25 / 0.5 / 1.5 h, CR 4 / 8 / 16 h), their default mixes (60/30/10 and 50/35/15) and the SR tier routing
 - Delivery location presets for APAC and NA (proposed guesses — China/Australia and LATAM-Ecuador/India splits with no framework or client data behind them yet, unlike EU's presets); the split is applied uniformly to every role, not per role — if specific roles need to be pinned to specific locations, that's a follow-up, not something the current mix does
 - Governance load, hypercare duration and multiplier
 - AIOps use-case catalogue: build effort, deflection benefit and prerequisites
