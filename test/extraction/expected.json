@@ -1,22 +1,88 @@
 {
   "notes": "Expectations for synthetic-agency-notes.txt. Judgement fields accept a set; numeric fields a tolerance.",
-  "towers": { "count": 1, "type": "AMS", "mode": "history" },
-  "inc": { "value": 53.1667, "tol": 0.8, "why": "(155+474+7)=636 over 12 months" },
-  "sr": { "value": 255.5, "tol": 3, "why": "3066 over 12 months" },
-  "cr": { "value": 16.83, "tol": 0.5, "why": "202 over 12 months" },
-  "mix": { "P1": [24.4, 1.5], "P2": [74.5, 1.5], "P3": [1.1, 0.6] },
-  "own": { "L1": "customer", "L2": "us", "L3": "us" },
+  "towers": {
+    "count": 1,
+    "type": "AMS",
+    "mode": "history"
+  },
+  "inc": {
+    "value": 53.1667,
+    "tol": 0.8,
+    "why": "(155+474+7)=636 over 12 months"
+  },
+  "sr": {
+    "value": 255.5,
+    "tol": 3,
+    "why": "3066 over 12 months"
+  },
+  "cr": {
+    "value": 16.83,
+    "tol": 0.5,
+    "why": "202 over 12 months"
+  },
+  "mix": {
+    "P1": [
+      24.4,
+      1.5
+    ],
+    "P2": [
+      74.5,
+      1.5
+    ],
+    "P3": [
+      1.1,
+      0.6
+    ]
+  },
+  "own": {
+    "L1": "customer",
+    "L2": "us",
+    "L3": "us"
+  },
   "coverage": "8x5",
-  "srMixHighRange": [8, 25],
-  "region": "apac",
-  "singaporeShare": 100,
-  "pass23": { "value": 5, "tol": 2 },
-  "incumbentFTE": { "min": 30, "max": 36, "notEqual": [28, 48] },
+  "srMixHighRange": [
+    8,
+    25
+  ],
+  "region": null,
+  "pass23": {
+    "value": 5,
+    "tol": 2
+  },
+  "incumbentFTE": {
+    "min": 30,
+    "max": 36,
+    "notEqual": [
+      28,
+      48
+    ]
+  },
   "engagementType": "brownfield",
-  "complexityAny": ["medium", "high"],
-  "aiMaturityAny": ["low"],
-  "noTowerTypes": ["IMS", "DMS"],
+  "complexityAny": [
+    "medium",
+    "high"
+  ],
+  "aiMaturityAny": [
+    "low"
+  ],
+  "noTowerTypes": [
+    "IMS",
+    "DMS"
+  ],
   "opportunitiesMin": 2,
-  "warningMentions": [["140", "sev a"], ["12 sources", "10"], ["batch", "job fail"]],
+  "warningMentions": [
+    [
+      "140",
+      "sev a"
+    ],
+    [
+      "12 sources",
+      "10"
+    ],
+    [
+      "batch",
+      "job fail"
+    ]
+  ],
   "mustNotUseAnalysis": true
 }

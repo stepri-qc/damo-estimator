@@ -55,8 +55,12 @@ check("coverage 8x5", t0.coverage === exp.coverage, t0.coverage);
 const sm = t0.srMix || {}; const st = (+sm.low || 0) + (+sm.medium || 0) + (+sm.high || 0) || 1;
 check("SR mix: high share 8-25%", st > 1 && (+sm.high || 0) / st * 100 >= exp.srMixHighRange[0] && (+sm.high || 0) / st * 100 <= exp.srMixHighRange[1], JSON.stringify(sm));
 const e = j.eng || {};
-check("region apac, Singapore 100", e.region === exp.region && e.locMix && e.locMix.apac && +e.locMix.apac.singapore === exp.singaporeShare, JSON.stringify([e.region, e.locMix]));
+// the fixture states only where the cloud is hosted, not where the delivery team sits
+const regEv = (j.evidence || []).find((x) => x.path === "eng.region");
+check("region not presented as stated from hosting-only evidence", e.region === undefined || (regEv && regEv.basis !== "stated" && (e.locMix === undefined || (e.locMix.apac && +e.locMix.apac.singapore === 100))), JSON.stringify([e.region, e.locMix, regEv && regEv.basis]));
+check("pass12 not set (L1 is not ours; the L1.5 rate is context)", e.pass12 === undefined, e.pass12);
 check("L2->L3 pass-through ~5%", e.pass23 != null && near(+e.pass23, exp.pass23.value, exp.pass23.tol), e.pass23);
+check("whole numbers are not over-rounded (inc has a decimal)", t0.inc !== undefined && Math.abs(t0.inc - Math.round(t0.inc)) > 0.001, t0.inc);
 check("incumbent team 30-36 (not the analysis figure)", typeof e.incumbentFTE === "number" && e.incumbentFTE >= exp.incumbentFTE.min && e.incumbentFTE <= exp.incumbentFTE.max, e.incumbentFTE);
 check("brownfield", e.engagementType === exp.engagementType, e.engagementType);
 check("complexity medium/high", exp.complexityAny.includes(e.complexity), e.complexity);
