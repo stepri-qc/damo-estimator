@@ -388,7 +388,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
         <tr><td>Productivity curve</td><td>Scenario YoY targets (conservative) or the 18%&rarr;65% cumulative template (stretch). The two do not reconcile &mdash; pick deliberately.</td><td>[F] Part 3 vs Sc.3</td></tr>
         <tr><td>Confidence &amp; risk</td><td>Contingency posture, commercial recommendation, and the width of the Monte Carlo bands.</td><td>[F] Annexures 1&ndash;2</td></tr>
         <tr><td>Role weights</td><td>How tier headcount is distributed across whichever roles you have switched on.</td><td><span class="pill warn">proposed</span></td></tr>
-        <tr><td>SRE is the objective</td><td>IMS towers only. Off: SRE is not a candidate at all. On: SRE and Infrastructure Engineer both staff IMS L3, weighted 1.8&times; / 0.5&times;.</td><td><span class="pill warn">proposed</span></td></tr>
+        <tr><td>Special roles</td><td>Deal-level, manual FTE for L1.5, SRE, QA, a governance layer or any custom role. Added on top of Total FTE, outside the tower-driven sizing.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Evolution %</td><td>AMS towers only. Below the threshold (30%): SSE covers L3 too. At or above it: Developer takes over L3.</td><td><span class="pill warn">proposed</span></td></tr>
         <tr><td>Customer Region</td><td>IME: shown as 100% India. EU/APAC/NA: each unlocks its own location mix, applied uniformly to every role's headcount. Switching regions never loses another region's already-entered mix &mdash; each is remembered independently. Also drives which delivery location typically carries off-hours on-call, for Active-Passive towers.</td><td>Engagement design</td></tr>
         <tr><td>Out-of-office-hours coverage</td><td>IMS/DMS/AMS, shown whenever coverage isn't 8x5. Active-Active reproduces the existing shift-floor formula unchanged. Active-Passive keeps business hours fully staffed and discounts only the off-hours delta to an on-call allowance &mdash; a materially lower coverage floor for the same declared window.</td><td><span class="pill warn">proposed</span></td></tr>
@@ -458,12 +458,12 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
   <section id="roles">
     <h2>Roles &amp; grades</h2>
-    <p class="lede">Only nine roles are on by default &mdash; a deliberate, narrow list, not a weighted contest across the full 37.</p>
+    <p class="lede">Only eight roles are on by default &mdash; a deliberate, narrow list, not a weighted contest across the full 35-role catalogue. SRE, QA, L1.5 and any governance layer are not catalogue roles: add them as <b>Special roles</b> with manual FTE.</p>
     <div class="tablewrap"><table class="ref">
       <thead><tr><th>Tower</th><th>L1</th><th>L2</th><th>L3</th></tr></thead>
       <tbody>
         <tr><td>AMS</td><td>Product Support Engineer</td><td><b>Systems Support Engineer</b></td><td><b>SSE</b> below the evolution threshold, <b>Developer</b> at or above it</td></tr>
-        <tr><td>IMS</td><td>Product Support Engineer</td><td><b>Infrastructure Support Engineer</b></td><td><b>Infrastructure Engineer</b>, plus <b>SRE</b> only if named the objective</td></tr>
+        <tr><td>IMS</td><td>Product Support Engineer</td><td><b>Infrastructure Support Engineer</b></td><td><b>Infrastructure Engineer</b> (carries the whole IMS L3 share)</td></tr>
         <tr><td>DMS</td><td>Product Support Engineer</td><td><b>Data Engineer</b> (spans L2 and L3)</td><td><b>Data Engineer</b> (spans L2 and L3)</td></tr>
       </tbody>
     </table></div>
@@ -477,16 +477,15 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
 
   <section id="policy">
     <h2>Manual-estimation role policy</h2>
-    <p class="lede">Two roles are <b>genuinely gated in or out</b>, not just down-weighted &mdash; if they're not eligible, they aren't candidates at all.</p>
+    <p class="lede">One role is <b>genuinely gated</b> by a tower input: SSE vs Developer at AMS L3, driven by the evolution-effort threshold.</p>
     <div class="tablewrap"><table class="ref">
       <thead><tr><th>Input</th><th>Effect</th></tr></thead>
       <tbody>
-        <tr><td>SRE is the client's named objective <span class="mini">(IMS towers only)</span></td><td>Unchecked: Infrastructure Engineer covers 100% of IMS L3, SRE is not a candidate at all. Checked: both are candidates, weighted 1.8&times; SRE to 0.5&times; Infrastructure Engineer &mdash; their combined headcount stays unchanged, this reallocates within the pool rather than adding people.</td></tr>
         <tr><td>Evolution work expected, % <span class="mini">(AMS towers only)</span></td><td>Below the threshold (default 30%): Systems Support Engineer covers AMS L3 as well as L2 &mdash; "SSEs are capable of doing the minor enhancements." At or above it: Developer takes over L3 and SSE drops back to L2 only. Exactly one is ever eligible, never both.</td></tr>
       </tbody>
     </table></div>
-    <div class="callout warn">
-      <p><b>SRE can only be used with IMS.</b> The restriction sits at the role's tower eligibility, not just the checkbox &mdash; even switching SRE on and setting the flag for an AMS or DMS tower produces zero SRE headcount there. That's why the checkbox itself only appears on IMS tower cards, and the evolution input only appears on AMS ones.</p>
+    <div class="callout">
+      <p><b>SRE and QA are no longer tower inputs.</b> The old IMS &ldquo;SRE is the objective&rdquo; checkbox and the QA effort share are gone. Add SRE, QA, L1.5 or a governance layer under <b>Special roles</b> instead &mdash; they apply to every tower and are entered manually.</p>
     </div>
     <p>Data Engineer is the one role that spans <b>both</b> the L2 and L3 headcount pools for DMS, reflecting "we use Data Engineer for L2/L3" &mdash; every other on-by-default role draws from exactly one tier.</p>
     <p>A mixed AMS+IMS deal loads both towers' roles independently and at the same time &mdash; SSE from the AMS slice, Infrastructure Support Engineer from the IMS slice &mdash; since each tower resolves against its own headcount share, not a deal-wide blend.</p>
@@ -510,7 +509,7 @@ dl.gloss dd{margin:0;color:var(--ink-2);font-size:14px}
     <p>Each tower's inputs feed a weighted score, banded into <b>Low / Medium / High</b> &mdash; shown live as a badge on the tower card. Two effects follow, both new, neither touching AMS:</p>
     <ul>
       <li><b>Effort.</b> The underlying score bumps the tower's B-factor (non-ticketing effort) <b>continuously</b>, not in three flat steps &mdash; the bump equals score &times; a per-point rate, calibrated so it lands on 10% right at the Low/Medium threshold and 20% right at Medium/High, then keeps climbing past that. A tower with 100 environments genuinely costs more than one with 10; it doesn't flatline the moment it crosses into High. Capped at a high sanity ceiling (default 200%) only against adversarial input. Stacks with the existing modern/legacy estate B-factor &mdash; a third lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower FTE); none of the three double-count.</li>
-      <li><b>Roles.</b> At <b>High</b> only, two off-by-default roles become eligible: <b>Information Security Engineer</b> on IMS, gated directly by the security checkbox &mdash; exactly like the SRE checkbox already gates SRE. <b>Data Architect</b> and <b>Data Strategist</b> on DMS, standing in for a DataOps Architect and a Data Quality/Governance Lead. Either way, the role must <em>also</em> be switched on in <b>Roles &amp; grades</b> &mdash; a High tier alone never auto-enables it, matching how SRE and the AMS evolution threshold already work.</li>
+      <li><b>Roles.</b> At <b>High</b> only, two off-by-default roles become eligible: <b>Information Security Engineer</b> on IMS, gated directly by the security checkbox. <b>Data Architect</b> and <b>Data Strategist</b> on DMS, standing in for a DataOps Architect and a Data Quality/Governance Lead. Either way, the role must <em>also</em> be switched on in <b>Roles &amp; grades</b> &mdash; a High tier alone never auto-enables it, matching how the AMS evolution threshold already works.</li>
     </ul>
 
     <div class="callout">

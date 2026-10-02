@@ -464,7 +464,7 @@ function defaults(){return{
     ratioFlexThreshold:20, ratioFlex:6, // [F Sc.4] 20+ FTE estates may flex 1:8 -> 1:6
     // PROPOSED team-shape splits across L1/L2/L3 of delivery FTE
     shapes:{pyramid:[45,35,20],diamond:[25,50,25],inverted:[15,45,40]},
-    span:8, qaShare:0,                  // manual convention: 1 SDM per 8 delivery FTE; QA off by default - see below
+    span:8,                             // manual convention: 1 SDM per 8 delivery FTE
     evoThreshold:30,                    // AMS: evolution % at or above which Developer replaces SSE at L3
     // [P] token economics
     tok:{perWeek:30,largeShare:0.30,inShare:0.95,lgIn:5,lgOut:25,mdIn:3,mdOut:15,agent:0.10,borne:"client"},
@@ -479,9 +479,9 @@ function defaults(){return{
       L1:   [1/7,2/7,4/7],
       L2:   [1/7,2/7,4/7],
       L3:   [1/7,2/7,4/7],
-      QA:   [1/7,2/7,4/7],
       GOV:  [1,0,0],
-      AIOPS:[1/7,2/7,4/7]
+      AIOPS:[1/7,2/7,4/7],
+      SPECIAL:[1/7,2/7,4/7]   // manual special roles (L1.5, SRE, QA, governance layer...)
     },
     // seniority uplift as the shape moves pyramid -> diamond -> inverted
     seniorityUplift:0.25
@@ -497,7 +497,11 @@ function defaults(){return{
   // a real narrative summary can only come from an actual Claude conversation
   // (no published Artifact has runtime LLM access) - set via the intake
   // screen's "Import Claude-prepared inputs" JSON path, never generated here.
-  docSummary:null
+  docSummary:null,
+  // deal-level manual roles (L1.5, SRE, QA, governance layer, custom) - applicable to every
+  // tower, counted separately from tower-driven sizing and added on top of Total FTE.
+  // [{id,name,fte,years:[]}] - years[] is an optional per-year override (blank = use fte).
+  specialRoles:[]
 };}
 /* seed the role in-scope flags and weights from the catalogue */
 /* Also the single universal choke point for migrating legacy state shapes -
@@ -553,6 +557,9 @@ function seedRoles(st){
     st.outcome=Object.assign({},defaults().outcome,st.outcome||{});
     st.bench.transition=Object.assign({},defaults().bench.transition,st.bench.transition||{});
   }
+  // old links/imports pre-date Special roles; also tolerate hand-edited junk
+  st.specialRoles=(Array.isArray(st.specialRoles)?st.specialRoles:[]).filter(r=>r&&typeof r==="object")
+    .map(r=>({id:r.id||uid(),name:String(r.name||"Special role"),fte:Math.max(+r.fte||0,0),years:Array.isArray(r.years)?r.years:[]}));
   ROLES.forEach(r=>{ if(st.roles[r.id]==null) st.roles[r.id]=r.on;
                      if(st.roleW[r.id]==null) st.roleW[r.id]=r.w; });
   return st;
@@ -588,11 +595,11 @@ function mkTower(type){
     serviceTier:"custom",
     apps:{S:2,M:4,L:2,XL:1,XXL:0}, mau:50000, mauRate:1.0,
     autoCov:0,
-    // manual-estimation inputs. sre: is reliability the client's named capability
-    // ask - IMS-only, hidden in the UI for AMS/DMS. evolution: % of AMS work that
-    // is minor enhancement, on top of the regular run - AMS-only. Both gate role
-    // ELIGIBILITY, not just weight - see roleEligible().
-    sre:false, evolution:0,
+    // manual-estimation input. evolution: % of AMS work that is minor
+    // enhancement, on top of the regular run - AMS-only. Gates role ELIGIBILITY,
+    // not just weight - see roleEligible(). (SRE/QA are no longer tower-level
+    // switches: they live in the deal-level Special roles section.)
+    evolution:0,
     // PROPOSED - IMS/DMS structural-complexity inputs, feeding structCpxTier().
     // AMS ignores these entirely (structCpxTier returns null for AMS); they
     // exist on every tower only because mkTower() uses one shared shape, same
@@ -853,11 +860,11 @@ const GRADES=["Lead","Senior","Consultant"];   // no Principal - rarely used
    also covers AMS L3 below the evolution threshold (see roleEligible - Systems
    Support Engineers are capable of the minor enhancements themselves); IMS L2
    Infrastructure Support Engineer; AMS L3 Developer once evolution work crosses
-   the threshold; IMS L3 Infrastructure Engineer, plus SRE only when the client has
-   explicitly named reliability as the objective (SRE is IMS-only and is not in the
-   mix at all otherwise - a genuine inclusion gate, not a weight nudge); DMS L2/L3
+   the threshold; IMS L3 Infrastructure Engineer; DMS L2/L3
    Data Engineer; governance SDM only (present on every engagement); AIOps Machine
-   Learning Engineer. Every other role in the client's 37 stays in the catalogue -
+   Learning Engineer. SRE and QA are no longer catalogue roles: they (and L1.5, a
+   governance layer, or anything custom) are entered by hand in the deal-level
+   Special roles section. Every other role in the client's list stays in the catalogue -
    switchable in Roles & grades - but defaults off so a fresh estimate never
    over-staffs a tower with roles that are rarely actually used. */
 const ROLES=[
@@ -891,15 +898,13 @@ const ROLES=[
  {id:"pse",n:"Product Support Engineer",     tier:"L1",    tw:["AMS","IMS","DMS"], w:2.0, on:true },
  {id:"pgm",n:"Program Manager",              tier:"GOV",   tw:["AMS","IMS","DMS"], w:0.3, on:false},
  {id:"prm",n:"Project Manager",              tier:"GOV",   tw:["AMS","IMS","DMS"], w:0.4, on:false},
- {id:"qa", n:"Quality Analyst",              tier:"QA",    tw:["AMS","IMS","DMS"], w:1.0, on:false},
  {id:"sdm",n:"Service Delivery Manager",     tier:"GOV",   tw:["AMS","IMS","DMS"], w:1.6, on:true },
- {id:"sre",n:"Service Reliability Engineer", tier:"L3",    tw:["IMS"],             w:1.5, on:true },
  {id:"sa", n:"Solution Architect",           tier:"GOV",   tw:["AMS","IMS","DMS"], w:0.7, on:false},
  {id:"sta",n:"Strategic Technical Advisor",  tier:"GOV",   tw:["AMS","IMS","DMS"], w:0.2, on:false},
  {id:"sse",n:"Systems Support Engineer",     tier:"L2",    tw:["AMS"],             w:2.0, on:true, tier2:"L3" },
  {id:"vd", n:"Visual Designer",              tier:"GOV",   tw:["AMS"],             w:0.2, on:false}
 ];
-const TIER_LABEL={L1:"L1 support",L2:"L2 support",L3:"L3 / engineering",QA:"Quality",GOV:"Governance & architecture",AIOPS:"AIOps"};
+const TIER_LABEL={L1:"L1 support",L2:"L2 support",L3:"L3 / engineering",GOV:"Governance & architecture",AIOPS:"AIOps"};
 
 let S=seedRoles(defaults());
 // Bootstrap-only: keeps the fresh-load page internally consistent (selected
@@ -1063,6 +1068,20 @@ function aiopsRatio(S,deliveryFTE){
   return sc.ratio;
 }
 
+/* Manual special roles for year y (1-based). A blank/missing per-year entry falls
+   back to the role's flat fte; entries are floored at 0. Not deflated, not scaled by
+   hypercare/uplift and not part of the AIOps ratio base - they are exactly what the
+   user typed. */
+function specialFor(S,y){
+  const list=Array.isArray(S.specialRoles)?S.specialRoles:[];
+  const rows=list.map(r=>{
+    const o=r.years&&r.years[y-1];
+    const f=(o===""||o==null||isNaN(+o))?(+r.fte||0):(+o||0);
+    return {id:r.id,name:r.name||"Special role",fte:Math.max(f,0)};
+  });
+  return {rows:rows,total:sum(rows.map(r=>r.fte))};
+}
+
 /* Core run. opts.aiops overrides the toggle (for the traditional-vs-AI comparison).
    opts.sample supplies Monte-Carlo multipliers. opts.routing overrides the matrix. */
 function runEngine(S,opts){
@@ -1183,23 +1202,24 @@ function runEngine(S,opts){
     // actually non-zero, whether that's the scenario curve's own start year
     // or (in calculator-driving mode) the earliest selected solution's start.
     const aiopsFTE = (aiopsOn && d>0) ? Math.ceil(delivery/ratio) : 0;
-    const total=delivery+aiopsFTE;
+    const spc=specialFor(S,y);
+    const total=delivery+aiopsFTE+spc.total;
 
     // role split of the delivery team
     const sh=shapeAt(S,y);
-    const sdm=delivery/B.span, qa=delivery*B.qaShare;
-    const ops=Math.max(delivery-sdm-qa,0);
+    const sdm=delivery/B.span;
+    const ops=Math.max(delivery-sdm,0);
     // shape splits renormalise over the tiers we actually provide
     const ow=ownedTiers(S);
     const sp=sh.split.map((v,i)=>ow[["L1","L2","L3"][i]]?v:0);
     const tot=sum(sp)||1;
     const roles={L1:ops*sp[0]/tot,L2:ops*sp[1]/tot,L3:ops*sp[2]/tot,
-                 SDM:sdm,QA:qa,AIOps:aiopsFTE};
+                 SDM:sdm,AIOps:aiopsFTE,Special:spc.total};
 
     years.push({y:y,yi:yi,rows:rows,vol:vol,tickets:tk,A:A,B:Bh,G:G,
       baseFTE:baseFTE,floor:floor,floorBinds:floorBinds,floorNote:floorNote,
       hyper:hyper,engUplift:engUplift,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,
-      total:total,roles:roles,shape:sh});
+      special:spc.total,specialRows:spc.rows,total:total,roles:roles,shape:sh});
   }
 
   const y1=years[0]?years[0].total:0;
@@ -1229,11 +1249,9 @@ function shapeIndex(key){
 }
 
 /* ---------- manual-estimation role policy (client-supplied heuristics) ----------
-   Two roles are conditionally IN the mix at all, not just weighted differently -
+   One role is conditionally IN the mix at all, not just weighted differently -
    a genuine inclusion gate, resolved per tower per tier so two towers of the same
    type can carry different flags:
-     - SRE is IMS-only and appears only when the client has explicitly named
-       reliability as the objective; otherwise it is not a candidate, full stop.
      - Developer is AMS-only and appears only once evolution (minor-enhancement)
        work crosses a threshold; below it, Systems Support Engineer covers AMS L3
        as well as L2 - "SSEs are capable of doing the minor enhancements."
@@ -1241,8 +1259,7 @@ function shapeIndex(key){
    calibration data - see the register export. */
 function roleEligible(r,t,T,S){
   if(!t) return true;
-  if(r.id==="sre") return !!t.sre;
-  if(r.id==="ise") return !!t.security;          // mirrors sre exactly
+  if(r.id==="ise") return !!t.security;
   const thr=(S&&S.bench&&S.bench.evoThreshold!=null)?S.bench.evoThreshold:30;
   const evo=+((t&&t.evolution)||0);
   if(r.id==="dev") return evo>=thr;
@@ -1254,11 +1271,6 @@ function roleEligible(r,t,T,S){
   return true;
 }
 function rolePolicy(r,t,S){
-  // Only matters when both Infrastructure Engineer and SRE are eligible
-  // candidates together (t.sre true) - SRE takes the larger share since the
-  // client named it as the objective.
-  if(r.id==="sre") return 1.8;
-  if(r.id==="ine") return 0.5;
   return 1;
 }
 
@@ -1271,7 +1283,7 @@ function rolePlan(S,base){
     yr.rows.forEach(r=>{ const b=byTower[r.id]||(byTower[r.id]={type:r.type,h1:0,h2:0,h3:0,tot:0});
       b.h1+=r.h1; b.h2+=r.h2; b.h3+=r.h3; b.tot+=r.h1+r.h2+r.h3; });
     const tierHeads={L1:yr.roles.L1,L2:yr.roles.L2,L3:yr.roles.L3,
-                     QA:yr.roles.QA,GOV:yr.roles.SDM,AIOPS:yr.roles.AIOps};
+                     GOV:yr.roles.SDM,AIOPS:yr.roles.AIOps};
     const alloc={};
     Object.keys(tierHeads).forEach(T=>{
       const heads=tierHeads[T]||0;
@@ -1303,6 +1315,16 @@ function rolePlan(S,base){
       const mix=gradeMix(r.tier,idx,S);
       roleGrades[r.id]=mix.map(p=>h*p);
       GRADES.forEach((g,i)=>{ gradeTot[g]+=h*mix[i]; });
+    });
+    // Special roles: own ids ("sp_" + id) so they never collide with the catalogue, graded
+    // with bench.gradeMix.SPECIAL (default 1:2:4), and counted in gradeTot so the
+    // headcount-conservation invariant (gradeTot sums to Total FTE) still holds.
+    (yr.specialRows||[]).forEach(sr=>{
+      if(!(sr.fte>0)) return;
+      const key="sp_"+sr.id, mix=gradeMix("SPECIAL",idx,S);
+      alloc[key]=(alloc[key]||0)+sr.fte;
+      roleGrades[key]=mix.map(p=>sr.fte*p);
+      GRADES.forEach((g,i)=>{ gradeTot[g]+=sr.fte*mix[i]; });
     });
     return {y:yr.y,alloc:alloc,roleGrades:roleGrades,gradeTot:gradeTot,shape:yr.shape,idx:idx};
   });
@@ -1606,17 +1628,16 @@ function o3Solve(S,yr){
         const ops=n1+n2+n3;
         if(ops<D-1e-9) continue;                            // everyone absorbs L1 and overhead
         const sdm=Math.max(1,Math.round(ops/S.bench.span));
-        const qa=Math.max(0,Math.round(ops*S.bench.qaShare));
         const ratio=aiopsRatio(S,ops);
         const ai=S.eng.aiops?Math.ceil(ops/ratio):0;
         const total=ops+ai;
         const conf=Math.abs(n1/ops*100-target[0]/tt*100)+Math.abs(n2/ops*100-target[1]/tt*100)+Math.abs(n3/ops*100-target[2]/tt*100);
         const score=total*1000+conf;                        // headcount dominates, shape breaks ties
-        if(!best||score<best.score) best={n1:n1,n2:n2,n3:n3,sdm:sdm,qa:qa,ai:ai,ops:ops,total:total,conf:conf,score:score,ratio:ratio};
+        if(!best||score<best.score) best={n1:n1,n2:n2,n3:n3,sdm:sdm,ai:ai,ops:ops,total:total,conf:conf,score:score,ratio:ratio};
       }
     }
   }
-  return best||{n1:0,n2:0,n3:0,sdm:0,qa:0,ai:0,ops:0,total:0,conf:0,ratio:0};
+  return best||{n1:0,n2:0,n3:0,sdm:0,ai:0,ops:0,total:0,conf:0,ratio:0};
 }
 function o3QUBO(S,yr,sol){
   const Q=Qnew(); const cap=12;
@@ -1747,7 +1768,7 @@ function aiopsCalcRun(S,trad){
     // there), so the calculator's overhead stays consistent with the
     // headline estimate whether or not it's driving.
     const overhead=active?Math.ceil(after/ratio):0;
-    years.push({y:y,base:baseDel,baseTotal:tr?tr.total:0,defl:S.eng.aiops?sh.combined:0,raw:sh.raw,capped:sh.capped,
+    years.push({y:y,base:baseDel,baseTotal:tr?(tr.total-(tr.special||0)):0,defl:S.eng.aiops?sh.combined:0,raw:sh.raw,capped:sh.capped,
                 gross:gross,after:after,ratio:ratio,overhead:overhead,net:gross-overhead,active:active});
   }
   const hm=B.hoursMonth*B.util;
@@ -1953,9 +1974,9 @@ function buildWorkbook(){
     ["Transition person-months",ex.trn.on?r2(ex.trn.pm):"not modelled"],
     ["Commercial model",base.sc.comm]]});
   sheets.push({name:"Year by year",rows:[["Year","Tickets/mo","Ticketing A (h/mo)","Non-ticketing B (h/mo)","Governance G (h/mo)",
-    "Base FTE","Coverage floor","Pre-AIOps FTE","AIOps deflection","Delivery FTE","AIOps FTE","Total FTE","No-AIOps total","Productivity vs Y1"]]
+    "Base FTE","Coverage floor","Pre-AIOps FTE","AIOps deflection","Delivery FTE","AIOps FTE","Special roles FTE","Total FTE","No-AIOps total","Productivity vs Y1"]]
     .concat(base.years.map((y,i)=>["Y"+y.y,r2(y.vol),r2(y.A),r2(y.B),r2(y.G),r2(y.baseFTE),r2(y.floor),r2(y.pre),r2(y.defl),
-      r2(y.delivery),y.aiopsFTE,r2(y.total),r2(trad.years[i].total),r2(y.prod)]))});
+      r2(y.delivery),y.aiopsFTE,r2(y.special||0),r2(y.total),r2(trad.years[i].total),r2(y.prod)]))});
   sheets.push({name:"Tower breakdown (Y1)",rows:[["Tower","Tickets/mo","L1 tickets","L2 tickets","L3 tickets","L1 h","L2 h","L3 h",
     "A (h)","B (h)","G (h)","FTE","L1 owner","L2 owner","L3 owner"]]
     .concat(base.years[0].rows.map(r=>[r.type,r2(r.vol),r2(r.t1),r2(r.t2),r2(r.t3),r2(r.h1),r2(r.h2),r2(r.h3),r2(r.A),r2(r.B),r2(r.G),r2(r.fte),
@@ -1963,6 +1984,8 @@ function buildWorkbook(){
   const sp_=[["Year","Role","Tier"].concat(GRADES,["Total FTE"])];
   rp.forEach(p=>ROLES.forEach(r=>{ const g=p.roleGrades[r.id]; if(!g||sum(g)<0.005) return;
     sp_.push(["Y"+p.y,r.n,TIER_LABEL[r.tier]||r.tier].concat(g.map(r2),[r2(sum(g))])); }));
+  rp.forEach(p=>(S.specialRoles||[]).forEach(sr=>{ const g=p.roleGrades["sp_"+sr.id]; if(!g||sum(g)<0.005) return;
+    sp_.push(["Y"+p.y,sr.name+" (special, manual)","Special roles"].concat(g.map(r2),[r2(sum(g))])); }));
   sheets.push({name:"Staffing plan",rows:sp_});
   const tr=ex.trn;
   sheets.push({name:"Transition",rows:[["Phase","Weeks","FTE","Share of steady team","Person-months"]]
@@ -2523,7 +2546,7 @@ function selfTests(){
 
   // 9. Grade mix must be a probability distribution at every tier and shape
   let mixOk=true;
-  ["L1","L2","L3","QA","GOV","AIOPS"].forEach(T=>{
+  ["L1","L2","L3","GOV","AIOPS"].forEach(T=>{
     [0,0.5,1].forEach(idx=>{
       const m=gradeMix(T,idx,T8);
       if(Math.abs(sum(m)-1)>1e-9 || m.some(v=>v<-1e-9)) mixOk=false;
@@ -2571,29 +2594,65 @@ function selfTests(){
                 " / 30%: SSE(L3 share)="+r1((r1_.alloc["sse"]||0))+" Dev="+r1(r1_.alloc["dev"]||0),
             ok:belowOk&&atOk});
 
-  // 13. SRE must be a genuine inclusion gate, not a weight nudge: zero when the
-  //     client's SRE checkbox is unset, present (and the pair still conserved)
-  //     when it is set.
-  const Te0=seedRoles(defaults()); Te0.towers=[mkTower("IMS")]; Te0.towers[0].sre=false;
+  // 13. SRE and QA are no longer catalogue roles or tower-level switches: they live in
+  //     the deal-level Special roles section. A stale tower.sre flag (old link) is
+  //     ignored, and Infrastructure Engineer carries the whole IMS L3 share again.
+  const Te0=seedRoles(defaults()); Te0.towers=[mkTower("IMS")];
   const Te1=seedRoles(defaults()); Te1.towers=[mkTower("IMS")]; Te1.towers[0].sre=true;
   const p0=(rolePlan(Te0,runEngine(Te0,{})))[0], p1=(rolePlan(Te1,runEngine(Te1,{})))[0];
-  const sreOffIsZero = !((p0.alloc["sre"]||0)>0.001);
-  const sreOnIsPresent = (p1.alloc["sre"]||0)>0.001;
-  const pairConserved=Math.abs(((p0.alloc["sre"]||0)+(p0.alloc["ine"]||0))-((p1.alloc["sre"]||0)+(p1.alloc["ine"]||0)))<0.02;
-  out.push({n:"SRE is included in IMS L3 only when the box is checked",
-            exp:"0 unchecked, >0 checked, pair total unchanged",
-            got:"unchecked SRE="+r1(p0.alloc["sre"]||0)+" / checked SRE="+r1(p1.alloc["sre"]||0)+" Infra Eng="+r1(p1.alloc["ine"]||0),
-            ok:sreOffIsZero&&sreOnIsPresent&&pairConserved});
+  const noSreQa = !ROLES.some(r=>r.id==="sre"||r.id==="qa") && !("sre" in mkTower("IMS")) && defaults().bench.qaShare===undefined;
+  out.push({n:"SRE and QA are gone from the role catalogue, tower flags and benchmarks",
+            exp:"no sre/qa role, no tower.sre, no bench.qaShare, 35 roles",
+            got:"roles "+ROLES.length+", sre/qa present: "+ROLES.some(r=>r.id==="sre"||r.id==="qa"),ok:noSreQa&&ROLES.length===35});
+  out.push({n:"A stale tower.sre flag changes nothing, and Infrastructure Engineer carries the whole IMS L3 share",
+            exp:"same allocation either way; Infra Eng > 0",
+            got:"Infra Eng "+r1(p0.alloc["ine"]||0)+" / "+r1(p1.alloc["ine"]||0),
+            ok:near(p0.alloc["ine"]||0,p1.alloc["ine"]||0,1e-9)&&(p0.alloc["ine"]||0)>0.02&&!(p0.alloc["sre"]>0)});
 
-  // 14. SRE must never appear outside IMS, even if the role is switched on and the
-  //     SRE flag is set - the tower-eligibility restriction, not the flag, is what
-  //     enforces "SRE can only be used with the IMS tower."
-  const Tg=seedRoles(defaults()); Tg.towers=[mkTower("AMS")];
-  Tg.roles.sre=true; Tg.towers[0].sre=true;
-  const rAmsSre=(rolePlan(Tg,runEngine(Tg,{})))[0];
-  out.push({n:"SRE produces zero allocation on an AMS tower",
-            exp:"0 FTE",got:r1(rAmsSre.alloc["sre"]||0)+" FTE",
-            ok:!(rAmsSre.alloc["sre"]>0.001)});
+  // 14. Special roles: manual, deal-level, added on top of Total FTE (L1.5/SRE/QA/governance/custom),
+  //     separate from the tower-driven sizing and from the AIOps ratio base.
+  const Tsp0=seedRoles(defaults()); Tsp0.eng.term=3;
+  const bSp0=runEngine(Tsp0,{});
+  const Tsp1=seedRoles(defaults()); Tsp1.eng.term=3;
+  Tsp1.specialRoles=[{id:"a",name:"L1.5 support",fte:2,years:[]},{id:"b",name:"SRE",fte:1,years:[]},
+                     {id:"c",name:"QA",fte:1,years:[]},{id:"d",name:"Governance layer",fte:1,years:[]}];
+  const bSp1=runEngine(Tsp1,{});
+  out.push({n:"Special roles add exactly their FTE on top of Total FTE every year",
+            exp:"+5.0 FTE in each year",
+            got:bSp1.years.map((y,i)=>"+"+r1(y.total-bSp0.years[i].total)).join(" / "),
+            ok:bSp1.years.length>=3&&bSp1.years.every((y,i)=>near(y.total-bSp0.years[i].total,5,1e-9)&&near(y.special,5,1e-9))});
+  out.push({n:"Special roles never change delivery FTE or the AIOps engineer count",
+            exp:"delivery and AIOps identical with and without",
+            got:"delivery "+bSp1.years.map((y,i)=>near(y.delivery,bSp0.years[i].delivery,1e-9)?"=":"!").join("")+", aiops "+bSp1.years.map((y,i)=>y.aiopsFTE===bSp0.years[i].aiopsFTE?"=":"!").join(""),
+            ok:bSp1.years.every((y,i)=>near(y.delivery,bSp0.years[i].delivery,1e-9)&&y.aiopsFTE===bSp0.years[i].aiopsFTE)});
+  const Tsp2=JSON.parse(JSON.stringify(Tsp1)); Tsp2.specialRoles[0].years=["",""," 0"]; Tsp2.specialRoles[1].years=[3];
+  const bSp2=runEngine(Tsp2,{});
+  out.push({n:"A per-year override replaces the flat FTE for that year only; blank entries fall back to it",
+            exp:"Y1 SRE 3 (L1.5 2) = 7; Y2 5; Y3 L1.5 override 0 = 3",
+            got:bSp2.years.map(y=>r1(y.special)).join(" / "),
+            ok:near(bSp2.years[0].special,7,1e-9)&&near(bSp2.years[1].special,5,1e-9)&&near(bSp2.years[2].special,3,1e-9)});
+  const rpSp=rolePlan(Tsp1,bSp1);
+  out.push({n:"Role and grade split still conserves total headcount with special roles included",
+            exp:bSp1.years.map(y=>r1(y.total)).join(" / "),
+            got:rpSp.map(p=>r1(sum(GRADES.map(g=>p.gradeTot[g])))).join(" / "),
+            ok:rpSp.every((p,i)=>Math.abs(sum(GRADES.map(g=>p.gradeTot[g]))-bSp1.years[i].total)<0.05)});
+  const TspL=JSON.parse(JSON.stringify(Tsp1)); TspL.eng.region="eu"; TspL.eng.locMix.eu={onshore:20,nearshore:30,offshore:50};
+  const rpSpL=rolePlan(TspL,runEngine(TspL,{})), locSp=locationSplit(rpSpL[0].alloc,TspL);
+  let spLoc=0, spAlloc=0;
+  Object.keys(rpSpL[0].alloc).forEach(id=>{ spAlloc+=rpSpL[0].alloc[id]||0; const l=locSp[id]||{}; spLoc+=(l.onshore||0)+(l.nearshore||0)+(l.offshore||0); });
+  out.push({n:"Delivery-location split conserves headcount with special roles included",
+            exp:r1(spAlloc)+" FTE",got:r1(spLoc)+" FTE",ok:Math.abs(spLoc-spAlloc)<0.02&&near(rpSpL[0].alloc["sp_a"]||0,2,1e-9)});
+  const junkSp=seedRoles(Object.assign(defaults(),{specialRoles:[null,{name:"X",fte:-3}]}));
+  const legacySp=seedRoles(Object.assign(defaults(),{specialRoles:undefined}));
+  out.push({n:"seedRoles backfills specialRoles to [] for a legacy state, and cleans junk entries",
+            exp:"[] and 1 clean row at 0 FTE",
+            got:JSON.stringify(legacySp.specialRoles)+" / "+junkSp.specialRoles.length,
+            ok:Array.isArray(legacySp.specialRoles)&&legacySp.specialRoles.length===0&&junkSp.specialRoles.length===1&&junkSp.specialRoles[0].fte===0});
+  const S_sp=S; S=Tsp1;
+  const regSp=buildRegister(bSp1,null,null,rpSp);
+  S=S_sp;
+  out.push({n:"Register lists the special roles section",
+            exp:"present",got:/Special roles \(manual/.test(regSp)?"present":"absent",ok:/Special roles \(manual/.test(regSp)&&/Governance layer/.test(regSp)});
 
   // 15. A mixed AMS+IMS deal must load both towers' roles simultaneously, each
   //     drawing only its own tower's headcount - per-tower independence, not a
@@ -3205,7 +3264,7 @@ function selfTests(){
     ok:r75ams.cpxTier==null && r75ams.cpxBump===0});
 
   // 56. Information Security Engineer eligibility mirrors t.security exactly,
-  //     the same way SRE eligibility already mirrors t.sre.
+  //     the same way eligibility mirrors other tower flags.
   const T76a=seedRoles(defaults()); T76a.towers=[mkTower("IMS")]; T76a.roles.ise=true; T76a.towers[0].security=false;
   const T76b=seedRoles(defaults()); T76b.towers=[mkTower("IMS")]; T76b.roles.ise=true; T76b.towers[0].security=true;
   const p76a=rolePlan(T76a,runEngine(T76a,{}))[0], p76b=rolePlan(T76b,runEngine(T76b,{}))[0];
@@ -4060,11 +4119,6 @@ function renderRail(){
           : "Custom: type the target % directly below.")+'</p></div>'+
       num(p+".avail","Availability target %",0.01)+
       (t.type==="IMS"
-        ? '<div class="field"><label>Delivery profile</label>'+
-            chk(p+".sre","SRE is the client's named capability objective")+
-            '<p class="hint">SRE is only included in the mix when this is checked &mdash; it is IMS-only and off by default, not just down-weighted.</p></div>'
-        : '')+
-      (t.type==="IMS"
         ? '<div class="field"><label>Structural complexity inputs <span class="flag">proposed</span></label>'+
             '<div class="row c2">'+num(p+".envCount","Environments supported",1,'min="0" max="100"')+num(p+".hostCount","Hostings supported",1,'min="0" max="50"')+'</div>'+
             '<div class="row c2">'+num(p+".dbCount","Databases supported",1,'min="0" max="500"')+num(p+".nonProdCount","Non-prod environments",1,'min="0" max="100"')+'</div>'+
@@ -4152,7 +4206,7 @@ function renderRail(){
     cf+'<div style="height:6px"></div>'+rk);
 
   let rl="";
-  ["L1","L2","L3","QA","AIOPS","GOV"].forEach(T=>{
+  ["L1","L2","L3","AIOPS","GOV"].forEach(T=>{
     const rs=ROLES.filter(r=>r.tier===T);
     if(!rs.length) return;
     rl+='<div class="lbl" style="margin-top:4px">'+esc(TIER_LABEL[T])+'</div>';
@@ -4172,6 +4226,8 @@ function renderRail(){
     '<div class="field" style="margin-top:10px"><label>Seniority uplift as shape inverts</label>'+
       '<input type="number" step="0.05" data-p="bench.seniorityUplift" value="'+B.seniorityUplift+'">'+
       '<p class="hint">Fraction of Consultant shifted to Senior, and Senior to Lead, at a fully inverted pyramid.</p></div>');
+
+  h+=sec("special","Special roles",renderSpecialRail(),(S.specialRoles||[]).length>0);
 
   h+=sec("opt","Optimization",
     '<p class="hint">Each sub-problem is stated as a QUBO and solved classically in-page.</p>'+
@@ -4230,12 +4286,35 @@ function renderRail(){
       '</div><p class="hint">Not derived from cost data (the tool has none) &mdash; a stated convention. IME is always India.</p></div>'+
     '<div class="row c2">'+num("bench.hypercareMonths","Hypercare months")+num("bench.hypercareMult","Hypercare volume x",0.5)+'</div>'+
     '<div class="field">'+num("bench.brownfieldUplift","Brownfield Y1 uplift",0.01)+'<p class="hint">Applied only when Engagement type is Brownfield: Y1 full, Y2 half, Y3+ none. <span class="flag">proposed</span></p></div>'+
-    '<div class="row c2">'+num("bench.span","FTE per SDM")+num("bench.qaShare","QA share",0.01)+'</div>'+
-    '<p class="hint">SDM ratio defaults to 1:8, the manual-estimation convention. QA share defaults to 0 since Quality Analyst is off by default (limited role list) &mdash; raising it without also turning the QA role on in Roles &amp; grades will not show up anywhere.</p>'+
+    '<div class="field">'+num("bench.span","FTE per SDM")+'<p class="hint">SDM ratio defaults to 1:8, the manual-estimation convention. QA, SRE, L1.5 and any governance layer are entered by hand under Special roles.</p></div>'+
     '<div class="field">'+num("bench.evoThreshold","AMS evolution threshold, %",5)+'<p class="hint">At or above this, Developer replaces Systems Support Engineer at AMS L3. Given as "thirty or forty percent" &mdash; defaulted to 30.</p></div>'+
     '<div class="btnrow"><button class="btn" type="button" id="btnReset">Reset to framework defaults</button></div>');
 
   $("#rail").innerHTML=h;
+}
+
+/* ---------- special roles rail ---------- */
+const SPECIAL_PRESETS=[["l15","L1.5 support"],["sre","SRE"],["qa","QA"],["gov","Governance layer"],["custom","Custom role"]];
+function renderSpecialRail(){
+  const list=S.specialRoles||[], T=S.eng.term;
+  const rows=list.map((r,i)=>{
+    const p="specialRoles."+i;
+    const yrs=[]; for(let y=1;y<=T;y++){
+      const v=(r.years&&r.years[y-1]!=null&&r.years[y-1]!=="")?r.years[y-1]:"";
+      yrs.push('<div class="field"><label>Y'+y+'</label><input type="text" inputmode="decimal" placeholder="'+(+r.fte||0)+'" data-p="'+p+'.years.'+(y-1)+'" value="'+esc(v)+'"></div>');
+    }
+    return '<div class="towercard"><div class="towerbody" style="gap:8px">'+
+      '<div class="row" style="grid-template-columns:minmax(0,1fr) 78px auto;align-items:end">'+
+        '<div class="field"><label>Role name</label><input type="text" data-p="'+p+'.name" value="'+esc(r.name)+'"></div>'+
+        '<div class="field"><label>FTE (all years)</label><input type="number" step="0.5" min="0" data-p="'+p+'.fte" value="'+(+r.fte||0)+'"></div>'+
+        '<button class="xbtn" type="button" data-spdel="'+i+'" aria-label="Remove '+esc(r.name)+'">&times;</button></div>'+
+      '<details><summary class="hint" style="cursor:pointer">Per-year override (blank = use the number above)</summary>'+
+        '<div class="row c3" style="margin-top:8px">'+yrs.join("")+'</div></details>'+
+    '</div></div>';
+  }).join("");
+  return '<p class="hint">Roles you enter by hand &mdash; L1.5, SRE, QA, a governance layer, anything else. They apply to every tower, are counted separately from the tower-specific roles, and are <b>added on top of Total FTE</b> (not deflated by AIOps, not scaled by hypercare or the Brownfield uplift). <span class="flag">manual</span></p>'+
+    '<div class="btnrow">'+SPECIAL_PRESETS.map(pr=>'<button class="btn" type="button" data-spadd="'+pr[0]+'" style="font-size:11.5px;padding:4px 8px">+ '+esc(pr[1])+'</button>').join("")+'</div>'+
+    (rows||'<p class="hint">None added yet.</p>');
 }
 
 /* ---------- charts ---------- */
@@ -4279,7 +4358,7 @@ function chartShape(base){
   const ys=base.years, W=780, rowH=42, H=ys.length*rowH+34;
   const L=40,R=120;
   const keys=[["L1","var(--accent)",.35],["L2","var(--accent)",.62],["L3","var(--accent)",1],
-              ["SDM","var(--ink-3)",1],["QA","var(--ink-3)",.55],["AIOps","var(--compute)",1]];
+              ["SDM","var(--ink-3)",1],["AIOps","var(--compute)",1],["Special","var(--warn)",.8]];
   const max=Math.max(...ys.map(y=>y.total))||1;
   let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Team shape by year">';
   ys.forEach((y,i)=>{
@@ -4426,7 +4505,7 @@ function buildRegister(base,mc,o1,rp){
   L.push("");
   L.push("## Sizing outcome (effort and FTE only \u2014 no rate card applied)");
   base.years.forEach(y=>{
-    L.push("- Y"+y.y+": "+fmt(y.total)+" FTE ("+fmt(y.delivery)+" delivery + "+y.aiopsFTE+" AIOps), "+
+    L.push("- Y"+y.y+": "+fmt(y.total)+" FTE ("+fmt(y.delivery)+" delivery + "+y.aiopsFTE+" AIOps"+(y.special?" + "+fmt(y.special)+" special roles":"")+"), "+
       f0(y.vol)+" tickets/mo, "+f0(y.A+y.B+y.G)+" hrs/mo, productivity vs Y1 "+pct0(y.prod)+".");
   });
   if(mc) L.push("- Y"+Math.min(S.eng.term,3)+" P80 estimate: "+fmt(mc.bands[Math.min(S.eng.term,3)-1].p80)+" FTE (Monte Carlo, "+mc.N+" samples, CV "+pct(mc.cv)+").");
@@ -4464,7 +4543,6 @@ function buildRegister(base,mc,o1,rp){
   if(imsT.length || amsT.length || dmsT.length){
     L.push("## Delivery profile");
     imsT.forEach(function(t){
-      L.push("- IMS: SRE named as the client's key objective \u2014 "+(t.sre?"**yes** (SRE is included in the L3 mix)":"no (SRE is not included; Infrastructure Engineer leads L3)")+".");
       var tier=structCpxTier(t,B);
       L.push("- IMS structural complexity ("+t.envCount+" environments incl. "+t.nonProdCount+" non-prod, "+t.hostCount+" hostings, "+t.dbCount+" databases, security in scope: "+(t.security?"yes":"no")+") \u2014 **"+tier+"**"+
         (structCpxBump(t,B) ? ", +"+Math.round(structCpxBump(t,B)*100)+"% B-factor bump applied." : ", no B-factor bump at this tier.")+
@@ -4508,6 +4586,16 @@ function buildRegister(base,mc,o1,rp){
     L.push(line);
   });
   L.push("");
+  if((S.specialRoles||[]).length){
+    L.push("## Special roles (manual, additional to tower-driven sizing)");
+    L.push("- Entered by hand, applicable to every tower and counted separately from the tower-specific roles; added on top of Total FTE. Not deflated by AIOps, not scaled by hypercare or the Brownfield uplift, and not used to size the AIOps team.");
+    S.specialRoles.forEach(function(sr){
+      var by=base.years.map(function(y){ var row=(y.specialRows||[]).find(function(x){return x.id===sr.id;}); return "Y"+y.y+" "+fmt(row?row.fte:0); }).join(", ");
+      L.push("  - "+sr.name+": "+by+" FTE.");
+    });
+    L.push("- Special roles total: "+base.years.map(function(y){return "Y"+y.y+" "+fmt(y.special||0);}).join(", ")+" FTE.");
+    L.push("");
+  }
   L.push("## Delivery location");
   if(S.eng.region==="ime"){
     L.push("- Region: **IME**. Entire team delivered from **India**.");
@@ -4560,7 +4648,7 @@ function buildRegister(base,mc,o1,rp){
       L.push("## Role & grade staffing plan");
       L.push("| Role | Tier | Towers | "+base.years.map(function(y){return "Y"+y.y;}).join(" | ")+" |");
       L.push("|---|---|---|"+base.years.map(function(){return "---";}).join("|")+"|");
-      ["L1","L2","L3","QA","AIOPS","GOV"].forEach(function(T){
+      ["L1","L2","L3","AIOPS","GOV"].forEach(function(T){
         shownR.filter(function(r){return r.tier===T;}).forEach(function(r){
           L.push("| "+r.n+" | "+T+" | "+roleTowers(S,r).join("/")+" | "+rp.map(function(p){return fmt(p.alloc[r.id]||0);}).join(" | ")+" |");
         });
@@ -4605,7 +4693,7 @@ function buildRegister(base,mc,o1,rp){
   ["AMS","IMS","DMS"].forEach(k=>L.push("- "+k+": L1 \u00d7"+B.tower[k].l1+", L2/L3 \u00d7"+B.tower[k].l23+", B-factor "+pct0(B.tower[k].bModern)+"/"+pct0(B.tower[k].bLegacy)+", automation ceiling "+pct0(B.tower[k].ceiling)+"."));
   L.push("- Team-shape splits L1/L2/L3 \u2014 pyramid "+B.shapes.pyramid.join("/")+", diamond "+B.shapes.diamond.join("/")+", inverted "+B.shapes.inverted.join("/")+".");
   L.push("- Governance load "+B.govBase+" hrs/month at deal level plus "+B.govPerTower+" hrs/month per tower.");
-  L.push("- Role policy (manual-estimation heuristics, not framework-sourced): only nine roles are on by default \u2014 L1 Product Support Engineer (all towers); AMS L2 Systems Support Engineer, which also covers AMS L3 below the "+B.evoThreshold+"% evolution threshold; IMS L2 Infrastructure Support Engineer; AMS L3 Developer once evolution work reaches "+B.evoThreshold+"% (\"SSEs are capable of doing the minor enhancements\" below it); IMS L3 Infrastructure Engineer, with SRE included in the mix only when the client's SRE checkbox is set (IMS-only, a genuine inclusion gate \u2014 not present at all otherwise \u2014 then weighted 1.8x against Infrastructure Engineer's 0.5x once both are eligible); DMS L2/L3 Data Engineer, the sole role spanning both tiers; governance limited to Service Delivery Manager alone, present on every engagement. Every other role in the 37-role catalogue is present but off by default. SDM ratio 1:8.");
+  L.push("- Role policy (manual-estimation heuristics, not framework-sourced): only eight roles are on by default \u2014 L1 Product Support Engineer (all towers); AMS L2 Systems Support Engineer, which also covers AMS L3 below the "+B.evoThreshold+"% evolution threshold; IMS L2 Infrastructure Support Engineer; AMS L3 Developer once evolution work reaches "+B.evoThreshold+"% (\"SSEs are capable of doing the minor enhancements\" below it); IMS L3 Infrastructure Engineer; DMS L2/L3 Data Engineer, the sole role spanning both tiers; governance limited to Service Delivery Manager alone, present on every engagement. Every other role in the 35-role catalogue is present but off by default. SRE, QA, L1.5 and any governance layer are not catalogue roles: they are entered by hand as Special roles. SDM ratio 1:8.");
   L.push("- Grade ladder: three grades only (Lead, Senior, Consultant \u2014 no Principal), target ratio 1:2:4, applied uniformly per tier. Service Delivery Manager is graded wholly Lead, which falls out of the uniform-ratio table since SDM is the sole role left in governance rather than needing a special case.");
   L.push("");
   registerExtras(EXT||extrasFor(S,base,runEngine(S,{aiops:false}))).forEach(l=>L.push(l));
@@ -4683,8 +4771,8 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
   }
   h+='</tbody></table></section>';
 
-  h+='<section><h2>Year by year</h2><table><thead><tr><th>Year</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">Base FTE</th><th class="num">Deflect</th><th class="num">Delivery</th><th class="num">AIOps</th><th class="num">Total FTE</th></tr></thead><tbody>'+
-    base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td><td class="num">'+fmt(y.total)+'</td></tr>').join("")+
+  h+='<section><h2>Year by year</h2><table><thead><tr><th>Year</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">Base FTE</th><th class="num">Deflect</th><th class="num">Delivery</th><th class="num">AIOps</th>'+((S.specialRoles||[]).length?'<th class="num">Special</th>':'')+'<th class="num">Total FTE</th></tr></thead><tbody>'+
+    base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td>'+((S.specialRoles||[]).length?'<td class="num">'+fmt(y.special||0)+'</td>':'')+'<td class="num">'+fmt(y.total)+'</td></tr>').join("")+
     '</tbody></table></section>';
 
   h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Tier</th><th>Window</th><th>Availability</th><th>Off-hours model</th></tr></thead><tbody>'+
@@ -4710,11 +4798,15 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
 
   h+='<section><h2>Role &amp; grade staffing plan</h2><table><thead><tr><th>Role</th><th>Tier</th>'+
     base.years.map(y=>'<th class="num">Y'+y.y+'</th>').join("")+'<th>Y1 grade (L/S/C)</th></tr></thead><tbody>';
-  ["L1","L2","L3","QA","AIOPS","GOV"].forEach(T=>{
+  ["L1","L2","L3","AIOPS","GOV"].forEach(T=>{
     shown.filter(r=>r.tier===T).forEach(r=>{
       const g=rp1.roleGrades[r.id]||[0,0,0];
       h+='<tr><td>'+esc(r.n)+'</td><td>'+T+'</td>'+rp.map(p=>'<td class="num">'+fmt(p.alloc[r.id]||0)+'</td>').join("")+'<td class="num">'+g.map(v=>fmt(v,1)).join(" / ")+'</td></tr>';
     });
+  });
+  (S.specialRoles||[]).forEach(sr=>{
+    const key="sp_"+sr.id, g=rp1.roleGrades[key]||[0,0,0];
+    h+='<tr><td>'+esc(sr.name)+' (special, manual)</td><td>SPECIAL</td>'+rp.map(p=>'<td class="num">'+fmt(p.alloc[key]||0)+'</td>').join("")+'<td class="num">'+g.map(v=>fmt(v,1)).join(" / ")+'</td></tr>';
   });
   h+='<tr class="total"><td>Total</td><td></td>'+rp.map(p=>'<td class="num">'+fmt(gsum(p))+'</td>').join("")+'<td></td></tr>';
   h+='</tbody></table></section>';
@@ -5183,9 +5275,10 @@ function renderCanvas(){
   }
 
   /* year by year */
+  const HAS_SP=(S.specialRoles||[]).length>0;
   h+='<div class="card"><header><h2>Year by year</h2><span class="note">Cascade tiering per [F 1.4]: L2 effort covers every pass-through; L3 escalations are additive.</span></header><div class="cardbody">'+
     '<div class="tablewrap"><table><thead><tr><th>Year</th><th>Tickets/mo</th><th>L1 / L2 / L3</th>'+
-    '<th>A hrs</th><th>B hrs</th><th>Base FTE</th><th>Deflect</th><th>Delivery</th><th>AIOps</th><th>Total FTE</th><th>vs Y1</th></tr></thead><tbody>';
+    '<th>A hrs</th><th>B hrs</th><th>Base FTE</th><th>Deflect</th><th>Delivery</th><th>AIOps</th>'+(HAS_SP?'<th>Special</th>':'')+'<th>Total FTE</th><th>vs Y1</th></tr></thead><tbody>';
   base.years.forEach(y=>{
     h+='<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?' <span class="flag">hypercare</span>':'')+'</td>'+
       '<td>'+f0(y.vol)+'</td>'+
@@ -5193,6 +5286,7 @@ function renderCanvas(){
       '<td>'+f0(y.A)+'</td><td>'+f0(y.B)+'</td>'+
       '<td>'+fmt(y.baseFTE)+(y.floorBinds?' <span class="flag">cover '+fmt(y.floor)+'</span>':'')+'</td>'+
       '<td>'+(y.defl?pct0(y.defl)+(y.deflCapped?' <span class="flag">ceiling</span>':''):"\u2013")+'</td><td>'+fmt(y.delivery)+'</td><td>'+y.aiopsFTE+'</td>'+
+      (HAS_SP?'<td>'+fmt(y.special||0)+'</td>':'')+
       '<td><b>'+fmt(y.total)+'</b></td><td>'+(y.y===1?"baseline":pct0(y.prod))+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -5263,8 +5357,8 @@ function renderCanvas(){
   h+='<div class="card"><header><h2>Team shape</h2><span class="note">Pyramid &rarr; diamond &rarr; inverted, driven by scenario and year. Splits are proposed defaults.</span></header><div class="cardbody">'+
     chartShape(base)+
     '<div class="legend"><span><i style="background:var(--accent);opacity:.35"></i>L1</span><span><i style="background:var(--accent);opacity:.62"></i>L2</span>'+
-    '<span><i style="background:var(--accent)"></i>L3 / SRE</span><span><i style="background:var(--ink-3)"></i>SDM</span>'+
-    '<span><i style="background:var(--ink-3);opacity:.55"></i>QA</span><span><i style="background:var(--compute)"></i>AIOps</span></div></div></div>';
+    '<span><i style="background:var(--accent)"></i>L3</span><span><i style="background:var(--ink-3)"></i>SDM</span>'+
+    '<span><i style="background:var(--compute)"></i>AIOps</span><span><i style="background:var(--warn);opacity:.8"></i>Special roles</span></div></div></div>';
 
   /* role & grade staffing plan */
   const rp=rolePlan(S,base);
@@ -5281,8 +5375,8 @@ function renderCanvas(){
   if(imsTowers.length || amsTowers.length || dmsTowers.length){
     h+='<div class="tablewrap"><table style="margin-bottom:14px"><thead><tr><th>Tower</th><th>Delivery profile</th></tr></thead><tbody>'+
        imsTowers.map(t=>{const tier=structCpxTier(t,B);
-         return '<tr><td>IMS</td><td>'+(t.sre?'<b>SRE included</b> \u2014 SRE leads L3':'<span class="sub-td">SRE not included \u2014 Infrastructure Engineer leads L3</span>')+
-           '<br><span class="sub-td">Structural complexity: <b>'+tier+'</b> ('+t.envCount+' env incl. '+t.nonProdCount+' non-prod, '+t.hostCount+' hostings, '+t.dbCount+' DBs, security '+(t.security?'yes':'no')+')'+
+         return '<tr><td>IMS</td><td>'+
+           '<span class="sub-td">Structural complexity: <b>'+tier+'</b> ('+t.envCount+' env incl. '+t.nonProdCount+' non-prod, '+t.hostCount+' hostings, '+t.dbCount+' DBs, security '+(t.security?'yes':'no')+')'+
            (tier==="high"?' \u2014 consider enabling Information Security Engineer.':'')+'</span></td></tr>';}).join("")+
        amsTowers.map(t=>{const ev=+t.evolution||0, over=ev>=B.evoThreshold;
          return '<tr><td>AMS</td><td>'+(over
@@ -5293,12 +5387,12 @@ function renderCanvas(){
            (tier==="high"?' \u2014 consider enabling Data Architect / Data Strategist.':'')+'</span></td></tr>';}).join("")+
        '</tbody></table></div>';
   }
-  if(!shown.length){
+  if(!shown.length && !HAS_SP){
     h+='<div class="callout">No roles are in scope for the selected towers. Turn some on in the <b>Roles &amp; grades</b> panel.</div>';
   }else{
     h+='<div class="tablewrap"><table><thead><tr><th>Role</th><th>Tier</th><th>Towers</th>'+
       base.years.map(y=>'<th>Y'+y.y+'</th>').join("")+'<th>Y1 grade L / S / C</th></tr></thead><tbody>';
-    ["L1","L2","L3","QA","AIOPS","GOV"].forEach(T=>{
+    ["L1","L2","L3","AIOPS","GOV"].forEach(T=>{
       shown.filter(r=>r.tier===T).forEach(r=>{
         const g=rp1.roleGrades[r.id]||[0,0,0,0];
         h+='<tr><td>'+esc(r.n)+'</td><td class="sub-td">'+T+'</td><td class="sub-td">'+esc(roleTowers(S,r).join("/"))+'</td>'+
@@ -5306,9 +5400,16 @@ function renderCanvas(){
           '<td class="sub-td">'+g.map(v=>fmt(v,1)).join(" / ")+'</td></tr>';
       });
     });
+    (S.specialRoles||[]).forEach(sr=>{
+      const key="sp_"+sr.id, g=rp1.roleGrades[key]||[0,0,0];
+      h+='<tr><td>'+esc(sr.name)+' <span class="flag">special</span></td><td class="sub-td">SPECIAL</td><td class="sub-td">All towers</td>'+
+        rp.map(p=>'<td>'+fmt(p.alloc[key]||0)+'</td>').join("")+
+        '<td class="sub-td">'+g.map(v=>fmt(v,1)).join(" / ")+'</td></tr>';
+    });
     h+='<tr class="total"><td>Total</td><td colspan="2"></td>'+
        rp.map(p=>'<td>'+fmt(gsum(p))+'</td>').join("")+'<td></td></tr>';
     h+='</tbody></table></div>';
+    if(HAS_SP) h+='<div class="callout" style="margin-top:12px"><b>Special roles are manual additions.</b> They apply to every tower, are counted separately from the tower-driven roles above, and are added on top of Total FTE &mdash; they are not deflated by AIOps, scaled by hypercare or the Brownfield uplift, or used to size the AIOps team.</div>';
     h+='<h3 style="font-size:13px;margin:18px 0 4px">Grade mix</h3>'+chartGrades(rp)+
        '<div class="gradekey"><span><i style="background:var(--accent)"></i>Lead</span>'+
        '<span><i style="background:var(--accent);opacity:.62"></i>Senior</span>'+
@@ -5333,7 +5434,7 @@ function renderCanvas(){
       : "IME region.")+'</span></header><div class="cardbody">';
   if(S.eng.region==="ime"){
     h+='<div class="callout acc">Region is <b>IME</b> &mdash; the entire team is shown as delivered from <b>India</b>. Switch to EU, APAC or NA under Engagement to configure a location mix.</div>';
-  }else if(!shown.length){
+  }else if(!shown.length && !HAS_SP){
     h+='<div class="callout">No roles are in scope yet &mdash; nothing to split by location.</div>';
   }else{
     const locCat=LOC_CATALOG[S.eng.region]||[];
@@ -5342,13 +5443,19 @@ function renderCanvas(){
     h+='<div class="tablewrap"><table><thead><tr><th>Role</th><th>Tier</th><th>Total FTE</th>'+
       locCat.map(loc=>'<th>'+loc.label+'</th>').join("")+'</tr></thead><tbody>';
     const tot={}; locCat.forEach(loc=>tot[loc.key]=0); let totAll=0;
-    ["L1","L2","L3","QA","AIOPS","GOV"].forEach(T=>{
+    ["L1","L2","L3","AIOPS","GOV"].forEach(T=>{
       shown.filter(r=>r.tier===T).forEach(r=>{
         const h1v=rp1.alloc[r.id]||0, l=loc1[r.id]||{};
         locCat.forEach(loc=>tot[loc.key]+=(l[loc.key]||0)); totAll+=h1v;
         h+='<tr><td>'+esc(r.n)+'</td><td class="sub-td">'+T+'</td><td>'+fmt(h1v)+'</td>'+
           locCat.map(loc=>'<td class="sub-td">'+fmt(l[loc.key]||0)+'</td>').join("")+'</tr>';
       });
+    });
+    (S.specialRoles||[]).forEach(sr=>{
+      const key="sp_"+sr.id, h1v=rp1.alloc[key]||0, l=loc1[key]||{};
+      locCat.forEach(loc=>tot[loc.key]+=(l[loc.key]||0)); totAll+=h1v;
+      h+='<tr><td>'+esc(sr.name)+' <span class="flag">special</span></td><td class="sub-td">SPECIAL</td><td>'+fmt(h1v)+'</td>'+
+        locCat.map(loc=>'<td class="sub-td">'+fmt(l[loc.key]||0)+'</td>').join("")+'</tr>';
     });
     h+='<tr class="total"><td>Total</td><td></td><td>'+fmt(totAll)+'</td>'+
       locCat.map(loc=>'<td>'+fmt(tot[loc.key])+'</td>').join("")+'</tr>';
@@ -5410,14 +5517,14 @@ function renderCanvas(){
   if(S.optim.o3){
     h+='<div class="card compute"><header><h2>O3 &mdash; team shape integer programme</h2>'+
       '<span class="note">Minimum headcount with upward substitution (L3 absorbs L2, L2 absorbs L1), shape conformity as the tie-break.</span></header><div class="cardbody"><div class="tablewrap"><table>'+
-      '<thead><tr><th>Year</th><th>L1</th><th>L2</th><th>L3 / SRE</th><th>Ops</th><th>of which SDM</th><th>of which QA</th><th>AIOps</th><th>IP total</th><th>Ratio model</th><th>Delta</th></tr></thead><tbody>';
+      '<thead><tr><th>Year</th><th>L1</th><th>L2</th><th>L3</th><th>Ops</th><th>of which SDM</th><th>AIOps</th><th>IP total</th><th>Ratio model</th><th>Delta</th></tr></thead><tbody>';
     base.years.forEach(y=>{
-      const s3=o3Solve(S,y), d=s3.total-y.total;
+      const s3=o3Solve(S,y), rm=y.total-(y.special||0), d=s3.total-rm;
       h+='<tr><td>Y'+y.y+'</td><td>'+s3.n1+'</td><td>'+s3.n2+'</td><td>'+s3.n3+'</td><td>'+s3.ops+'</td>'+
-        '<td class="sub-td">'+s3.sdm+'</td><td class="sub-td">'+s3.qa+'</td><td>'+s3.ai+'</td>'+
-        '<td><b>'+s3.total+'</b></td><td>'+fmt(y.total)+'</td><td style="color:'+(d>0.05?"var(--warn)":"var(--good)")+'">'+(d>0?"+":"")+fmt(d)+'</td></tr>';
+        '<td class="sub-td">'+s3.sdm+'</td><td>'+s3.ai+'</td>'+
+        '<td><b>'+s3.total+'</b></td><td>'+fmt(rm)+'</td><td style="color:'+(d>0.05?"var(--warn)":"var(--good)")+'">'+(d>0?"+":"")+fmt(d)+'</td></tr>';
     });
-    h+='</tbody></table></div><p class="hint" style="margin-top:10px">The IP takes the ratio model\'s delivery FTE as its target and does one job: turn a fractional, tier-blind number into whole people that still meet L3 and L2 demand under upward substitution. SDM and QA are carved out of the Ops pool, not added on top. The delta is integer rounding &mdash; treat the IP column as the deployable roster and the ratio column as the commercial baseline.</p>';
+    h+='</tbody></table></div><p class="hint" style="margin-top:10px">The IP takes the ratio model\'s delivery FTE as its target and does one job: turn a fractional, tier-blind number into whole people that still meet L3 and L2 demand under upward substitution. SDM is carved out of the Ops pool, not added on top; manual Special roles sit outside the IP. The delta is integer rounding &mdash; treat the IP column as the deployable roster and the ratio column as the commercial baseline.</p>';
     const s3a=o3Solve(S,base.years[0]);
     const shapeL1=base.years[0].shape.split[0]/sum(base.years[0].shape.split);
     const ipL1=s3a.ops?s3a.n1/s3a.ops:0;
@@ -5602,6 +5709,12 @@ document.addEventListener("click",e=>{
     if(t) applyServiceTier(t,b.dataset.tierpreset);
     refresh(true); return;
   }
+  if(b.dataset.spadd){
+    const pr=SPECIAL_PRESETS.find(x=>x[0]===b.dataset.spadd);
+    (S.specialRoles=S.specialRoles||[]).push({id:uid(),name:pr?pr[1]:"Custom role",fte:0,years:[]});
+    refresh(true); return;
+  }
+  if(b.dataset.spdel!=null){ S.specialRoles.splice(+b.dataset.spdel,1); refresh(true); return; }
   if(b.dataset.add){ S.towers.push(mkTower(b.dataset.add)); refresh(true); return; }
   if(b.dataset.del!=null){ S.towers.splice(+b.dataset.del,1); refresh(true); return; }
   if(b.dataset.docremove){

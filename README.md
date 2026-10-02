@@ -131,19 +131,19 @@ Effects on the estimate:
 
 ### 3.7 Manual-estimation role policy
 
-Only **nine roles are on by default** — a deliberate, narrow list, not a weighted competition across the full 37. Everything else in the catalogue stays present and switchable in **Roles & grades**, but off, so a fresh estimate never over-staffs a tower with a role that's rarely actually used.
+Only **eight roles are on by default** — a deliberate, narrow list, not a weighted competition across the full 35-role catalogue. Everything else in the catalogue stays present and switchable in **Roles & grades**, but off, so a fresh estimate never over-staffs a tower with a role that's rarely actually used.
 
 | Tower | L1 | L2 | L3 |
 |---|---|---|---|
 | AMS | Product Support Engineer | **Systems Support Engineer** | **SSE** below the evolution threshold, **Developer** at or above it |
-| IMS | Product Support Engineer | **Infrastructure Support Engineer** | **Infrastructure Engineer**, plus **SRE** only if named the objective |
+| IMS | Product Support Engineer | **Infrastructure Support Engineer** | **Infrastructure Engineer** (carries the whole IMS L3 share) |
 | DMS | Product Support Engineer | **Data Engineer** (spans L2 and L3) | **Data Engineer** (spans L2 and L3) |
 
 Plus **Machine Learning Engineer** for AIOps, and **Service Delivery Manager** as the *only* governance role, present on **every** engagement — every other governance role (Delivery Principal, Solution Architect, Enterprise Architect, Data Architect, and the rest) is off by default.
 
 Two roles are **genuinely gated in or out**, not just down-weighted — if they're not eligible, they aren't candidates at all, full stop:
 
-- **SRE is IMS-only, and off by default.** It only enters the mix when the "SRE is the client's named objective" checkbox is set on that IMS tower (the checkbox itself only appears on IMS tower cards). Unchecked, Infrastructure Engineer covers 100% of IMS L3. Checked, both are candidates, weighted 1.8x SRE to 0.5x Infrastructure Engineer, and their *combined* headcount stays unchanged — this reallocates within the pool, it doesn't add or remove people. Switching the role on but leaving an AMS or DMS tower's flag unset still produces zero SRE there, asserted by a self-test.
+- **SRE and QA are not catalogue roles.** The old IMS "SRE is the client's named objective" checkbox and the QA effort share (`bench.qaShare`) were removed; a stale `tower.sre`/`qaShare` in an old link is ignored. Use **Special roles** (below) for SRE, QA, L1.5 and a governance layer.
 - **Developer is AMS-only, and only appears once evolution work reaches a threshold** (default 30%, editable — "thirty or forty percent" as given). Below it, Systems Support Engineer is deemed capable of the minor enhancements itself and covers AMS L3 as well as L2 — via a `tier2` field, the same mechanism Data Engineer uses for DMS. At or above the threshold, Developer takes over L3 and SSE drops back to L2 only. Exactly one of the two is ever eligible for AMS L3 — never both, never neither, by construction.
 
 Data Engineer draws from **both the L2 and L3 headcount pools** for DMS rather than being confined to one tier — reflecting "we use Data Engineer for L2/L3."
@@ -162,7 +162,11 @@ The seniority mix still shifts upward as the team shape moves pyramid → diamon
 
 The full 37-role catalogue remains available — turn any role on in **Roles & grades** for a deal that genuinely needs it (a Data Scientist on an ML-heavy DMS engagement, a QA Analyst where testing needs a named owner). Off-by-default is a starting posture, not a ceiling.
 
-The allocation conserves headcount exactly: every tier FTE lands on one role, every role FTE lands on one grade. That is asserted by a self-test — and because Quality Analyst is off by default, the QA effort share (`bench.qaShare`) also now defaults to 0, so no headcount is ever generated for a role that isn't switched on to receive it.
+### Special roles (manual, deal-level)
+
+A rail section for roles that are not driven by tower volume: **L1.5 support, SRE, QA, Governance layer**, or any **custom** role. They apply to every tower, are entered by hand (one FTE number per role, with an optional per-year override; blank years use the flat number), and are **added on top of Total FTE**, shown as their own *Special* column and staffing-plan group. They are not deflated by AIOps, not scaled by hypercare or Brownfield uplift, and not part of the AIOps engineer ratio base. They are graded 1:2:4 and flow into the delivery-location mix, the register, the print report and the Excel export.
+
+The allocation conserves headcount exactly: every tier FTE lands on one role, every role FTE lands on one grade. That is asserted by a self-test, including with Special roles present.
 
 ### 3.9 Delivery location mix
 
@@ -232,7 +236,7 @@ All weights and cut-points are editable in the Benchmarks panel, calibrated so a
 
 **Two effects, both new, neither touching AMS:**
 1. **Effort.** `structCpxBump(t,B)` multiplies the tower's B-factor (non-ticketing effort) by `score × bumpPerPoint`, capped at `bench.structCpx.maxBump` — a **continuous** function of the same composite score that drives the tier label, not a 3-step lookup. `bumpPerPoint` is calibrated so the bump exactly equals the old flat tier values right at the cut-points (score = loMed → +10%, score = medHigh → +20%), then keeps climbing past them. This matters in practice: a tower with 100 environments must keep costing meaningfully more than one with 10, not flatline the moment it crosses into "High" — an earlier flat-per-tier version of this had exactly that defect, reported and fixed. The cap (default 200%, i.e. B-factor can at most triple) exists only as a sanity ceiling against adversarial input, not something a realistic estate reaches. Stacks multiplicatively with the existing legacy/modern B-factor, and is a third, independent lever alongside the SLA-stringency modifier (bumps L2/L3 hours) and the Brownfield uplift (bumps whole-tower pre-deflection FTE) — three levers on three distinct quantities, none double-counting the others.
-2. **Roles.** At the **High** tier only (the same discrete Low/Medium/High label, unaffected by the continuous-bump fix above), two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox (mirroring exactly how the existing SRE checkbox already gates the SRE role); **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing SRE/evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
+2. **Roles.** At the **High** tier only (the same discrete Low/Medium/High label, unaffected by the continuous-bump fix above), two off-by-default roles become eligible: **Information Security Engineer** on IMS, gated directly by the `security` checkbox ; **Data Architect** and **Data Strategist** on DMS (standing in for "DataOps Architect" and "Data Quality/Governance Lead" from the supplied deck's own High-complexity team shape), gated by the computed tier. Both still require the role to also be manually switched on in **Roles & grades** — the complexity calculation never auto-toggles that switch itself, matching the existing evolution-threshold eligibility-gate pattern rather than introducing a new auto-seed mechanic.
 
 A live badge on each IMS/DMS tower card shows the computed tier, the bump applied, and — at High — a one-line reminder to enable the relevant role(s). The register export and print report both narrate the same information per tower. The badge updates **instantly**, in place, on every keystroke or dropdown change — the same targeted-DOM-patch technique the delivery-location mix sum hint already used, since the rail as a whole is deliberately not re-rendered on every input event (that would drop focus mid-keystroke).
 
@@ -379,8 +383,8 @@ The **Verify against framework** card runs 149 checks on every render. Each is a
 14. Handing L1 to the customer removes L1 effort and L1 roles
 15. An ownership interface applies a coordination uplift
 16. AMS L3 switches cleanly from SSE to Developer at the evolution threshold — never both, never neither
-17. SRE is included in IMS L3 only when the box is checked — zero unchecked, present checked, pair total unchanged
-18. SRE produces zero allocation on an AMS tower even when switched on and flagged
+17. SRE and QA are gone from the catalogue, tower flags and benchmarks; a stale `tower.sre` changes nothing
+18. Special roles add exactly their FTE to Total FTE, never alter delivery or AIOps, honour per-year overrides, and conserve headcount (role/grade and location)
 19. A mixed AMS+IMS deal loads SSE and Infrastructure Support Engineer simultaneously
 20. Every engagement includes an SDM
 21. DMS Data Engineer spans both L2 and L3 via the tier2 mechanism, exactly
@@ -437,7 +441,7 @@ The **Verify against framework** card runs 149 checks on every render. Each is a
 79. DMS B-factor bump matches the exact `score × bumpPerPoint` formula below the cap
 80. DMS B-factor bump is capped at `bench.structCpx.maxBump` only for a genuinely extreme, adversarial input
 81. AMS's B-factor is never bumped, even with contrived complexity-field values sitting unused on the shared tower shape
-82. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked — mirrors the existing SRE gate exactly
+82. Information Security Engineer is included in IMS L3 only when the `security` checkbox is checked
 83. Data Architect / Data Strategist need both the role switched on in Roles & grades *and* the tower's tier at High — neither alone is sufficient
 84. `backfillTowers()` backfills the new IMS structural-complexity fields on a legacy partial tower to `mkTower()`'s defaults, landing at Medium tier
 85. `structCpxTier` does not throw and degrades safely to Low on a raw legacy tower object missing the new fields entirely (the hash-restore/Import path, which doesn't call `backfillTowers`)
@@ -503,8 +507,8 @@ These are **proposed defaults derived from the framework's ranges**, not from yo
 - P1–P4 tier-of-entry matrix
 - Per-tower ARE multipliers, B-factors and automation ceilings for AMS / IMS / DMS
 - Team-shape splits (pyramid 45/35/20, diamond 25/50/25, inverted 15/45/40)
-- Role policy: which nine roles are on by default, the AMS evolution threshold (default 30%) that switches SSE to Developer at L3, the IMS L3 SRE-vs-Infrastructure-Engineer weighting once SRE is included (1.8x/0.5x), and the 1:2:4 grade ratio itself
-- Role weights and role→tier assignment for anything you switch on beyond the default nine
+- Role policy: which eight roles are on by default, the AMS evolution threshold (default 30%) that switches SSE to Developer at L3, and the 1:2:4 grade ratio itself
+- Role weights and role→tier assignment for anything you switch on beyond the default eight
 - Delivery location presets for APAC and NA (proposed guesses — China/Australia and LATAM-Ecuador/India splits with no framework or client data behind them yet, unlike EU's presets); the split is applied uniformly to every role, not per role — if specific roles need to be pinned to specific locations, that's a follow-up, not something the current mix does
 - Governance load, hypercare duration and multiplier
 - AIOps use-case catalogue: build effort, deflection benefit and prerequisites
