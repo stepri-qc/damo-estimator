@@ -1,6 +1,7 @@
 import type { Context } from "@netlify/functions";
 import Anthropic from "@anthropic-ai/sdk";
 import { getStore } from "@netlify/blobs";
+import { parseLooseJson } from "./lib/loose-json.mts";
 
 // Background function (15-min execution limit, vs. the standard synchronous
 // limit that killed the first two attempts at this feature). A real 23-page
@@ -141,7 +142,7 @@ const EXTRACTION_RULES =
   "- Before you answer, check: (1) table totals agree with their rows; (2) the reporting-period conversion is applied and stated; (3) any operational counters that are not incidents (job failures and the like) are listed in warnings with their counts; (4) pass23 is set if the document states what share is handled at L3 or escalated to it; (5) conflicts between sessions and suspect figures are in warnings; (6) nothing was taken from analysis or proposal content.\n";
 
 const EVIDENCE_RULES =
-  "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY and CONTIGUOUSLY from the document text - same words and numbers, never paraphrased, and never joined with \"...\" (if a value draws on several places, quote the single most informative contiguous passage)), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
+  "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY and CONTIGUOUSLY from the document text - same words and numbers, never paraphrased, and never joined with \"...\" (if a value draws on several places, quote the single most informative contiguous passage)), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified. Your reply must be strictly valid JSON: inside a quote or any string never write a raw line break or tab (where the document breaks a line, use a single space), and write every double quotation mark that is part of the text as \\\" or replace it with a single quote.\n";
 
 // Reported bug: a document stating a period total (e.g. "719 incidents" from an
 // annual or six-month table) got written straight into inc/sr, which the app
@@ -253,14 +254,6 @@ function sanitizeExtraction(v: unknown): unknown {
   return v;
 }
 
-// Model replies are occasionally wrapped in ```json fences despite the "no
-// markdown fences" instruction - strip them before parsing rather than failing.
-function extractJson(raw: string): unknown {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
-}
-
 function jobStore() {
   return getStore({ name: "damo-extraction-jobs", consistency: "strong" });
 }
@@ -320,14 +313,54 @@ export default async (req: Request, context: Context) => {
       return;
     }
 
+    // 1) strict, then tolerant parse (raw line breaks inside a quoted passage, an unescaped inner
+    // quote, a trailing comma, prose or a fence around the object); 2) one repair call to the model
+    // if that still fails; 3) otherwise report precisely what came back so it can be diagnosed.
     let parsed: unknown;
+    let parseError = "";
     try {
-      parsed = extractJson(textBlock.text);
-    } catch {
+      parsed = parseLooseJson(textBlock.text);
+    } catch (e) {
+      parseError = e instanceof Error ? e.message : String(e);
+    }
+    let repaired = false;
+    if (parsed === undefined && textBlock.text.length < 160000) {
+      try {
+        const fix = client.messages.stream({
+          model: "claude-sonnet-5",
+          max_tokens: 32000,
+          messages: [{
+            role: "user",
+            content: "The text below is meant to be ONE JSON object but it does not parse (" + parseError + "). Return ONLY the corrected JSON " +
+              "object - no prose, no code fence. Change nothing except what is needed to make it valid JSON: escape double quotes inside strings, " +
+              "replace raw line breaks and tabs inside strings with a space, remove trailing commas, and close any unclosed brackets or strings.\n\n" +
+              textBlock.text,
+          }],
+        });
+        const fixed = await fix.finalMessage();
+        const fb = fixed.content.find((b) => b.type === "text");
+        if (fb && fb.type === "text") {
+          parsed = parseLooseJson(fb.text);
+          repaired = true;
+        }
+      } catch (e) {
+        parseError += " | repair failed: " + (e instanceof Error ? e.message : String(e));
+      }
+    }
+    if (parsed === undefined) {
+      const raw = textBlock.text;
       await store.setJSON(jobId, {
         status: "error",
         error: "Model response wasn't valid JSON",
-        raw: textBlock.text.slice(0, 500),
+        detail: {
+          stopReason: response.stop_reason,
+          outputTokens: response.usage.output_tokens,
+          parseError,
+          length: raw.length,
+          head: raw.slice(0, 300),
+          tail: raw.slice(-300),
+        },
+        raw: raw.slice(0, 400000),   // the client puts this in the JSON box so it can be inspected and fixed
       });
       return;
     }
@@ -335,6 +368,7 @@ export default async (req: Request, context: Context) => {
     await store.setJSON(jobId, {
       status: "done",
       json: sanitizeExtraction(parsed),
+      repaired,
       usage: {
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,

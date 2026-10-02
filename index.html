@@ -4000,6 +4000,15 @@ function selfTests(){
   out.push({n:"A partial own / srMix from an extraction keeps the template's other keys instead of leaving them undefined",
     exp:"own L1 customer, L2/L3 us; srMix low 80, medium/high from defaults",got:JSON.stringify(bfT.own)+" "+JSON.stringify(bfT.srMix),
     ok:bfT.own.L1==="customer"&&bfT.own.L2==="us"&&bfT.own.L3==="us"&&bfT.srMix.low===80&&bfT.srMix.medium===30&&bfT.srMix.high===10});
+  const lj=(txt)=>{ try{ return JSON.stringify(parseLooseJson(txt)); }catch(e){ return "ERR "+e.message; } };
+  const ljCases=[
+    ['{"q":"line one\nline two","n":2}','{"q":"line one line two","n":2}'],
+    ['{"q":"he said "ok" then left","n":3}','{"q":"he said \\"ok\\" then left","n":3}'],
+    ['Here:\n```json\n{"a":[1,2,],"b":{"c":1,},}\n```\nthanks','{"a":[1,2],"b":{"c":1}}'],
+    ['{"e":[{"quote":"the "SSE" team\nworks 24x7","basis":"stated"}]}','{"e":[{"quote":"the \\"SSE\\" team works 24x7","basis":"stated"}]}']];
+  out.push({n:"Loose JSON: a reply with raw line breaks in a quote, unescaped inner quotes, trailing commas or a fence still parses",
+    exp:"all 4 cases parse to the intended object",got:ljCases.map(c=>lj(c[0])===c[1]?"ok":lj(c[0])).join(" | "),
+    ok:ljCases.every(c=>lj(c[0])===c[1])&&lj('{"a":1}')==='{"a":1}'});
   const clientPrompt=buildClaudePrompt();
   const promptMarkers=["Tower type is decided by WHAT IS BEING SUPPORTED","ONE tower per tower type","evidence[]","eng.pass12 / eng.pass23","opportunities[]","srMix and crMix","NOT client-stated fact","Tables arrive as lines"];
   out.push({n:"The in-page extraction prompt carries the same rule blocks as the server prompt (tower-type inference, evidence, scope, tables)",
@@ -4170,6 +4179,53 @@ function syncIntakeDocsFromDom(){
     if(ta) d.text=ta.value;
   });
 }
+/* Tolerant JSON parsing for a model reply (pasted or extracted): raw line breaks or tabs inside a
+   quoted passage, an unescaped inner quotation mark, a trailing comma, prose or a code fence around
+   the object. Same algorithm as netlify/functions/lib/loose-json.mts - test/extraction/loose-json.test.mjs
+   runs both against the same samples, so change them together. */
+function tidyJson(raw) {
+  let s = String(raw);
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a >= 0 && b > a) s = s.slice(a, b + 1);
+  let out = "", inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') {
+        // a real closing quote is followed (after spaces) by , : } ] or the end; anything else is an inner quote
+        let j = i + 1;
+        while (j < s.length && (s[j] === " " || s[j] === "\n" || s[j] === "\r" || s[j] === "\t")) j++;
+        const nx = s[j];
+        if (j >= s.length || nx === "," || nx === ":" || nx === "}" || nx === "]") { inStr = false; out += ch; }
+        else out += '\\"';
+        continue;
+      }
+      if (ch.charCodeAt(0) < 0x20) { out += " "; continue; }   // raw newline / tab / control char inside a string
+      out += ch;
+    } else {
+      if (ch === '"') { inStr = true; out += ch; continue; }
+      if (ch === ",") {
+        let j = i + 1;
+        while (j < s.length && (s[j] === " " || s[j] === "\n" || s[j] === "\r" || s[j] === "\t")) j++;
+        if (s[j] === "}" || s[j] === "]") continue;               // trailing comma
+      }
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function parseLooseJson(raw) {
+  const t = String(raw).trim();
+  const fenced = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  const body = fenced ? fenced[1] : t;
+  try { return JSON.parse(body); } catch { /* fall through to the tolerant pass */ }
+  return JSON.parse(tidyJson(body));
+}
+/* loose-json end */
+
 /* =====================  EXTRACTION REVIEW  =====================
    AI extraction (or a pasted reply from Claude) returns the inputs plus, for each, the source
    quote and how it was arrived at (stated / inferred / assumed), and a list of warnings. The
@@ -4265,7 +4321,7 @@ function cleanExtractedForApply(json,uncheckedPaths){
 let XR_MODEL=null;
 function renderExtractReview(){
   const host=document.getElementById("extractReview"); if(!host) return;
-  let json; try{ json=JSON.parse(document.getElementById("intakeJson").value); }catch(e){ XR_MODEL=null; host.innerHTML=""; return; }
+  let json; try{ json=parseLooseJson(document.getElementById("intakeJson").value); }catch(e){ XR_MODEL=null; host.innerHTML=""; return; }
   if(!json||typeof json!=="object"||Array.isArray(json)){ XR_MODEL=null; host.innerHTML=""; return; }
   const m=buildExtractReview(json,combinedIntakeText());
   XR_MODEL=m;
@@ -4426,7 +4482,7 @@ function buildClaudePrompt(){
     "- Tables arrive as lines with cells separated by \" | \"; use the header row to identify columns, and check any total row against the rows. A table that continues after a [page N] marker is the same table.\n" +
     "- Before you answer, check: (1) table totals agree with their rows; (2) the reporting-period conversion is applied and stated; (3) any operational counters that are not incidents (job failures and the like) are listed in warnings with their counts; (4) pass23 is set if the document states what share is handled at L3 or escalated to it; (5) conflicts between sessions and suspect figures are in warnings; (6) nothing was taken from analysis or proposal content.\n";
   const evidenceRules=
-    "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY and CONTIGUOUSLY from the document text - same words and numbers, never paraphrased, and never joined with \"...\" (if a value draws on several places, quote the single most informative contiguous passage)), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified.\n";
+    "Evidence: for every volume, mix, ownership, coverage, region, complexity, pass-through, incumbent and tower-type value you output (one entry per field; skip trivial ones), add an entry to evidence[]: path (dot path into YOUR JSON, e.g. \"towers.0.sr\" or \"eng.complexity\"), value (what you wrote), quote (a SHORT passage, at most 150 characters, copied EXACTLY and CONTIGUOUSLY from the document text - same words and numbers, never paraphrased, and never joined with \"...\" (if a value draws on several places, quote the single most informative contiguous passage)), and basis: \"stated\" (the document says it, including simple arithmetic such as dividing a stated total by a stated number of months), \"inferred\" (your judgement from what the document says) or \"assumed\" (no direct support; used a default or guessed - prefer to omit the field instead). For a computed value quote the source numbers. The quotes are checked against the document, so a quote that is not in the text is reported to the user as unverified. Your reply must be strictly valid JSON: inside a quote or any string never write a raw line break or tab (where the document breaks a line, use a single space), and write every double quotation mark that is part of the text as \\\" or replace it with a single quote.\n";
   const periodEl=document.getElementById("intakePeriodMonths");
   const periodMonths=periodEl?(+periodEl.value||0):0;
   const unitNotes=
@@ -6378,7 +6434,7 @@ document.addEventListener("click",e=>{
     case "btnIntakeJsonReview": renderExtractReview(); break;
     case "btnIntakeJsonApply":{
       try{
-        const merged=deepMergeState(defaults(),cleanExtractedForApply(JSON.parse($("#intakeJson").value),xrUnchecked()));
+        const merged=deepMergeState(defaults(),cleanExtractedForApply(parseLooseJson($("#intakeJson").value),xrUnchecked()));
         merged.towers=backfillTowers(merged.towers);
         S=seedRoles(merged); hideIntake(); refresh(true);
       }catch(err){ alert("That doesn't look like valid Claude-prepared JSON input."); }
@@ -6409,7 +6465,12 @@ document.addEventListener("click",e=>{
             const r=await fetch("/.netlify/functions/extract-status?jobId="+encodeURIComponent(jobId));
             d=await r.json();
             if(d.status==="pending") continue;
-            if(d.status==="error") throw new Error(d.error||"Extraction failed");
+            if(d.status==="error"){
+              // a reply that would not parse is put in the JSON box so it can be inspected and fixed by hand
+              if(d.raw){ $("#intakeJson").value=d.raw; renderExtractReview(); }
+              const dt=d.detail;
+              throw new Error((d.error||"Extraction failed")+(dt?" (stop reason "+dt.stopReason+", "+dt.outputTokens+" output tokens, "+dt.length+" characters; "+dt.parseError+"). The raw reply is in the box below - fix it by hand and apply, or try again with a shorter document.":""));
+            }
             $("#intakeJson").value=JSON.stringify(d.json,null,2); renderExtractReview();
             status.textContent="Done ("+d.usage.input_tokens+" in / "+d.usage.output_tokens+" out tokens, "+elapsed+"s). Review the proposed inputs below, untick anything you do not accept, then click Apply prepared inputs.";
             d=null; // signal success below without re-throwing

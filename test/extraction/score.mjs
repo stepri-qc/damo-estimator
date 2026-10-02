@@ -14,7 +14,7 @@ const site = arg("--site", "https://damo-estimator.netlify.app");
 const jsonFile = arg("--json", null);
 const passphrase = arg("--pass", "");
 const periodMonths = +arg("--period", 0) || undefined;
-const fixture = fs.readFileSync(path.join(here, "synthetic-agency-notes.txt"), "utf8");
+const fixture = fs.readFileSync(path.join(here, arg("--file", "synthetic-agency-notes.txt")), "utf8");
 const exp = JSON.parse(fs.readFileSync(path.join(here, "expected.json"), "utf8"));
 
 const norm = (t) => String(t || "").toLowerCase().replace(/[|•●○■]/g, " ").replace(/[^a-z0-9%.\/ ]+/g, " ").replace(/\s+/g, " ").trim();
