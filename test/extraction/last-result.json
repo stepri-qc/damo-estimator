@@ -1,17 +1,18 @@
 {
-  "docSummary": "Synthetic fixture for 'Agency X': a vendor supports 12 eServices (Portal through Posting, after Booklet's decommission) under a brownfield engagement, with an incumbent services team of 30-36 people and a separate 18-person platform team (different tender) running infrastructure on a hosting vendor's Singapore cloud. The FY25 summary table (April 2025-March 2026, a stated 12-month period) shows 636 total incidents (Sev A 155 / Sev B 474 / Sev C 7), 3066 SRs and 202 CRs; these were divided by 12 to get monthly figures (incidents ≈53.0/mo, SRs ≈255.5/mo, CRs ≈16.83/mo). Severity mix was mapped Sev A→P1 (24.37%), Sev B→P2 (74.53%), Sev C→P3 (1.10%), no P4 reported. Job/batch failures (92) are operational counters, not logged incidents, and were excluded. L1 is out of scope for the vendor (agency help desk); an L1.5 client-run team filters 20-30% of tickets before L2/L3, and under 5% of the remainder reaches L3. Two small separate automation opportunities (account review, log analysis) were also discussed and are listed separately, not as towers.",
+  "docSummary": "Agency X (synthetic fixture) is scoping a managed AMS engagement covering 12 eServices (one, Booklet, being decommissioned), currently run by an incumbent team of 30-36 people, with L1 handled by the agency's own help desk and an intermediate L1.5 team (3-4 people) filtering 20-30% of tickets before L2/L3. The FY25 table (Apr-2025 to Mar-2026, a 12-month period) shows totals of 3066 SRs, 636 severity-rated incidents (155 Sev A→P1, 474 Sev B→P2, 7 Sev C→P3), and 202 CRs; these were divided by 12 to get monthly figures (SR≈255.5/mo, CR≈16.83/mo, inc≈53.0/mo). Job-failure counts (92 total across eServices) were excluded from incidents since the document does not say they are logged as incidents. Two separate automation initiatives (account-review collation and weekly log analysis) were captured as opportunities, not as part of the AMS tower. Hosting/infrastructure (public cloud, Singapore region) is run by a separate hosting vendor and security incidents by a separate enterprise team, so no IMS tower was created.",
   "eng": {
     "aiMaturity": "low",
     "volumetrics": "available",
+    "aiops": true,
     "estate": "legacy",
     "engagementType": "brownfield",
-    "complexity": "medium",
+    "complexity": "high",
     "pass23": 5,
     "incumbentFTE": 33
   },
   "towers": [
     {
-      "label": "eServices application support (12 eServices: Portal, Callup, Manning, Deferment, Payslip, Registration, Clearance, Pay, Awards, Leave and Claims, Retail, Posting)",
+      "label": "eServices application support, combined AMS (12 eServices: Portal, Callup, Manning, Deferment, Payslip, Registration, Clearance, Pay, Awards, Leave and Claims, Retail, Posting - Booklet decommissioning)",
       "type": "AMS",
       "mode": "history",
       "inc": 53,
@@ -38,37 +39,31 @@
   ],
   "opportunities": [
     {
-      "name": "Account review automation",
-      "note": "~12 man-days/month manual effort, ~5,000 accounts/month, no central database; scope later updated to 12 sources across 5 categories; standalone 2-month tool proposed, commercial approval pending."
+      "name": "Account Review Automation",
+      "note": "~12 man-days/month manually collating ~5,000 accounts/month into Excel with no central database and no audit trail; scope later revised from 10 systems to 12 sources across 5 categories; standalone 2-month tool proposed, modular for future AIOps integration."
     },
     {
-      "name": "Log analysis automation",
-      "note": "Weekly manual log review, 5 use cases, handled by one person via email/Excel; candidate to plug into an AIOps pipeline later."
+      "name": "Log Analysis Automation",
+      "note": "Weekly manual review of 5 log use cases by one person using an email/Excel workflow; candidate to plug into a future AIOps pipeline."
     }
   ],
   "evidence": [
     {
-      "path": "towers.0.type",
-      "value": "AMS",
-      "quote": "eServices Summary Table (FY25 = April 2025 to 31 March 2026)",
-      "basis": "inferred"
-    },
-    {
       "path": "towers.0.mode",
       "value": "history",
-      "quote": "No. | eService | SRs | Sev A | Sev B | Sev C | CRs | Job Failures",
+      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
       "basis": "stated"
     },
     {
       "path": "towers.0.inc",
       "value": 53,
-      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
+      "quote": "FY25 = April 2025 to 31 March 2026",
       "basis": "stated"
     },
     {
       "path": "towers.0.sr",
       "value": 255.5,
-      "quote": "Total | 3066",
+      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
       "basis": "stated"
     },
     {
@@ -80,35 +75,37 @@
     {
       "path": "towers.0.mix.P1",
       "value": 24.37,
-      "quote": "Sev A ... 155",
+      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
       "basis": "stated"
     },
     {
       "path": "towers.0.mix.P2",
       "value": 74.53,
-      "quote": "Sev B ... 474",
+      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
       "basis": "stated"
     },
     {
       "path": "towers.0.mix.P3",
       "value": 1.1,
-      "quote": "Sev C ... 7",
+      "quote": "Total | 3066 | 155 | 474 | 7 | 202 | 92",
       "basis": "stated"
     },
     {
-      "path": "towers.0.srMix",
-      "value": {
-        "low": 85,
-        "medium": 0,
-        "high": 15
-      },
+      "path": "towers.0.srMix.low",
+      "value": 85,
       "quote": "10-20% are urgent or complex. The majority are simple.",
-      "basis": "stated"
+      "basis": "inferred"
+    },
+    {
+      "path": "towers.0.srMix.high",
+      "value": 15,
+      "quote": "10-20% are urgent or complex. The majority are simple.",
+      "basis": "inferred"
     },
     {
       "path": "towers.0.coverage",
       "value": "8x5",
-      "quote": "Support hours = business hours. After-hours work is handled by the agency.",
+      "quote": "Support hours = business hours.",
       "basis": "inferred"
     },
     {
@@ -120,19 +117,19 @@
     {
       "path": "towers.0.own.L2",
       "value": "us",
-      "quote": "The rest is handled by L2.",
+      "quote": "the incumbent services team is 30 to 36 people",
       "basis": "inferred"
     },
     {
       "path": "towers.0.own.L3",
       "value": "us",
-      "quote": "of the remaining, less than 5% are handled at L3",
+      "quote": "the incumbent services team is 30 to 36 people",
       "basis": "inferred"
     },
     {
       "path": "eng.pass23",
       "value": 5,
-      "quote": "of the remaining, less than 5% are handled at L3. The rest is handled by L2.",
+      "quote": "less than 5% are handled at L3",
       "basis": "stated"
     },
     {
@@ -142,45 +139,39 @@
       "basis": "stated"
     },
     {
-      "path": "eng.engagementType",
-      "value": "brownfield",
-      "quote": "the incumbent services team is 30 to 36 people; the platform team is 18 people",
+      "path": "eng.complexity",
+      "value": "high",
+      "quote": "1,200 APIs, 150 file interfaces, 12 databases across the 12 eServices.",
       "basis": "inferred"
     },
     {
       "path": "eng.estate",
       "value": "legacy",
-      "quote": "Two versions of Java; migration from 11 to 17 is in progress.",
-      "basis": "inferred"
-    },
-    {
-      "path": "eng.complexity",
-      "value": "medium",
-      "quote": "Interfaces: 1,200 APIs, 150 file interfaces, 12 databases across the 12 eServices.",
+      "quote": "migration from 11 to 17 is in progress",
       "basis": "inferred"
     },
     {
       "path": "eng.aiMaturity",
       "value": "low",
-      "quote": "Manual collation into Excel; no audit trail.",
+      "quote": "a standalone two-month tool, modular so it can plug into an AIOps pipeline later",
       "basis": "inferred"
     }
   ],
   "warnings": [
-    "Sev A conflict: an earlier session stated platform-wide Sev A = 6 for FY25, but the session-4 table shows total Sev A = 155, almost entirely from Callup (140 of 155) - flagged by the bid team itself as a number to challenge; used the later table value.",
-    "Job/batch failures (total 92, e.g. Retail 54, Pay 30, Awards 8) are operational counters, not logged incidents, and were excluded from inc and mix per instructions.",
-    "Booklet eService ambiguity: session 3 says '12 eServices in total; one (Booklet) is being decommissioned', but the FY25 table already lists exactly 12 named eServices without Booklet - unclear whether Booklet is additional to or included in the 12.",
-    "Platform team (18 FTE) is described as a separate tender running infrastructure/platform - not included as a tower (out of scope for this AMS sizing).",
-    "Hosting is on public cloud in Singapore run by a separate hosting vendor - infrastructure excluded as a tower; Singapore reflects hosting location only, not confirmed bidder delivery location, so eng.region/locMix were omitted.",
-    "L1 is explicitly out of scope (agency help desk = customer). An intermediate client-run L1.5 team (3-4 people, 24x7) filters 20-30% of tickets before L2/L3; per rules this rate was not used for pass12, only the <5% L2->L3 rate was used for pass23.",
-    "Security incidents are handled by a separate enterprise team and are excluded from this tower's figures.",
-    "incumbentFTE (33) is the midpoint of the stated 30-36 person range for the incumbent services team.",
-    "Monthly inc/sr/cr figures were derived by dividing FY25 (April 2025-March 2026, a stated 12-month period) totals by 12; verify this matches the intended reporting basis.",
-    "Account-review automation scope changed between sessions from '10 systems' to '12 sources across 5 categories' - latest figure used in opportunities.",
-    "Page 5 content (6 pods, 28 FTE estimate) is explicitly an AI-generated/bid-team analysis, not client-stated fact, and was excluded entirely from extraction.",
-    "Manning data is noted as only 6 months collected with a next step to build a full 12-month baseline - the FY25 Manning row may be provisional/incomplete.",
-    "crMix was omitted: CRs are described only qualitatively ('mostly policy driven', 'time consuming') with no quantified complexity split.",
-    "User counts ('fewer than 1000 users supported', '4000 concurrent users at maximum') were not clearly identifiable as MAU, so towers.0.mau was omitted.",
-    "Coverage '8x5' is an inferred mapping of 'business hours' support; exact hours not stated."
+    "Job-failure counts (total 92 over FY25: Pay 30, Awards 8, Retail 54, Posting 0) are operational counters, not described as logged incidents, so they were excluded from inc/mix - verify if they should be included.",
+    "Callup shows 140 Sev A incidents against only 80 SRs for that eService - an unusual ratio; flagged by the bid team's own analysis too, but extracted as stated.",
+    "An earlier session reported platform-wide Sev A as 6 for FY25; the session-4 table shows Sev A total of 155 (Callup 140 + Manning 15). Used the later, more detailed table value and treated the earlier figure as superseded.",
+    "Session 3 states 12 eServices total with Booklet being decommissioned (implying 11 active), but the session-4 table lists 12 named eServices with no Booklet row - the counts don't reconcile; please check.",
+    "Account-review scope changed between sessions (10 systems -> 12 sources across 5 categories); latest figure used in the opportunity note, not sized as a tower.",
+    "An L1.5 team (3-4 people, client-run, 24x7) filters 20-30% of tickets before L2; per instructions this intermediate team's rate is excluded from pass12/pass23, and pass12 was omitted since L1 is out of the bidder's scope.",
+    "pass23 was derived from 'less than 5% are handled at L3' - used 5% as an upper-bound estimate, not an exact observed rate.",
+    "Incumbent FTE of 33 is the midpoint of a stated 30-36 person range.",
+    "A separate platform team of 18 FTE exists but is explicitly a separate tender - excluded from incumbentFTE and towers.",
+    "'Fewer than 1000 users are supported' and '4000 concurrent users at maximum' appear to describe different populations (admin/internal vs. public-facing) - not reconciled, and neither was used as a mau figure since the tower is sized in history mode.",
+    "Hosting/infrastructure (public cloud, Singapore region) is run by a separate hosting vendor and security incidents by a separate enterprise team - neither was treated as an IMS tower for the bidder.",
+    "L2/L3 ownership ('us') is inferred from context (incumbent team being replaced) - the document does not explicitly state who will run L2/L3 under the new contract.",
+    "eng.region/locMix omitted - the only location mentioned (public cloud hosting in Singapore) describes hosting, not the bidder's delivery team location.",
+    "CR complexity mix (srMix equivalent for CRs) was not stated with enough structure to populate crMix, so it was omitted.",
+    "Page 5 contains an AI-generated bid-team analysis (indicative pods/FTE) explicitly marked as not client-stated; none of its figures were used."
   ]
 }
