@@ -78,7 +78,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 6. Set **Estate complexity** (Low/Medium/High) — it drives the seniority pyramid, the contingency and a tilt of the severity/SR/CR mixes. Optionally add **Special roles** (L1.5, SRE, QA, Advisory) by hand.
 7. Score the nine confidence drivers and nine risk categories.
 8. Read the results, then copy the **Assumptions & risk register** into the proposal.
-9. Hit **Verify against framework** at the bottom — 213 checks reproducing worked examples from the source documents, validating the role map, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
+9. Hit **Verify against framework** at the bottom — 216 checks reproducing worked examples from the source documents, validating the role map, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
 
 The left rail is: Engagement → Estate complexity → Service towers → Seniority mix → Special roles → AIOps & run cost → AIOps efficiency calculator → Outcome model → Confidence & risk → Optimization → Benchmarks & assumptions. Sections stay open (and the rail keeps its scroll position) when you tick a box or press a button.
 
@@ -355,6 +355,22 @@ Where the AIOps calculator (§3.15) is about sizing the team, this is about what
 
 **Export Excel** produces an 8-sheet `.xlsx` workbook (Summary, Year by year, Tower breakdown, Staffing plan, Transition, AIOps calculator, Outcome KPIs, Assumptions) with every number also visible on screen — see §9 for how the file itself is built with no library.
 
+### 3.18 Download summary and Customer summary
+
+Two standalone HTML files, built from the same numbers as the screen. Neither contains script, a rate card or a price, and both are generated in the browser (inside the claude.ai viewer each download asks you to confirm; on Netlify it downloads directly).
+
+**Download summary** saves the SA-only report that **Print / Save PDF** shows (scenario posture, service responsibility, delivery location, year by year, coverage, traditional vs AI-driven, the role and grade staffing plan, tower breakdown, uncertainty, transition, AIOps and outcome model, confidence, AIOps roadmap, verification and the assumptions and risk register) as one `.html` file you can open, share or print. File name: `damo-estimate-summary-<service lines>-<date>.html`.
+
+**Customer summary** is a client-facing page. Always included: how the client is covered (support window, availability and off-hours model per service), what is in scope (how each service was sized, who provides L1, L2 and L3, P1 response and restore), the Year 1 team by role, by delivery location and by grade, the team over the contract (with the hypercare note), the transition, what we need from the client, the assumptions (the register's coverage, service responsibility, inclusions, exclusions, volume band and special-role sections, with the framework source tags removed), and what would change the team size. Clicking the button first asks three questions, all ticked by default:
+
+| Option | Adds |
+|---|---|
+| Contingency, confidence and risk | Contingency FTE and % in the Year 1 team and each year, the confidence band and posture, the estate-complexity and confidence sections of the assumptions |
+| Effort and benchmarks | Tickets a month, ticketing and other effort hours per tower, resolution effort per ticket by level, SR and CR effort by complexity, pass-through by year, productive share and hours per FTE, the delivery-profile section |
+| Savings and the AIOps comparison | Each year against Year 1, the with and without AIOps table and person-months saved, the AIOps solutions applied and the AIOps roadmap |
+
+Untick any of them to leave that content out of the file. The choice is remembered until the page is reloaded. Three self-tests cover the summaries: roles and locations each add up to the Year 1 team, the three options really remove what they name, and the files are complete HTML with no script and no `$`.
+
 ---
 
 ## 5. The optimization layer
@@ -410,7 +426,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 213 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 216 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE

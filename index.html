@@ -273,6 +273,8 @@ body.intake-active #intake{display:block}
     <button class="btn" id="btnExport" type="button">Export JSON</button>
     <button class="btn" id="btnXlsx" type="button" title="Download the summary, year-by-year, towers, staffing plan, transition, AIOps calculator, outcome KPIs and assumptions as an .xlsx workbook.">Export Excel</button>
     <button class="btn" id="btnImport" type="button">Import</button>
+    <button class="btn" id="btnSummary" type="button" title="Saves the SA-only report (scenario, year by year, coverage, staffing plan, confidence, assumptions and risk register) as one standalone HTML file you can open, share or print.">Download summary</button>
+    <button class="btn" id="btnCustomer" type="button" title="A client-facing page: how they are covered, what is in scope, the team by role and location, the team over the contract, and what we need from them. Choose what to show before it downloads.">Customer summary</button>
     <button class="btn" id="btnPrint" type="button" title="Shows the printable SA-only report on screen. Click it, then press Ctrl/Cmd+P and choose &quot;Save as PDF&quot;.">Print / Save PDF</button>
   </div>
 </header>
@@ -4049,6 +4051,29 @@ function selfTests(){
     exp:"present",got:/Y1 is not the run-rate/.test(reg110)?"present":"absent",
     ok:/Y1 is not the run-rate/.test(reg110)});
 
+  // standalone summary files: the roles and the locations each add up to the Y1 team, the
+  // options really remove what they name, and the files are complete HTML with no script
+  {
+    const Sx=S, Tc=seedRoles(defaults()); let dOn="", dOff="", dSum="", Dc=null;
+    S=Tc;
+    try{
+      Dc=reportData(Tc); Dc.tests={pass:1,total:1};
+      dOn=buildCustomerReport(Tc,Dc,{cont:true,bench:true,save:true});
+      dOff=buildCustomerReport(Tc,Dc,{cont:false,bench:false,save:false});
+      dSum=buildSummaryDoc(Tc,Dc);
+    }finally{ S=Sx; }
+    const al=Dc.rp[0].alloc, roleSum=sum(Object.keys(al).map(k=>al[k]||0)), spl=locationSplit(al,Tc);
+    const locSum=sum(Object.keys(spl).map(id=>sum(Object.keys(spl[id]).map(k=>spl[id][k]))));
+    out.push({n:"Summary files: roles and locations each add up to the Y1 team",exp:fmt(Dc.base.years[0].total,2)+" FTE",
+      got:fmt(roleSum,2)+" / "+fmt(locSum,2),ok:near(roleSum,Dc.base.years[0].total,0.01)&&near(locSum,Dc.base.years[0].total,0.01)});
+    out.push({n:"Customer summary: the three options remove contingency, effort hours and savings",exp:"absent when off, present when on",
+      got:(/How the effort was sized|Confidence and contingency/.test(dOff)||/With and without AIOps/.test(dOff)?"still present":"absent when off")+" / "+(/How the effort was sized/.test(dOn)&&/Confidence and contingency/.test(dOn)?"present when on":"missing when on"),
+      ok:!/How the effort was sized|Confidence and contingency|With and without AIOps|Benchmarks used|Estimate confidence/.test(dOff)&&/How the effort was sized/.test(dOn)&&/Confidence and contingency/.test(dOn)});
+    out.push({n:"Summary files are complete HTML with no script and no price",exp:"doctype, closing tag, no <script>, no $",
+      got:(/^<!doctype html>/.test(dSum)&&/<\/html>$/.test(dSum)&&/^<!doctype html>/.test(dOn)?"complete":"incomplete")+" / "+(/<script/i.test(dSum+dOn)?"has script":"no script")+" / "+(/\$/.test(dOn)?"has $":"no $"),
+      ok:/^<!doctype html>/.test(dSum)&&/<\/html>$/.test(dSum)&&/^<!doctype html>/.test(dOn)&&!/<script/i.test(dSum+dOn)&&!/\$/.test(dOn)});
+  }
+
   return out;
 }
 
@@ -5480,6 +5505,187 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
   return h;
 }
 
+/* ---------- standalone summary files ----------
+   "Download summary" saves the SA-only print report as one HTML file. "Customer summary" is a client-facing page built
+   from the same numbers; the three options choose whether it shows contingency and confidence, effort and benchmarks,
+   and savings and the AIOps comparison (all on by default). Both are plain HTML with inline CSS and no script. */
+var LAST=null, CUSTOPT={cont:true,bench:true,save:true};
+function reportData(St){
+  var base=runEngine(St,{}), trad=runEngine(St,{aiops:false}), eff=effScore(St);
+  return {base:base,trad:trad,rp:rolePlan(St,base),ex:extrasFor(St,base,trad),mc:null,o1:null,eff:eff,bd:bandOf(eff)};
+}
+function stampDate(){ return new Date().toISOString().slice(0,10); }
+function summarySlug(St){ return mixLabel(St).replace(/ \+ /g,"-").toLowerCase().replace(/[^a-z0-9-]+/g,"")||"estimate"; }
+var DOC_CSS_COMMON='body{margin:0;background:#fff;color:#111;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5}'+
+  '@media print{h2{break-after:avoid}section{break-inside:avoid-page}}';
+var SUMMARY_CSS=DOC_CSS_COMMON+
+  '#printReport{max-width:980px;margin:0 auto;padding:28px 24px 48px;font-size:12.5px}'+
+  '#printReport h1{font-family:Georgia,"Iowan Old Style",serif;font-size:22px;margin:0 0 4px}'+
+  '#printReport .pr-sub{color:#555;font-size:12px;margin:0 0 14px}'+
+  '#printReport .pr-meta{display:flex;gap:14px;flex-wrap:wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:#555;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #111}'+
+  '#printReport h2{font-family:Georgia,serif;font-size:15px;color:#12405F;margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid #ccc}'+
+  '#printReport table{border-collapse:collapse;width:100%;margin-bottom:4px}'+
+  '#printReport th,#printReport td{text-align:left;padding:3px 8px;border-bottom:1px solid #ddd;font-size:11.5px}'+
+  '#printReport th{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:#666;border-bottom:1px solid #999}'+
+  '#printReport td.num,#printReport th.num{text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}'+
+  '#printReport tr.total td{font-weight:700;border-top:1px solid #999}'+
+  '#printReport .pr-strip{display:flex;border:1px solid #ccc;margin-bottom:16px}'+
+  '#printReport .pr-stat{flex:1;padding:8px 10px;border-right:1px solid #ccc}'+
+  '#printReport .pr-stat:last-child{border-right:0}'+
+  '#printReport .pr-stat .k{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#666}'+
+  '#printReport .pr-stat .v{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:17px;font-weight:700}'+
+  '#printReport .pr-reg h3{font-size:12.5px;margin:14px 0 5px}#printReport .pr-reg p{margin:0 0 6px}#printReport .pr-reg ul{margin:0 0 8px;padding-left:18px}#printReport .pr-reg li{margin:2px 0}'+
+  '#printReport .pr-foot{margin-top:18px;padding-top:8px;border-top:1px solid #ccc;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5px;color:#888}';
+var CUST_CSS=DOC_CSS_COMMON+
+  'body{font-size:15px;line-height:1.6;color:#18202B}main{max-width:880px;margin:0 auto;padding:36px 24px 56px}'+
+  'h1{font:700 28px/1.2 Georgia,"Iowan Old Style",serif;margin:4px 0 8px}h2{font:700 19px/1.3 Georgia,serif;margin:34px 0 8px;padding-top:14px;border-top:2px solid #12405F;color:#12405F}'+
+  'h3{font-size:13px;margin:16px 0 4px;color:#5A6472;text-transform:uppercase;letter-spacing:.05em}'+
+  '.eyebrow{font:600 11px/1 ui-sans-serif,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#12405F}.muted{color:#5A6472}'+
+  'table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}th{font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5A6472;text-align:left;padding:6px 8px;border-bottom:1px solid #DCE0E7}'+
+  'td{padding:8px;border-bottom:1px solid #EEF0F4;vertical-align:top}.r{text-align:right;white-space:nowrap}tr.total td{font-weight:700;border-top:1px solid #9aa3b0}'+
+  '.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0}.kpi{border:1px solid #DCE0E7;border-radius:8px;padding:12px 14px}'+
+  '.kpi span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#5A6472}.kpi b{display:block;font:700 26px ui-monospace,Menlo,Consolas,monospace;color:#12405F}.kpi em{font-style:normal;font-size:13px;color:#5A6472}'+
+  'ul{padding-left:20px}li{margin:4px 0}.note{border-left:3px solid #12405F;background:#F3F6F9;padding:8px 12px;margin:10px 0;font-size:14px}'+
+  'footer{margin-top:40px;font-size:12px;color:#5A6472;border-top:1px solid #DCE0E7;padding-top:12px}';
+function wrapDoc(title,css,body){
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+css+'</style></head><body>'+body+'</body></html>';
+}
+function buildSummaryDoc(St,D){
+  var body='<div id="printReport">'+buildPrintReport(St,D.base,D.trad,D.rp,D.mc,D.eff,D.bd,D.o1,D.tests||{pass:0,total:0})+'</div>';
+  return wrapDoc("DAMO estimate - "+mixLabel(St),SUMMARY_CSS,body);
+}
+function custTierLabel(T){ return TIER_LABEL[T]||T; }
+/* the register's own sections, minus the ones that are internal calibration notes; framework source tags are dropped */
+function custRegisterHtml(St,D,opt){
+  var md=buildRegister(D.base,D.mc,D.o1,D.rp), parts=md.split(/\n(?=## )/).slice(1), keep=[];
+  var allow=["Service responsibility","Coverage","Inclusions","Exclusions & client responsibilities","Volume band clause","Special roles"];
+  if(opt.bench) allow.push("Delivery profile");
+  if(opt.cont) allow.push("Estate complexity","Confidence posture");
+  if(opt.save) allow.push("AIOps roadmap");
+  parts.forEach(function(p){
+    var t=p.split("\n")[0].replace(/^##\s+/,"");
+    if(allow.some(function(a){return t.indexOf(a)===0;})) keep.push(p);
+  });
+  return mdLite(keep.join("\n").replace(/\s*\[(?:F|P)[^\]]*\]/g,""));
+}
+function buildCustomerReport(St,D,opt){
+  opt=opt||{}; var showCont=opt.cont!==false, showBench=opt.bench!==false, showSave=opt.save!==false;
+  opt={cont:showCont,bench:showBench,save:showSave};
+  var B=St.bench, base=D.base, trad=D.trad, rp=D.rp, yrs=base.years, y1=yrs[0], last=yrs[yrs.length-1], T=yrs.length;
+  var date=new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  var on=St.towers.filter(function(t){return t.enabled;});
+  var tdn=function(x){return '<td class="r">'+x+'</td>';};
+  var windows=Array.from(new Set(on.map(function(t){return t.coverage;}))).join(", ");
+  var h='<main><div class="eyebrow">Managed services proposal</div><h1>Proposed support team: '+esc(mixLabel(St))+'</h1>'+
+    '<p class="muted">'+esc(date)+' &middot; '+T+'-year term. Indicative team for discussion, subject to due diligence. Pricing is provided separately.</p>';
+  h+='<div class="kpis"><div class="kpi"><span>Year 1 team</span><b>'+fmt(y1.total)+'</b><em>FTE'+(y1.hyper>1?', includes hypercare':'')+'</em></div>'+
+    '<div class="kpi"><span>Support window</span><b style="font-size:20px">'+esc(windows||"n/a")+'</b><em>'+on.length+' service'+(on.length===1?'':'s')+' in scope</em></div>'+
+    (T>1?'<div class="kpi"><span>Year '+last.y+' team</span><b>'+fmt(last.total)+'</b><em>FTE'+(showSave?', '+pct0(last.prod)+' of Year 1':'')+'</em></div>':'<div class="kpi"><span>Contract</span><b>1 yr</b><em>term</em></div>')+
+    (showCont?'<div class="kpi"><span>Estimate confidence</span><b style="font-size:20px">'+esc(D.bd.name)+'</b><em>score '+D.eff.toFixed(0)+' of 100</em></div>':'')+'</div>';
+
+  h+='<h2>How you are covered</h2><table><thead><tr><th>Service</th><th>Support window</th><th>Availability</th><th>Outside business hours</th></tr></thead><tbody>'+
+    on.map(function(t){
+      var tp=SERVICE_TIER_PRESETS.find(function(x){return x.id===t.serviceTier;}), ac=AVAIL_CLASSES.find(function(c){return c.id===t.availClass;}), loc=t.oohModel==="passive"?oohLocationFor(St):null;
+      var ooh=t.coverage==="8x5"?'Business hours only':(t.oohModel==="passive"?'On call for critical (P1) incidents'+(loc?', typically from '+esc(loc):'')+'; other requests wait until business hours':'Dedicated engineers cover every hour of the window');
+      return '<tr><td><b>'+esc(t.type)+'</b>'+(t.label?' ('+esc(t.label)+')':'')+(tp?'<br><span class="muted">'+esc(tp.label)+'</span>':'')+'</td><td>'+esc(t.coverage)+'</td><td>'+(ac?esc(ac.label)+' ('+esc(String(t.avail))+'%)':esc(String(t.avail))+'%')+'</td><td>'+ooh+'</td></tr>';
+    }).join("")+'</tbody></table>';
+
+  h+='<h2>What is in scope</h2><table><thead><tr><th>Service</th><th>How it was sized</th><th>Who provides each level</th><th>Response and restore (P1)</th></tr></thead><tbody>'+
+    y1.rows.map(function(r){
+      var t=on.find(function(x){return x.id===r.id;})||{}, v=f0(r.vol);
+      var basis=t.mode==="history"?'about '+v+' tickets a month from your ticket history':t.mode==="mau"?'about '+v+' tickets a month estimated from user numbers; to be confirmed with ticket history':'about '+v+' tickets a month estimated from the size and complexity of the estate; to be confirmed with ticket history';
+      var sl=t.sla||{};
+      return '<tr><td><b>'+esc(rowName(r))+'</b></td><td>'+esc(basis)+'</td><td>L1 '+esc(PARTIES[r.own.L1])+'<br>L2 '+esc(PARTIES[r.own.L2])+'<br>L3 '+esc(PARTIES[r.own.L3])+'</td><td>'+(sl.P1r!=null?'respond '+esc(String(sl.P1r))+' min, restore '+esc(String(sl.P1x))+' min':'&ndash;')+'</td></tr>';
+    }).join("")+'</tbody></table>'+
+    (St.eng.aiops?'<p class="muted">AIOps is included: dedicated engineers build intelligent alerting, automated root-cause analysis and self-healing, so fewer incidents need a person to resolve them.</p>':'');
+
+  /* the team in Year 1 */
+  var p0=rp[0], alloc=p0.alloc, rowsR=[];
+  ["L1","L2","L3","AIOPS","GOV"].forEach(function(Tr){
+    ROLES.filter(function(r){return r.tier===Tr&&(alloc[r.id]||0)>0.004;}).forEach(function(r){ rowsR.push('<tr><td>'+esc(r.n)+'</td><td class="muted">'+esc(custTierLabel(Tr))+'</td>'+tdn(fmt(alloc[r.id]))+'</tr>'); });
+  });
+  (St.specialRoles||[]).forEach(function(sr){ var v=alloc["sp_"+sr.id]||0; if(v>0.004) rowsR.push('<tr><td>'+esc(sr.name)+'</td><td class="muted">Additional role</td>'+tdn(fmt(v))+'</tr>'); });
+  var totalY1=sum(Object.keys(alloc).map(function(k){return alloc[k]||0;}));
+  h+='<h2>The team in Year 1</h2><table><thead><tr><th>Role</th><th>Level</th><th class="r">FTE</th></tr></thead><tbody>'+rowsR.join("")+
+    '<tr class="total"><td>Total</td><td></td>'+tdn(fmt(totalY1))+'</tr></tbody></table>'+
+    (showCont&&y1.cont>0?'<p class="muted">Includes '+fmt(y1.cont)+' FTE of contingency ('+fmt(y1.contPct,1)+'% of the delivery team).</p>':'');
+  var split=locationSplit(alloc,St), keys=Object.keys(locMixOf(St)), cat=St.eng.region==="ime"?[{key:"india",label:"India"}]:(LOC_CATALOG[St.eng.region]||[]);
+  var locTot={}; keys.forEach(function(k){ locTot[k]=sum(Object.keys(split).map(function(id){return split[id][k]||0;})); });
+  var locSum=sum(keys.map(function(k){return locTot[k];}))||1;
+  h+='<h3>By delivery location</h3><table><thead><tr><th>Location</th><th class="r">FTE</th><th class="r">Share</th></tr></thead><tbody>'+
+    keys.filter(function(k){return locTot[k]>0.004;}).map(function(k){var l=cat.find(function(c){return c.key===k;}); return '<tr><td>'+esc(l?l.label:k)+'</td>'+tdn(fmt(locTot[k]))+tdn(pct0(locTot[k]/locSum))+'</tr>';}).join("")+'</tbody></table>';
+  h+='<h3>By grade</h3><table><thead><tr><th>Grade</th><th class="r">FTE</th></tr></thead><tbody>'+GRADES.map(function(g){return '<tr><td>'+esc(g)+'</td>'+tdn(fmt(p0.gradeTot[g]||0))+'</tr>';}).join("")+'</tbody></table>';
+
+  /* over the contract */
+  var hasCont=showCont&&yrs.some(function(y){return y.cont>0;});
+  h+='<h2>The team over the contract</h2><table><thead><tr><th>Year</th><th class="r">Team (FTE)</th>'+(hasCont?'<th class="r">of which contingency</th>':'')+(showBench?'<th class="r">Tickets a month</th>':'')+(showSave&&T>1?'<th class="r">vs Year 1</th>':'')+'</tr></thead><tbody>'+
+    yrs.map(function(y){return '<tr><td>Year '+y.y+(y.y===1&&y.hyper>1?' (hypercare)':'')+'</td>'+tdn('<b>'+fmt(y.total)+'</b>')+(hasCont?tdn(fmt(y.cont)+' ('+fmt(y.contPct,1)+'%)'):'')+(showBench?tdn(f0(y.vol)):'')+(showSave&&T>1?tdn(pct0(y.total/y1.total)):'')+'</tr>';}).join("")+'</tbody></table>'+
+    (y1.hyper>1?'<p class="muted">Year 1 includes hypercare: the first '+B.hypercareMonths+' months run at up to '+B.hypercareMult+' times steady-state volume, stepping down on a committed path.</p>':'')+
+    (T>1?'<p>From Year 2 the team gets smaller as runbooks mature and automation takes on repeat work. The people needed to cover every hour of the support window stay in place.</p>':'');
+
+  if(showSave&&St.eng.aiops){
+    var savedPM=sum(yrs.map(function(y,i){return (trad.years[i].total-y.total)*12;}));
+    h+='<h3>With and without AIOps</h3><table><thead><tr><th>Year</th><th class="r">Without AIOps</th><th class="r">With AIOps</th></tr></thead><tbody>'+
+      yrs.map(function(y,i){return '<tr><td>Year '+y.y+'</td>'+tdn(fmt(trad.years[i].total))+tdn(fmt(y.total))+'</tr>';}).join("")+
+      '<tr class="total"><td>Person-months '+(savedPM>=0?'saved':'added')+' over the term</td><td></td>'+tdn(f0(Math.abs(savedPM)))+'</tr></tbody></table>';
+    var c=D.ex&&D.ex.calc;
+    if(c&&c.rows&&c.rows.length) h+='<p class="muted">AIOps solutions: '+c.rows.map(function(r){return esc(r.u.n)+' ('+fmt(+r.c.defl)+'% effort deflection, from year '+r.start+')';}).join('; ')+'.</p>';
+  }
+
+  if(showBench){
+    h+='<h2>How the effort was sized</h2><table><thead><tr><th>Service (Year 1)</th><th class="r">Tickets a month</th><th class="r">Ticketing effort (hours a month)</th><th class="r">Other effort (hours a month)</th><th class="r">FTE</th></tr></thead><tbody>'+
+      y1.rows.map(function(r){return '<tr><td>'+esc(rowName(r))+'</td>'+tdn(f0(r.vol))+tdn(f0(r.A))+tdn(f0(r.B))+tdn(fmt(r.fte))+'</tr>';}).join("")+'</tbody></table>'+
+      '<h3>Benchmarks used</h3><table><tbody>'+
+      [["Average resolution effort per ticket","L1 "+B.are.L1+" h, L2 "+B.are.L2+" h, L3 "+B.are.L3+" h"],
+       ["Service requests, by complexity","low "+B.are.srLvl.low+" h, medium "+B.are.srLvl.medium+" h, high "+B.are.srLvl.high+" h"],
+       ["Change requests, by complexity","low "+B.are.crLvl.low+" h, medium "+B.are.crLvl.medium+" h, high "+B.are.crLvl.high+" h"],
+       ["Tickets passed from L1 to L2, by year",B.p12.map(function(v){return pct0(v);}).join(" / ")],
+       ["Tickets passed from L2 to L3, by year",B.p23.map(function(v){return pct0(v);}).join(" / ")],
+       ["Productive share of a person's time",pct0(B.util)],["Hours per FTE a month",String(B.hoursMonth)]]
+       .map(function(r){return '<tr><td>'+r[0]+'</td><td>'+esc(r[1])+'</td></tr>';}).join("")+'</tbody></table>';
+  }
+  if(showCont){
+    h+='<h2>Confidence and contingency</h2><p><b>'+esc(D.bd.name)+' confidence (score '+D.eff.toFixed(0)+' of 100).</b> '+esc(D.bd.posture)+'. '+esc(D.bd.cont)+'.</p>';
+  }
+
+  if(D.ex&&D.ex.trn&&D.ex.trn.on) h+='<h2>Transition</h2><p>'+fmt(D.ex.trn.weeks,0)+' weeks of knowledge transfer, shadowing and reverse shadowing with your current team, about '+fmt(D.ex.trn.pm)+' person-months in total, before we take full responsibility. It precedes the service start and is not part of the Year 1 team.</p>';
+
+  var needs=['Access to the environments, monitoring and ITSM tools in scope, from the start of transition.','Ticket history, runbooks, architecture documents and time with your current team for knowledge transfer.','Named contacts for escalation, change approval and service reviews.',(B.tok.borne==="client"?'AI tools, licences, token (inference) and hyperscaler costs are paid by you.':'')];
+  h+='<h2>What we need from you</h2><ul>'+needs.filter(Boolean).map(function(n){return '<li>'+esc(n)+'</li>';}).join("")+'</ul>';
+  h+='<h2>Assumptions</h2><div>'+custRegisterHtml(St,D,opt)+'</div>';
+  var vb=y1.vol;
+  h+='<h2>What would change the team size</h2><ul><li>Ticket volumes outside the modelled band: below '+f0(vb*0.85)+' or above '+f0(vb*1.15)+' tickets a month (about 15% either side of the '+f0(vb)+' assumed).</li>'+
+    '<li>A longer or shorter support window, or a different off-hours model.</li><li>Applications, platforms or services added to or removed from scope.</li>'+
+    (T>1?'<li>How quickly automation can be adopted, which drives the reduction from Year 2.</li>':'')+'</ul>';
+  h+='<footer>Team sizes are full-time equivalents (FTE), shown to one decimal. One FTE is one person working full time; a fraction is a person shared across services. Effort and headcount only: no rates, cost or price.</footer></main>';
+  return wrapDoc("Proposed support team - "+mixLabel(St),CUST_CSS,h);
+}
+function downloadSummary(){
+  if(!LAST) return;
+  download("damo-estimate-summary-"+summarySlug(S)+"-"+stampDate()+".html",buildSummaryDoc(S,LAST),"text/html");
+}
+function downloadCustomer(opt){
+  if(!LAST) return;
+  download("damo-customer-summary-"+summarySlug(S)+"-"+stampDate()+".html",buildCustomerReport(S,LAST,opt||CUSTOPT),"text/html");
+}
+/* the three choices for the customer summary are asked in a small overlay that lives in the page, no browser dialog */
+function closeCustomerDialog(){ var d=document.getElementById("custDlg"); if(d) d.remove(); }
+function openCustomerDialog(){
+  if(document.getElementById("custDlg")) return;
+  var d=document.createElement("div"); d.id="custDlg"; d.className="noprint";
+  d.style.cssText="position:fixed;left:0;top:0;right:0;bottom:0;z-index:100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px";
+  var cb=function(id,k,t,sub){return '<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer"><input type="checkbox" id="'+id+'" '+(CUSTOPT[k]?'checked':'')+' style="width:auto;margin-top:3px"><span><b>'+t+'</b><br><span class="hint">'+sub+'</span></span></label>';};
+  d.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="custDlgT" style="background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:10px;max-width:480px;width:100%;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.3)">'+
+    '<h2 id="custDlgT" style="margin:0 0 4px">Customer summary</h2><p class="hint" style="margin:0 0 8px">Always included: how they are covered, what is in scope, the team by role, location and grade, the team over the contract, what we need from them, and the assumptions. Choose what else to show.</p>'+
+    cb("custCont","cont","Contingency, confidence and risk","Contingency FTE and %, the confidence band and posture.")+
+    cb("custBench","bench","Effort and benchmarks","Tickets a month, effort hours, resolution effort per ticket and pass-through.")+
+    cb("custSave","save","Savings and the AIOps comparison","Productivity vs Year 1, with and without AIOps, person-months saved, AIOps solutions.")+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" type="button" id="btnCustCancel">Cancel</button><button class="btn compute" type="button" id="btnCustGo">Download</button></div></div>';
+  document.body.appendChild(d);
+  document.getElementById("btnCustGo").focus();
+}
+document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeCustomerDialog(); });
+
 /* window.print(), window.open() and Blob downloads all depend on sandbox
    flags ('allow-modals', 'allow-popups', 'allow-downloads') that a published
    Artifact's embedding iframe may or may not grant, and a silent block is
@@ -6250,6 +6456,7 @@ function renderCanvas(){
 
   $("#canvas").innerHTML=h;
   MEMO={base:base,mc:mc,o1:o1,q:o1?o1QUBO(S,base,o1):null};
+  LAST={base:base,trad:trad,rp:rp,ex:ex,mc:mc,o1:o1,eff:eff,bd:bd,tests:{pass:pass,total:tests.length}};
   $("#printReport").innerHTML=buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,{pass:pass,total:tests.length});
 }
 
@@ -6414,6 +6621,10 @@ document.addEventListener("click",e=>{
       const cur=r.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
       r.setAttribute("data-theme",cur==="dark"?"light":"dark"); break; }
     case "btnPrint": showPrintPreview(); break;
+    case "btnSummary": downloadSummary(); break;
+    case "btnCustomer": openCustomerDialog(); break;
+    case "btnCustCancel": closeCustomerDialog(); break;
+    case "btnCustGo": CUSTOPT={cont:document.getElementById("custCont").checked,bench:document.getElementById("custBench").checked,save:document.getElementById("custSave").checked}; closeCustomerDialog(); downloadCustomer(CUSTOPT); break;
     case "btnStartRFP": INTAKE_REPORT=null; INTAKE_DOCS=[{id:uid(),label:"RFP",text:""}]; renderIntake(); showIntake(); break;
     case "btnBackFromPrint": hidePrintPreview(); break;
     case "btnIntakeSkip": hideIntake(); break;
