@@ -206,6 +206,49 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .calcrow input[type=number]{padding:2px 5px;font-size:11.5px}
 .calcrow.off{opacity:.5}
 .calchead{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:650;border-bottom:1px solid var(--rule)}
+/* ---------- assumptions register, grouped; delivery windows timeline ---------- */
+.regview .regcat{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent-ink);margin:18px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:baseline}
+.regview .regcat:first-child{margin-top:0}
+.regview .regcat small{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:0}
+.regview h4{font-size:13px;margin:10px 0 4px}
+.regview ul{margin:0 0 6px;padding-left:18px}
+.regview li{margin:2px 0;font-size:13px}
+.regview p{margin:0 0 6px;font-size:13px}
+.regplain{margin-top:14px}
+.regplain summary{cursor:pointer;font-size:12.5px;color:var(--ink-3)}
+.wtl{border-collapse:separate;border-spacing:2px;font:10.5px var(--mono);min-width:1180px;width:100%;table-layout:fixed}
+.wtl th,.wtl td{padding:5px 0;text-align:center;border-radius:3px;white-space:nowrap;overflow:hidden}
+.wtl th{font-weight:600;color:var(--ink-3)}
+.wtl th.rowh,.wtl td.rowh{text-align:left;width:150px;padding-left:4px;font:600 12px var(--sans);color:var(--ink);white-space:normal}
+.wtl td.rowh small{display:block;font:10.5px var(--mono);color:var(--ink-3);font-weight:400}
+.wtl td.num{width:58px;font:600 11.5px var(--mono);color:var(--ink)}
+.wtl td.c{background:var(--sunken);color:var(--ink-3)}
+.wtl td.c.rqa{background:var(--accent-soft);color:var(--accent-ink)}
+.wtl td.c.rqo{background:var(--sunken);color:var(--accent-ink);border:1px dashed var(--accent)}
+.wtl td.c.a{background:var(--good);color:#fff}
+.wtl td.c.o{background:var(--warn);color:#fff}
+.wtl td.c.ah{background:linear-gradient(90deg,var(--good) 50%,var(--sunken) 50%);color:var(--ink)}
+.wtl td.c.oh{background:linear-gradient(90deg,var(--warn) 50%,var(--sunken) 50%);color:var(--ink)}
+.wtl td.c.gap{background:var(--crit-soft);color:var(--crit);border:1px solid var(--crit)}
+.wleg{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);margin:8px 0}
+.wleg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.wloc{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;background:var(--sunken)}
+.wloc .whead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-weight:600}
+.wrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:5px 0;border-top:1px dashed var(--rule)}
+.wrow input[type=time]{width:104px}
+.wrow .wcust{font:11px var(--mono);color:var(--ink-3)}
+#printReport .wtl{border-collapse:separate;border-spacing:1px;font:8.5px ui-monospace,Menlo,Consolas,monospace;min-width:0;width:100%;table-layout:fixed}
+#printReport .wtl th,#printReport .wtl td{padding:3px 0;font-size:8.5px;text-align:center;border-bottom:0;white-space:nowrap;overflow:hidden}
+#printReport .wtl td.rowh,#printReport .wtl th.rowh{text-align:left;width:92px;font-size:10px;white-space:normal;padding-left:3px}
+#printReport .wtl td.num{width:34px;font-weight:700}
+#printReport .wtl td.c{background:#eee;color:#888}
+#printReport .wtl td.c.rqa{background:#dce6ee;color:#12405F}
+#printReport .wtl td.c.rqo{background:#f4f4f4;color:#12405F;border:1px dashed #1F5C8B}
+#printReport .wtl td.c.a{background:#0F7B4F;color:#fff}
+#printReport .wtl td.c.o{background:#B54708;color:#fff}
+#printReport .wtl td.c.ah{background:linear-gradient(90deg,#0F7B4F 50%,#eee 50%);color:#111}
+#printReport .wtl td.c.oh{background:linear-gradient(90deg,#B54708 50%,#eee 50%);color:#111}
+#printReport .wtl td.c.gap{background:#F7E0DD;color:#B42318;border:1px solid #B42318}
 /* ---------- print report ----------
    A dedicated, always-current, SA-only report, hidden on screen and shown
    exclusively when printing - regardless of whether print is triggered by the
@@ -244,6 +287,7 @@ body.print-preview .printbar{display:flex}
 #printReport .pr-stat .v{font-family:var(--mono);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 #printReport .pr-reg{white-space:normal}
 #printReport .pr-reg h3{font-size:12.5px;margin:14px 0 5px;color:#111}
+#printReport .pr-reg h4{font-size:11.5px;margin:9px 0 3px;color:#333}
 #printReport .pr-reg p{margin:0 0 6px}
 #printReport .pr-reg ul{margin:0 0 8px;padding-left:18px}
 #printReport .pr-reg li{margin:2px 0}
@@ -2089,8 +2133,10 @@ function buildWorkbook(){
   orows.push(["Tower","Coverage","P1 response (min)","P1 restore (min)","P2 response (min)","P2 restore (min)","Availability %"]);
   om.sla.forEach(s=>orows.push([s.type,s.coverage,s.p1r,s.p1x,s.p2r,s.p2x,s.avail]));
   sheets.push({name:"Outcome KPIs",rows:orows,bold:[hdr3]});
-  const reg=buildRegister(base,MEMO.mc||null,MEMO.o1||null,rp).split("\n");
-  sheets.push({name:"Assumptions",rows:[["Assumptions & risk register"]].concat(reg.map(l=>[l.replace(/\*\*/g,"")]))});
+  const rgG=regGroups(buildRegister(base,MEMO.mc||null,MEMO.o1||null,rp)), arows=[["Assumptions & risk register, grouped by category"]], abold=[0];
+  rgG.forEach(g=>{ arows.push([]); abold.push(arows.length); arows.push([g.cat.toUpperCase()]);
+    g.secs.forEach(x=>{ arows.push([x.title.replace(/\*\*/g,"")]); x.body.split("\n").forEach(l=>{ if(l.trim()) arows.push([l.replace(/\*\*/g,"")]); }); }); });
+  sheets.push({name:"Assumptions",rows:arows,bold:abold});
   return xlsxWrite(sheets);
 }
 
@@ -4074,6 +4120,37 @@ function selfTests(){
       ok:/^<!doctype html>/.test(dSum)&&/<\/html>$/.test(dSum)&&/^<!doctype html>/.test(dOn)&&!/<script/i.test(dSum+dOn)&&!/\$/.test(dOn)});
   }
 
+  // delivery windows (analysis only) and the grouped register
+  {
+    const Sx=S;
+    const tw=(mut)=>{ const T=seedRoles(defaults()); T.eng.region="na"; T.towers.forEach(t=>{t.coverage="24x5"; t.oohModel="active";}); mut&&mut(T); return T; };
+    const T1w=tw(T=>{ T.eng.win={tz:-5,start:7,biz:9,locs:{na:{nearshore:{utc:-5,w:[{id:"a",m:"active",s:9,e:19}]},offshore:{utc:5.5,w:[{id:"b",m:"active",s:9.5,e:19.5},{id:"c",m:"oncall",s:5.5,e:9.5}]}}}}; });
+    S=T1w; let E1,C1; try{ E1=winEffective(T1w); C1=winCoverage(E1); }finally{ S=Sx; }
+    out.push({n:"Delivery windows: Ecuador 9:00-19:00 plus India 9:30-19:30 and on call 5:30-9:30",exp:"20 h active, 4 h on call only, no gap, no overlap",
+      got:fmt(C1.activeH)+" / "+fmt(C1.activeOncallH)+" / "+fmt(C1.gapH)+" / "+fmt(C1.overlapH),ok:near(C1.activeH,20,0.01)&&near(C1.activeOncallH,4,0.01)&&near(C1.gapH,0,0.01)&&near(C1.overlapH,0,0.01)});
+    const T2w=tw(T=>{ T.eng.region="eu"; T.eng.win={tz:0,start:0,biz:9,locs:{eu:{onshore:{utc:0,w:[{id:"a",m:"active",s:0,e:12}]},nearshore:{utc:0,w:[{id:"b",m:"active",s:10,e:22}]},offshore:{utc:0,w:[]}}}}; });
+    S=T2w; let C2; try{ C2=winCoverage(winEffective(T2w)); }finally{ S=Sx; }
+    out.push({n:"Delivery windows: two locations overlapping by 2 h leave 2 h uncovered",exp:"overlap 2 h, gap 2 h",got:fmt(C2.overlapH)+" h overlap, "+fmt(C2.gapH)+" h gap",ok:near(C2.overlapH,2,0.01)&&near(C2.gapH,2,0.01)&&C2.gaps.length===1});
+    const regs=["ime","eu","apac","na"], pass=["24x7","16x5","8x5"];
+    let autoOk=true, autoGot=[];
+    regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
+      S=T; try{ const C=winCoverage(winEffective(T)); if(C.gapH>0.001||C.activeH<C.reqActH-0.001){ autoOk=false; autoGot.push(r+" "+cv+" "+om); } }finally{ S=Sx; } })));
+    out.push({n:"Delivery windows: the automatic layout covers every region, window and off-hours model",exp:"no gaps, every required active hour covered",got:autoOk?"all covered":autoGot.slice(0,3).join(", "),ok:autoOk});
+    const Tf0=tw(), Tf1=tw(T=>{ T.eng.win={tz:3,start:2,biz:9,locs:{na:{nearshore:{utc:-5,w:[{id:"a",m:"active",s:1,e:5}]},offshore:{utc:5.5,w:[]}}}}; });
+    const f0=runEngine(Tf0,{}).years.map(y=>y.total), f1=runEngine(Tf1,{}).years.map(y=>y.total);
+    out.push({n:"Delivery windows never change the FTE",exp:"identical totals with and without custom windows",got:f0.map(v=>fmt(v,2)).join(" / ")+" vs "+f1.map(v=>fmt(v,2)).join(" / "),ok:f0.length===f1.length&&f0.every((v,i)=>near(v,f1[i],1e-9))});
+    // the register, grouped by category: nothing is dropped and every built-in section has a category
+    const Tg=seedRoles(defaults()); Tg.eng.region="eu"; Tg.eng.complexity="medium"; Tg.eng.win={tz:0,start:0,biz:9,locs:{}};
+    S=Tg; let mdG, grp, gmd, cust, custOff; try{ const base=runEngine(Tg,{}); mdG=buildRegister(base,null,null,rolePlan(Tg,base)); grp=regGroups(mdG); gmd=registerGroupedMd(mdG);
+      const D=reportData(Tg); cust=buildCustomerReport(Tg,D,{cont:true,bench:true,save:true}); Tg.eng.win=null; custOff=buildCustomerReport(Tg,reportData(Tg),{cont:true,bench:true,save:true}); }finally{ S=Sx; }
+    const secs=regSections(mdG), nOther=secs.filter(x=>x.cat==="Other").length;
+    out.push({n:"Assumptions register: grouped by category, no section dropped, none uncategorised",exp:secs.length+" sections, 0 under Other",
+      got:grp.reduce((a,g)=>a+g.secs.length,0)+" grouped, "+nOther+" under Other",ok:grp.reduce((a,g)=>a+g.secs.length,0)===secs.length&&nOther===0&&secs.every(x=>gmd.indexOf("### "+x.title)>=0)&&grp.length>=4});
+    out.push({n:"Delivery windows appear in the register and customer summary only once you set them",exp:"present when set, absent when automatic",
+      got:(/Delivery windows/.test(mdG)&&/Delivery windows/.test(cust)?"present when set":"missing when set")+" / "+(/Delivery windows/.test(custOff)?"still present":"absent when automatic"),
+      ok:/Delivery windows/.test(mdG)&&/Delivery windows/.test(cust)&&!/Delivery windows/.test(custOff)});
+  }
+
   return out;
 }
 
@@ -4613,6 +4690,7 @@ function renderRail(){
   ,true);
 
   h+=sec("cpx","Estate complexity",renderCpxRail(),!!S.eng.complexity);
+  h+=sec("win","Delivery windows (analysis)",renderWinRail(),!!S.eng.win);
 
   let tw="";
   S.towers.forEach((t,i)=>{
@@ -5256,6 +5334,7 @@ function buildRegister(base,mc,o1,rp){
     }
   }
   L.push("");
+  winRegisterLines().forEach(function(l){ L.push(l); });
   L.push("## Inclusions");
   L.push("- L1/L2/L3 core maintenance across "+S.towers.filter(t=>t.enabled).map(t=>t.type).join(", ")+".");
   L.push("- Non-ticketing effort at "+pct0(S.eng.estate==="legacy"?0.32:0.22)+" of ticketing effort (transformation, automation, CFR) [F 1.1].");
@@ -5358,13 +5437,259 @@ function mdLite(text){
   const lines=text.split("\n"); let out=[], inList=false;
   const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
   lines.forEach(line=>{
-    if(/^##\s+/.test(line)){ if(inList){out.push("</ul>");inList=false;} out.push("<h3>"+inl(line.replace(/^##\s+/,""))+"</h3>"); }
+    if(/^###\s+/.test(line)){ if(inList){out.push("</ul>");inList=false;} out.push("<h4>"+inl(line.replace(/^###\s+/,""))+"</h4>"); }
+    else if(/^##\s+/.test(line)){ if(inList){out.push("</ul>");inList=false;} out.push("<h3>"+inl(line.replace(/^##\s+/,""))+"</h3>"); }
     else if(/^-\s+/.test(line)){ if(!inList){out.push("<ul>");inList=true;} out.push("<li>"+inl(line.replace(/^-\s+/,""))+"</li>"); }
     else if(/^\s*$/.test(line)){ if(inList){out.push("</ul>");inList=false;} }
     else{ if(inList){out.push("</ul>");inList=false;} out.push("<p>"+inl(line)+"</p>"); }
   });
   if(inList) out.push("</ul>");
   return out.join("");
+}
+
+/* ---------- assumptions register, grouped by category ----------
+   buildRegister() keeps composing the register section by section, exactly as before. These helpers read its
+   sections and gather them under category headings, for the screen, the Download summary, the Customer summary,
+   the Excel sheet and the copied or downloaded text. The categories are fixed; a section with no category is
+   shown under Other, never dropped. */
+var REG_CATS=["Source documents","Scenario & commercial","Coverage & locations","Scope & ownership","Complexity & delivery profile","Skills & roles","Transformation & AIOps","Confidence, risk & contingency","Client responsibilities","Calibration & source notes","Other"];
+function regCategoryOf(t){
+  var m=[["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
+    ["Coverage","Coverage & locations"],["Delivery location","Coverage & locations"],["Delivery windows","Coverage & locations"],["Service responsibility","Scope & ownership"],["Inclusions","Scope & ownership"],
+    ["Delivery profile","Complexity & delivery profile"],["Estate complexity","Complexity & delivery profile"],["Special roles","Skills & roles"],["Role & grade staffing plan","Skills & roles"],
+    ["AIOps roadmap","Transformation & AIOps"],["Transition, AIOps","Transformation & AIOps"],["Adjacent automation","Transformation & AIOps"],["Confidence posture","Confidence, risk & contingency"],
+    ["Exclusions & client responsibilities","Client responsibilities"],["Proposed defaults","Calibration & source notes"],["Known inconsistencies","Calibration & source notes"]];
+  for(var i=0;i<m.length;i++) if(t.indexOf(m[i][0])===0) return m[i][1];
+  return "Other";
+}
+function regSections(md){
+  return md.split(/\n(?=## )/).slice(1).map(function(p){
+    var i=p.indexOf("\n"), title=(i<0?p:p.slice(0,i)).replace(/^##\s+/,"");
+    return {title:title,body:(i<0?"":p.slice(i+1)).replace(/\s+$/,""),cat:regCategoryOf(title)};
+  });
+}
+function regGroups(md){
+  var secs=regSections(md);
+  return REG_CATS.map(function(c){return {cat:c,secs:secs.filter(function(x){return x.cat===c;})};}).filter(function(g){return g.secs.length;});
+}
+function registerGroupedMd(md){
+  var L=["# DAMO estimate \u2014 assumptions & risk register, grouped by category",""];
+  regGroups(md).forEach(function(g){
+    L.push("## "+g.cat,"");
+    g.secs.forEach(function(x){ L.push("### "+x.title); if(x.body) L.push(x.body); L.push(""); });
+  });
+  return L.join("\n");
+}
+function regGroupedHtml(md){
+  return regGroups(md).map(function(g){
+    return '<h3 class="regcat">'+esc(g.cat)+'<small>'+g.secs.length+' section'+(g.secs.length===1?'':'s')+'</small></h3>'+
+      g.secs.map(function(x){return '<h4>'+esc(x.title.replace(/\*\*/g,""))+'</h4>'+mdLite(x.body);}).join("");
+  }).join("");
+}
+function regCardBody(md){
+  return '<div class="regview">'+regGroupedHtml(md)+'</div><details class="regplain"><summary>Plain text, grouped by category (for copying)</summary>'+
+    '<textarea class="reg" id="regText" readonly>'+esc(registerGroupedMd(md))+'</textarea></details>';
+}
+
+/* ---------- delivery windows: overlap, on-call and gaps (analysis only; never changes FTE) ----------
+   Each delivery location of the deal's region works one or more windows in its own local time. The customer clock is
+   the common axis. The required window is the longest tower window; with Active-Passive towers only the business
+   hours must be actively staffed and the rest of the window needs someone on call. The locations' % mix stays as it is. */
+var WIN_UTC={ime:{india:5.5},eu:{onshore:1,nearshore:2,offshore:5.5},apac:{china:8,australia:10,singapore:8},na:{nearshore:-5,offshore:5.5}};
+function wMod(x){ return ((x%24)+24)%24; }
+function wLen(w){ return Math.min(24,Math.max(0,(+w.e)-(+w.s))); }
+function wNorm(s_,e_){ s_=wMod(+s_||0); e_=wMod(+e_||0); if(e_<=s_) e_+=24; return [s_,e_]; }
+function wClock(h){ var m=Math.round(wMod(h)*60)%1440; return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); }
+function wUtc(u){ u=+u||0; var a=Math.abs(u); return "UTC"+(u<0?"-":"+")+Math.floor(a)+(a%1?":"+String(Math.round(a%1*60)).padStart(2,"0"):""); }
+function wParse(v){ var m=/^(\d\d):(\d\d)$/.exec(v||""); return m?(+m[1]+(+m[2])/60):null; }
+function winNeeds(St){
+  var ts=St.towers.filter(function(t){return t.enabled;}), winH=0, actH=0, days=5, lines=[];
+  ts.forEach(function(t){
+    var m=/^(\d+)x(\d)$/.exec(t.coverage||"8x5"), h=m?+m[1]:8, d=m?+m[2]:5, passive=h>8&&t.oohModel==="passive";
+    if(h>winH) winH=h; if(d>days) days=d;
+    var a=passive?8:h; if(a>actH) actH=a;
+    lines.push({type:t.type+(t.label?" ("+t.label+")":""),coverage:t.coverage||"8x5",passive:passive});
+  });
+  if(!winH){ winH=8; actH=8; }
+  return {winH:winH,actH:actH,days:days,lines:lines,activeAll:actH>=winH};
+}
+function winOohKey(St){
+  if(St.eng.region==="ime") return "india";
+  var k=St.bench.oohLocationByRegion&&St.bench.oohLocationByRegion[St.eng.region];
+  return k||null;
+}
+function winAutoFill(St,need,E){
+  var live=E.locs.filter(function(l){return l.mix>0;}); if(!live.length) live=E.locs.slice(0,1);
+  var tot=live.reduce(function(a,l){return a+(l.mix||1);},0)||1, actS=need.activeAll?E.start:E.biz, cur=actS, acc=0, prevB=0;
+  live.forEach(function(l,i){
+    acc+=(l.mix||1); var bnd=(i===live.length-1)?need.actH:Math.round(acc/tot*need.actH*2)/2, share=bnd-prevB; prevB=bnd;
+    if(!(share>0)) return;
+    var st_=wMod(cur+(l.utc-E.tz)); l.w=[{id:"a-"+l.key,m:"active",s:st_,e:st_+share}]; cur+=share;
+  });
+  var rest=need.winH-need.actH;
+  if(rest>0){
+    var ok=winOohKey(St), car=E.locs.filter(function(l){return l.key===ok;})[0]||live[live.length-1];
+    var pre=Math.min(rest,wMod(actS-E.start)), post=rest-pre; car.w=car.w||[];
+    if(pre>0){ var a1=wMod(E.start+(car.utc-E.tz)); car.w.push({id:"o1-"+car.key,m:"oncall",s:a1,e:a1+pre}); }
+    if(post>0){ var a2=wMod(actS+need.actH+(car.utc-E.tz)); car.w.push({id:"o2-"+car.key,m:"oncall",s:a2,e:a2+post}); }
+  }
+}
+function winEffective(St){
+  var need=winNeeds(St), W=(St.eng&&St.eng.win)||{}, region=St.eng.region;
+  var cat=region==="ime"?[{key:"india",label:"India"}]:(LOC_CATALOG[region]||[]), mix=locMixOf(St);
+  var tz=W.tz==null?0:+W.tz, start=W.start==null?(need.winH>=24?0:8):+W.start, biz=W.biz==null?(need.winH>=24?9:start):+W.biz;
+  var base=(W.locs&&W.locs[region])||null;
+  var E={tz:tz,start:start,biz:biz,custom:!!base,need:need,region:region,locs:cat.map(function(l){
+    var b=base&&base[l.key];
+    return {key:l.key,label:l.label,mix:(mix[l.key]||0),utc:(b&&b.utc!=null)?+b.utc:((WIN_UTC[region]||{})[l.key]||0),w:b&&b.w?b.w.map(function(w){return {id:w.id,m:w.m,s:+w.s,e:+w.e};}):null};
+  })};
+  if(!base) winAutoFill(St,need,E);
+  E.locs.forEach(function(l){ l.w=l.w||[]; });
+  return E;
+}
+function winMat(St){
+  var E=winEffective(St), r=St.eng.region;
+  if(!St.eng.win) St.eng.win={tz:E.tz,start:E.start,biz:E.biz,locs:{}};
+  var W=St.eng.win; W.locs=W.locs||{};
+  if(!W.locs[r]){ W.locs[r]={}; E.locs.forEach(function(l){ W.locs[r][l.key]={utc:l.utc,w:l.w.map(function(w){return {id:w.id,m:w.m,s:w.s,e:w.e};})}; }); }
+  return W;
+}
+function winFind(St,id){
+  var W=winMat(St), L=W.locs[St.eng.region], k, i;
+  for(k in L) for(i=0;i<L[k].w.length;i++) if(L[k].w[i].id===id) return L[k].w[i];
+  return null;
+}
+function winLayout(St){ if(St.eng.win&&St.eng.win.locs) delete St.eng.win.locs[St.eng.region]; winMat(St); }
+function winAddWin(St,key){
+  var W=winMat(St), E=winEffective(St), l=W.locs[St.eng.region][key]; if(!l) return;
+  var s_=wMod(E.start+((+l.utc||0)-E.tz)); l.w.push({id:uid(),m:"active",s:s_,e:s_+Math.min(8,E.need.winH)});
+}
+function winRmWin(St,id){ var W=winMat(St), L=W.locs[St.eng.region]; Object.keys(L).forEach(function(k){ L[k].w=L[k].w.filter(function(w){return w.id!==id;}); }); }
+function winCoverage(E){
+  var N=48, need=E.need, ws=wMod(E.start), as_=need.activeAll?ws:wMod(E.biz), reqW=Array(N).fill(false), reqA=Array(N).fill(false), k, b;
+  for(k=0;k<Math.round(need.winH*2);k++) reqW[Math.floor(wMod(ws+k/2)*2)%N]=true;
+  for(k=0;k<Math.round(need.actH*2);k++){ b=Math.floor(wMod(as_+k/2)*2)%N; if(reqW[b]) reqA[b]=true; }
+  var rows=E.locs.map(function(l){
+    var a=Array(N).fill(false), o=Array(N).fill(false), cnt=Array(N).fill(0), actD=0, oncD=0;
+    l.w.forEach(function(w){
+      var n=Math.round(wLen(w)*2), c0=wMod((+w.s)-(l.utc-E.tz)), i;
+      if(w.m==="oncall") oncD+=n/2; else actD+=n/2;
+      for(i=0;i<n;i++){ var bb=Math.floor(wMod(c0+i/2)*2)%N; if(w.m==="oncall") o[bb]=true; else { a[bb]=true; cnt[bb]++; } }
+    });
+    return {key:l.key,label:l.label,utc:l.utc,mix:l.mix,a:a,o:o,actD:actD,oncD:oncD,selfH:cnt.filter(function(x){return x>1;}).length/2};
+  });
+  var reqAB=0,okA=0,oncA=0,gapA=0,reqOB=0,okO=0,gapO=0,ov=0,outB=0,state=Array(N).fill(""), gaps=[], pairs=[], i, j;
+  for(b=0;b<N;b++){
+    var nA=rows.filter(function(r){return r.a[b];}).length, nO=rows.filter(function(r){return r.o[b];}).length;
+    state[b]=nA?"a":nO?"o":"";
+    if(reqA[b]){ reqAB++; if(nA) okA++; else if(nO) oncA++; else gapA++; }
+    else if(reqW[b]){ reqOB++; if(nA||nO) okO++; else gapO++; }
+    if(nA>1) ov++;
+    if(nA&&!reqW[b]) outB++;
+  }
+  for(i=0;i<rows.length;i++) for(j=i+1;j<rows.length;j++){ var n=0; for(b=0;b<N;b++) if(rows[i].a[b]&&rows[j].a[b]) n++; pairs.push({a:rows[i].label,b:rows[j].label,h:n/2}); }
+  b=0; while(b<N){ if(reqW[b]&&!state[b]){ var e2=b; while(e2<N&&reqW[e2]&&!state[e2]) e2++; gaps.push([b/2,e2/2]); b=e2; } else b++; }
+  return {rows:rows,state:state,reqW:reqW,reqA:reqA,reqActH:reqAB/2,activeH:okA/2,activeOncallH:oncA/2,reqOncH:reqOB/2,oncCoveredH:okO/2,gapH:(gapA+gapO)/2,overlapH:ov/2,outsideH:outB/2,gaps:gaps,pairs:pairs};
+}
+function winVerdict(E,C){
+  var n=E.need, v="<b>"+fmt(C.activeH)+" of the "+fmt(C.reqActH)+" hours that need active staff have someone active"+(C.activeOncallH>0?"; "+fmt(C.activeOncallH)+" have on-call cover only":"")+"</b>"+
+    (n.activeAll?"":", and "+fmt(C.oncCoveredH)+" of the "+fmt(C.reqOncH)+" off-hours are covered (active or on call)")+".";
+  if(C.gapH>0) v+=" <b>"+fmt(C.gapH)+" hours have no cover at all</b> ("+C.gaps.map(function(g){return wClock(g[0])+"-"+wClock(g[1]);}).join(", ")+" customer time).";
+  var pairs=C.pairs.filter(function(p){return p.h>0;}).map(function(p){return esc(p.a)+" and "+esc(p.b)+" "+fmt(p.h)+" h";}).join("; ");
+  v+=C.overlapH>0?" <b>Overlap:</b> "+fmt(C.overlapH)+" h a day with two or more locations active"+(pairs?" ("+pairs+")":"")+", a handover cushion.":" No hour has two locations active, so handovers happen with no overlap.";
+  if(C.outsideH>0) v+=" "+fmt(C.outsideH)+" h a day are worked outside the support window.";
+  C.rows.forEach(function(r){ if(r.selfH>0) v+=" "+esc(r.label)+" has windows that overlap each other by "+fmt(r.selfH)+" h."; });
+  return v;
+}
+function winTable(E,C,forPrint){
+  var cols=[], st_=wMod(E.start), j;
+  for(j=0;j<24;j++) cols.push(wMod(st_+j));
+  var bin=function(arr,h){ return [arr[Math.floor(h)*2],arr[Math.floor(h)*2+1]]; };
+  var th='<tr><th class="rowh">Customer time<br><small>'+wUtc(E.tz)+'</small></th>'+cols.map(function(h){return '<th>'+wClock(h)+'</th>';}).join("")+'<th>Active h/day</th><th>On-call h/day</th></tr>';
+  var req='<tr><td class="rowh">Required<small>'+(E.need.activeAll?"active, whole window":"active in business hours, on call after")+'</small></td>'+cols.map(function(h){
+    var a=bin(C.reqA,h), w=bin(C.reqW,h); return '<td class="c '+(a[0]&&a[1]?"rqa":(w[0]||w[1])?"rqo":"")+'">'+(a[0]||a[1]?"A":(w[0]||w[1])?"o":"")+'</td>'; }).join("")+'<td class="num">'+fmt(C.reqActH)+'</td><td class="num">'+fmt(C.reqOncH)+'</td></tr>';
+  var rows=C.rows.map(function(r){
+    var off=r.utc-E.tz;
+    return '<tr><td class="rowh">'+esc(r.label)+'<small>'+wUtc(r.utc)+'</small></td>'+cols.map(function(h){
+      var a=bin(r.a,h), o=bin(r.o,h), cls=a[0]&&a[1]?"a":(o[0]&&o[1]&&!a[0]&&!a[1])?"o":(a[0]||a[1])?"ah":(o[0]||o[1])?"oh":"";
+      return '<td class="c '+cls+'">'+wClock(h+off)+'</td>'; }).join("")+'<td class="num">'+fmt(r.actD)+'</td><td class="num">'+fmt(r.oncD)+'</td></tr>'; }).join("");
+  var gap=C.gapH>0?'<tr><td class="rowh">Uncovered<small>no one active or on call</small></td>'+cols.map(function(h){
+    var g=[0,1].map(function(k){return C.reqW[Math.floor(h)*2+k]&&!C.state[Math.floor(h)*2+k];}); return '<td class="c '+(g[0]||g[1]?"gap":"")+'">'+(g[0]||g[1]?"gap":"")+'</td>'; }).join("")+'<td class="num">'+fmt(C.gapH)+'</td><td class="num"></td></tr>':"";
+  return '<table class="wtl" aria-label="Coverage by hour on the customer clock"><thead>'+th+'</thead><tbody>'+req+rows+gap+'</tbody></table>';
+}
+function winMixTable(E,C){
+  var tot=C.rows.reduce(function(a,r){return a+r.actD;},0)||1, msum=E.locs.reduce(function(a,l){return a+l.mix;},0)||1;
+  return '<table><thead><tr><th>Location</th><th class="num">Mix %</th><th class="num">Active h/day</th><th class="num">Share of active hours</th><th class="num">On-call h/day</th></tr></thead><tbody>'+
+    C.rows.map(function(r){ var m=r.mix/msum*100, sh=r.actD/tot*100, off=Math.abs(m-sh)>10;
+      return '<tr><td>'+esc(r.label)+'</td><td class="num">'+fmt(m,0)+'</td><td class="num">'+fmt(r.actD)+'</td><td class="num"'+(off?' style="color:var(--warn)"':'')+'>'+fmt(sh,0)+'%</td><td class="num">'+fmt(r.oncD)+'</td></tr>'; }).join("")+'</tbody></table>';
+}
+function winCard(){
+  var E=winEffective(S), C=winCoverage(E), n=E.need;
+  var h='<div class="card"><header><h2>Delivery windows &mdash; overlap, on-call and gaps</h2><span class="note">Analysis only: shows how the locations\' hours line up. It does not change FTE or the location mix.</span></header><div class="cardbody">';
+  h+='<p class="hint" style="margin:0 0 8px">Required: '+n.winH+' hours a day, '+n.days+' days, from '+wClock(E.start)+' customer time'+(n.activeAll?', fully staffed.':'; business hours '+wClock(E.biz)+'-'+wClock(E.biz+n.actH)+' fully staffed, the rest on call (Active-Passive).')+
+    ' Towers: '+n.lines.map(function(l){return esc(l.type)+' '+esc(l.coverage)+(l.passive?' passive':'');}).join(", ")+'. '+(E.custom?'Windows are set by you in the rail.':'Windows are laid out automatically from the location mix; set your own under Delivery windows in the rail.')+'</p>';
+  h+='<div class="tablewrap" style="overflow-x:auto">'+winTable(E,C)+'</div>';
+  h+='<div class="wleg"><span><i style="background:var(--good)"></i>Active</span><span><i style="background:var(--warn)"></i>On call (P1)</span><span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Needs active staff</span><span><i style="border:1px dashed var(--accent)"></i>Needs cover, on call is enough</span>'+(C.gapH>0?'<span><i style="background:var(--crit-soft);border:1px solid var(--crit)"></i>Uncovered</span>':'')+'</div>';
+  h+='<div class="callout '+(C.gapH>0?'':'acc')+'" style="margin:8px 0">'+winVerdict(E,C)+'</div>';
+  h+='<div class="tablewrap" style="margin-top:8px">'+winMixTable(E,C)+'</div><p class="hint">Where the share of active hours differs from the location mix by more than 10 points it is shown in orange: the windows and the mix tell different stories.</p>';
+  return h+'</div></div>';
+}
+function winRailTz(){ return ""; }
+function renderWinRail(){
+  var E=winEffective(S), n=E.need, C=winCoverage(E);
+  var h='<p class="hint">Analysis only. Set the customer time zone, then each location\'s UTC offset and working windows in its own local time. The timeline in the results shows active hours, on-call hours, gaps and overlap. FTE and the location mix are not changed.</p>'+
+    '<div class="field"><label>Customer time zone, UTC offset</label><input type="number" step="0.5" min="-12" max="14" data-w="tz" value="'+E.tz+'"></div>'+
+    '<div class="field"><label>Support window starts at (customer time)</label><input type="time" step="900" data-w="start" value="'+wClock(E.start)+'">'+
+      '<p class="hint">'+n.winH+' hours a day, from the longest tower window.</p></div>'+
+    (n.activeAll?'':'<div class="field"><label>Business hours start at (customer time)</label><input type="time" step="900" data-w="biz" value="'+wClock(E.biz)+'"><p class="hint">With Active-Passive towers only these '+n.actH+' hours must be actively staffed.</p></div>');
+  E.locs.forEach(function(l){
+    h+='<div class="wloc"><div class="whead"><span>'+esc(l.label)+' <small style="font-family:var(--mono);color:var(--ink-3)">'+wUtc(l.utc)+' &middot; mix '+fmt(l.mix,0)+'%</small></span><button type="button" class="btn" data-waddwin="'+l.key+'" style="font-size:11.5px;padding:3px 8px">Add window</button></div>'+
+      '<div class="field" style="margin:0 0 4px"><label>UTC offset</label><input type="number" step="0.5" min="-12" max="14" data-wu="'+l.key+'" value="'+l.utc+'" style="width:90px"></div>'+
+      (l.w.length?l.w.map(function(w){
+        return '<div class="wrow" data-wrow="'+w.id+'" data-wloc="'+l.key+'"><div class="seg" role="group" aria-label="Window type">'+[["active","Active"],["oncall","On-call"]].map(function(p){return '<button type="button" data-wm="'+w.id+':'+p[0]+'" aria-pressed="'+((w.m==="oncall"?"oncall":"active")===p[0])+'">'+p[1]+'</button>';}).join("")+'</div>'+
+          '<label>From <input type="time" step="900" data-wt="'+w.id+':s" value="'+wClock(w.s)+'"></label><label>To <input type="time" step="900" data-wt="'+w.id+':e" value="'+wClock(w.e)+'"></label>'+
+          '<span class="wcust">'+wClock(wMod(w.s-(l.utc-E.tz)))+'-'+wClock(wMod(w.e-(l.utc-E.tz)))+' customer, '+fmt(wLen(w))+' h</span><button type="button" class="btn" data-wrmwin="'+w.id+'" style="font-size:11.5px;padding:3px 8px">Remove</button></div>';
+      }).join(""):'<p class="hint" style="margin:0">No window: this location adds no cover.</p>')+'</div>';
+  });
+  h+='<div class="btnrow"><button type="button" class="btn" data-wlayout="1">Lay out evenly</button>'+(S.eng.win?'<button type="button" class="btn" data-wreset="1">Back to automatic</button>':'')+'</div>'+
+    '<p class="hint" id="winRailHint">'+winVerdict(E,C)+'</p>';
+  return h;
+}
+function winRailInfo(){
+  var E=winEffective(S), C=winCoverage(E), el=document.getElementById("winRailHint"); if(el) el.innerHTML=winVerdict(E,C);
+  document.querySelectorAll("[data-wrow]").forEach(function(row){
+    var id=row.dataset.wrow, l=E.locs.filter(function(x){return x.key===row.dataset.wloc;})[0], w=l&&l.w.filter(function(x){return x.id===id;})[0], sp_=row.querySelector(".wcust");
+    if(w&&sp_) sp_.textContent=wClock(wMod(w.s-(l.utc-E.tz)))+"-"+wClock(wMod(w.e-(l.utc-E.tz)))+" customer, "+fmt(wLen(w))+" h";
+  });
+}
+function winEdit(el){
+  var d=el.dataset, W=winMat(S);
+  if(d.w){ if(d.w==="tz"){ var v=+el.value; if(el.value!==""&&v>=-12&&v<=14) W.tz=v; } else { var t=wParse(el.value); if(t!=null) W[d.w]=t; } }
+  else if(d.wu){ var u=+el.value; if(el.value!==""&&u>=-12&&u<=14) W.locs[S.eng.region][d.wu].utc=u; }
+  else if(d.wt){ var pr=d.wt.split(":"), t2=wParse(el.value), w=winFind(S,pr[0]); if(w&&t2!=null){ var nn=pr[1]==="s"?wNorm(t2,w.e):wNorm(w.s,t2); w.s=nn[0]; w.e=nn[1]; } }
+  winRailInfo();
+}
+function winRegisterLines(){
+  if(!S.eng.win) return [];
+  var E=winEffective(S), C=winCoverage(E), L=["## Delivery windows (analysis only, does not change FTE)"];
+  L.push("- Customer clock "+wUtc(E.tz)+". Support window "+E.need.winH+" hours a day from "+wClock(E.start)+(E.need.activeAll?", fully staffed.":"; business hours "+wClock(E.biz)+"-"+wClock(E.biz+E.need.actH)+" fully staffed, the rest on call."));
+  E.locs.forEach(function(l){ L.push("- "+l.label+" ("+wUtc(l.utc)+"): "+(l.w.length?l.w.map(function(w){return (w.m==="oncall"?"on call ":"active ")+wClock(w.s)+"-"+wClock(w.e)+" local";}).join(", "):"no window")+"."); });
+  L.push("- "+fmt(C.activeH)+" of "+fmt(C.reqActH)+" hours needing active staff are covered; "+fmt(C.activeOncallH)+" on call only; "+fmt(C.gapH)+" uncovered; overlap "+fmt(C.overlapH)+" h; "+fmt(C.outsideH)+" h worked outside the window.");
+  L.push("");
+  return L;
+}
+function winPrintHtml(St){
+  if(!St.eng.win) return "";
+  var E=winEffective(St), C=winCoverage(E);
+  return '<section><h2>Delivery windows</h2><div style="overflow-x:auto">'+winTable(E,C,true)+'</div><p style="font-size:11px;margin:6px 0 0">'+winVerdict(E,C)+'</p></section>';
+}
+function winCustHtml(St){
+  if(!St.eng.win) return "";
+  var E=winEffective(St), C=winCoverage(E);
+  return '<h3>Delivery windows</h3><table><thead><tr><th>Location</th><th>Working windows (local time)</th><th>On the customer clock</th></tr></thead><tbody>'+
+    E.locs.filter(function(l){return l.w.length;}).map(function(l){
+      return '<tr><td>'+esc(l.label)+'<br><span class="muted">'+wUtc(l.utc)+'</span></td><td>'+l.w.map(function(w){return (w.m==="oncall"?"On call ":"Working ")+wClock(w.s)+"-"+wClock(w.e);}).join("<br>")+'</td><td>'+l.w.map(function(w){var o=l.utc-E.tz;return wClock(wMod(w.s-o))+"-"+wClock(wMod(w.e-o));}).join("<br>")+'</td></tr>'; }).join("")+'</tbody></table>'+
+    '<p class="muted">'+fmt(C.activeH)+' of '+fmt(C.reqActH)+' hours needing active staff are covered'+(C.activeOncallH>0?', '+fmt(C.activeOncallH)+' on call only':'')+(C.gapH>0?', '+fmt(C.gapH)+' not yet covered':'')+'.'+(C.overlapH>0?' Handover overlap: '+fmt(C.overlapH)+' h a day.':'')+'</p>';
 }
 
 /* ---------- print report: SA-only, no optimization/quantum content ----------
@@ -5418,6 +5743,8 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
        '<tr><td>Mix</td><td>'+locCat.map(loc=>lm[loc.key]+'% '+loc.label).join(', ')+'</td></tr>';
   }
   h+='</tbody></table></section>';
+
+  h+=winPrintHtml(S);
 
   h+='<section><h2>Year by year</h2><table><thead><tr><th>Year</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">Base FTE</th><th class="num">Deflect</th><th class="num">Delivery</th><th class="num">AIOps</th>'+(cpxOf(S)?'<th class="num">Contingency</th>':'')+((S.specialRoles||[]).length?'<th class="num">Special</th>':'')+'<th class="num">Total FTE</th></tr></thead><tbody>'+
     base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td>'+(cpxOf(S)?'<td class="num">'+fmt(y.cont||0)+'</td>':'')+((S.specialRoles||[]).length?'<td class="num">'+fmt(y.special||0)+'</td>':'')+'<td class="num">'+fmt(y.total)+'</td></tr>').join("")+
@@ -5499,7 +5826,7 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
     '<tr><td>Checks passed against the source framework\'s own worked examples</td><td><b>'+testsInfo.pass+' / '+testsInfo.total+'</b></td></tr>'+
     '</tbody></table></section>';
 
-  h+='<section><h2>Assumptions &amp; risk register</h2><div class="pr-reg">'+mdLite(buildRegister(base,mc,o1,rp))+'</div></section>';
+  h+='<section><h2>Assumptions &amp; risk register</h2><div class="pr-reg">'+mdLite(registerGroupedMd(buildRegister(base,mc,o1,rp)))+'</div></section>';
 
   h+='<div class="pr-foot">DAMO Estimator &mdash; sizes effort and FTE only, no rate card or price. Generated '+new Date().toLocaleString()+'.</div>';
   return h;
@@ -5534,12 +5861,12 @@ var SUMMARY_CSS=DOC_CSS_COMMON+
   '#printReport .pr-stat:last-child{border-right:0}'+
   '#printReport .pr-stat .k{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#666}'+
   '#printReport .pr-stat .v{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:17px;font-weight:700}'+
-  '#printReport .pr-reg h3{font-size:12.5px;margin:14px 0 5px}#printReport .pr-reg p{margin:0 0 6px}#printReport .pr-reg ul{margin:0 0 8px;padding-left:18px}#printReport .pr-reg li{margin:2px 0}'+
-  '#printReport .pr-foot{margin-top:18px;padding-top:8px;border-top:1px solid #ccc;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5px;color:#888}';
+  '#printReport .pr-reg h3{font-size:12.5px;margin:14px 0 5px}#printReport .pr-reg h4{font-size:11.5px;margin:9px 0 3px}#printReport .pr-reg p{margin:0 0 6px}#printReport .pr-reg ul{margin:0 0 8px;padding-left:18px}#printReport .pr-reg li{margin:2px 0}'+
+  '#printReport .wtl{border-collapse:separate;border-spacing:1px;font:8.5px ui-monospace,Menlo,Consolas,monospace;width:100%;table-layout:fixed}'+'#printReport .wtl th,#printReport .wtl td{padding:3px 0;font-size:8.5px;text-align:center;border-bottom:0;white-space:nowrap;overflow:hidden}'+'#printReport .wtl td.rowh,#printReport .wtl th.rowh{text-align:left;width:92px;font-size:10px;white-space:normal;padding-left:3px}'+'#printReport .wtl td.num{width:34px;font-weight:700}'+'#printReport .wtl td.c{background:#eee;color:#888}'+'#printReport .wtl td.c.rqa{background:#dce6ee;color:#12405F}'+'#printReport .wtl td.c.rqo{background:#f4f4f4;color:#12405F;border:1px dashed #1F5C8B}'+'#printReport .wtl td.c.a{background:#0F7B4F;color:#fff}'+'#printReport .wtl td.c.o{background:#B54708;color:#fff}'+'#printReport .wtl td.c.ah{background:linear-gradient(90deg,#0F7B4F 50%,#eee 50%);color:#111}'+'#printReport .wtl td.c.oh{background:linear-gradient(90deg,#B54708 50%,#eee 50%);color:#111}'+'#printReport .wtl td.c.gap{background:#F7E0DD;color:#B42318;border:1px solid #B42318}'+'#printReport .pr-foot{margin-top:18px;padding-top:8px;border-top:1px solid #ccc;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5px;color:#888}';
 var CUST_CSS=DOC_CSS_COMMON+
   'body{font-size:15px;line-height:1.6;color:#18202B}main{max-width:880px;margin:0 auto;padding:36px 24px 56px}'+
   'h1{font:700 28px/1.2 Georgia,"Iowan Old Style",serif;margin:4px 0 8px}h2{font:700 19px/1.3 Georgia,serif;margin:34px 0 8px;padding-top:14px;border-top:2px solid #12405F;color:#12405F}'+
-  'h3{font-size:13px;margin:16px 0 4px;color:#5A6472;text-transform:uppercase;letter-spacing:.05em}'+
+  'h3{font-size:13px;margin:16px 0 4px;color:#5A6472;text-transform:uppercase;letter-spacing:.05em}h4{font-size:14px;margin:12px 0 4px}'+
   '.eyebrow{font:600 11px/1 ui-sans-serif,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#12405F}.muted{color:#5A6472}'+
   'table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}th{font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5A6472;text-align:left;padding:6px 8px;border-bottom:1px solid #DCE0E7}'+
   'td{padding:8px;border-bottom:1px solid #EEF0F4;vertical-align:top}.r{text-align:right;white-space:nowrap}tr.total td{font-weight:700;border-top:1px solid #9aa3b0}'+
@@ -5557,16 +5884,16 @@ function buildSummaryDoc(St,D){
 function custTierLabel(T){ return TIER_LABEL[T]||T; }
 /* the register's own sections, minus the ones that are internal calibration notes; framework source tags are dropped */
 function custRegisterHtml(St,D,opt){
-  var md=buildRegister(D.base,D.mc,D.o1,D.rp), parts=md.split(/\n(?=## )/).slice(1), keep=[];
-  var allow=["Service responsibility","Coverage","Inclusions","Exclusions & client responsibilities","Volume band clause","Special roles"];
+  var md=buildRegister(D.base,D.mc,D.o1,D.rp), secs=regSections(md);
+  var allow=["Service responsibility","Coverage","Delivery windows","Inclusions","Exclusions & client responsibilities","Volume band clause","Special roles"];
   if(opt.bench) allow.push("Delivery profile");
   if(opt.cont) allow.push("Estate complexity","Confidence posture");
   if(opt.save) allow.push("AIOps roadmap");
-  parts.forEach(function(p){
-    var t=p.split("\n")[0].replace(/^##\s+/,"");
-    if(allow.some(function(a){return t.indexOf(a)===0;})) keep.push(p);
-  });
-  return mdLite(keep.join("\n").replace(/\s*\[(?:F|P)[^\]]*\]/g,""));
+  var clean=function(t){ return t.replace(/\s*\[(?:F|P)[^\]]*\]/g,""); };
+  var keep=secs.filter(function(x){return allow.some(function(a_){return x.title.indexOf(a_)===0;});});
+  return REG_CATS.filter(function(c){return keep.some(function(x){return x.cat===c;});}).map(function(c){
+    return '<h3>'+esc(c)+'</h3>'+keep.filter(function(x){return x.cat===c;}).map(function(x){return '<h4>'+esc(clean(x.title).replace(/\*\*/g,""))+'</h4>'+mdLite(clean(x.body));}).join("");
+  }).join("");
 }
 function buildCustomerReport(St,D,opt){
   opt=opt||{}; var showCont=opt.cont!==false, showBench=opt.bench!==false, showSave=opt.save!==false;
@@ -5590,6 +5917,7 @@ function buildCustomerReport(St,D,opt){
       return '<tr><td><b>'+esc(t.type)+'</b>'+(t.label?' ('+esc(t.label)+')':'')+(tp?'<br><span class="muted">'+esc(tp.label)+'</span>':'')+'</td><td>'+esc(t.coverage)+'</td><td>'+(ac?esc(ac.label)+' ('+esc(String(t.avail))+'%)':esc(String(t.avail))+'%')+'</td><td>'+ooh+'</td></tr>';
     }).join("")+'</tbody></table>';
 
+  h+=winCustHtml(St);
   h+='<h2>What is in scope</h2><table><thead><tr><th>Service</th><th>How it was sized</th><th>Who provides each level</th><th>Response and restore (P1)</th></tr></thead><tbody>'+
     y1.rows.map(function(r){
       var t=on.find(function(x){return x.id===r.id;})||{}, v=f0(r.vol);
@@ -6262,6 +6590,8 @@ function renderCanvas(){
   }
   h+='</div></div>';
 
+  h+=winCard();
+
   /* delivery location mix */
   h+='<div class="card"><header><h2>Delivery location mix</h2>'+
     '<span class="note">'+(S.eng.region!=="ime"
@@ -6443,7 +6773,7 @@ function renderCanvas(){
   h+='<div class="card"><header><h2>Assumptions &amp; risk register</h2><span class="note">Composed from the live inputs. Paste into the proposal annex.</span>'+
     '<span class="spacer"></span><div class="btnrow noprint"><button class="btn" type="button" id="btnCopy">Copy</button>'+
     '<button class="btn" type="button" id="btnMd">Download .md</button></div></header><div class="cardbody">'+
-    '<textarea class="reg" id="regText" readonly>'+esc(buildRegister(base,mc,o1,rp))+'</textarea></div></div>';
+    regCardBody(buildRegister(base,mc,o1,rp))+'</div></div>';
 
   /* self tests */
   const tests=selfTests(), pass=tests.filter(t=>t.ok).length;
@@ -6494,6 +6824,7 @@ let XR_TIMER=null;
 document.addEventListener("input",e=>{
   const el=e.target;
   if(el.id==="intakeJson"){ clearTimeout(XR_TIMER); XR_TIMER=setTimeout(renderExtractReview,500); return; }
+  if(el.dataset && (el.dataset.w||el.dataset.wu||el.dataset.wt)){ winEdit(el); refresh(false); return; }
   if(el.dataset && el.dataset.p){
     sp(S,el.dataset.p,coerce(el));
     if(el.type==="range"){ const pts=el.parentElement.querySelector(".pts");
@@ -6571,6 +6902,11 @@ document.addEventListener("click",e=>{
     i.onchange=()=>{ const f=i.files[0]; if(f) handleIntakeUpload(docId,f); };
     i.click(); return;
   }
+  if(b.dataset.wm){ var wp=b.dataset.wm.split(":"); winMat(S); var ww=winFind(S,wp[0]); if(ww) ww.m=wp[1]; refresh(true); return; }
+  if(b.dataset.waddwin){ winAddWin(S,b.dataset.waddwin); refresh(true); return; }
+  if(b.dataset.wrmwin){ winRmWin(S,b.dataset.wrmwin); refresh(true); return; }
+  if(b.dataset.wlayout){ winLayout(S); refresh(true); return; }
+  if(b.dataset.wreset){ S.eng.win=null; refresh(true); return; }
   if(b.dataset.scenload){
     const x=(scenList()||[]).find(v=>v.id===b.dataset.scenload);
     if(x){ S=stateFrom(x.state); refresh(true); }
