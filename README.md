@@ -78,7 +78,7 @@ On the Netlify deployment, **Extract with AI now** in the "Import Claude-prepare
 6. Set **Estate complexity** (Low/Medium/High) — it drives the seniority pyramid, the contingency and a tilt of the severity/SR/CR mixes. Optionally add **Special roles** (L1.5, SRE, QA, Advisory) by hand.
 7. Score the nine confidence drivers and nine risk categories.
 8. Read the results, then copy the **Assumptions & risk register** into the proposal.
-9. Hit **Verify against framework** at the bottom — 222 checks reproducing worked examples from the source documents, validating the role map, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
+9. Hit **Verify against framework** at the bottom — 229 checks reproducing worked examples from the source documents, validating the role map, and covering the intake extraction logic, the IMS/DMS structural-complexity model, the AIOps efficiency calculator, the transition phase, and the outcome/KPI bands.
 
 The left rail is: Engagement → Estate complexity → Service towers → Seniority mix → Special roles → AIOps & run cost → AIOps efficiency calculator → Outcome model → Confidence & risk → Optimization → Benchmarks & assumptions. Sections stay open (and the rail keeps its scroll position) when you tick a box or press a button.
 
@@ -359,14 +359,25 @@ Where the AIOps calculator (§3.15) is about sizing the team, this is about what
 
 The assumptions and risk register is still composed section by section from the live inputs, but it is now **shown, downloaded and exported grouped by category**: Source documents, Scenario & commercial, Coverage & locations, Scope & ownership, Complexity & delivery profile, Skills & roles, Transformation & AIOps, Confidence, risk & contingency, Client responsibilities, and Calibration & source notes. A section the tool does not know yet appears under Other and is never dropped. The grouped view is on the register card (with a plain-text version underneath for copying and the `.md` download), in the Download summary and Print report, in the Customer summary (which shows its client-safe sections under the same headings) and in the **Assumptions** sheet of the Excel workbook (category headings in bold). The wording of each section is unchanged. A self-test checks that no section is dropped or left uncategorised.
 
+### 3.21 On-call allowance from P1 volume
+
+An Active-Passive tower discounts its off-hours shifts to an **on-call allowance**. By default this is the flat factor in Benchmarks (15%). Choosing **From P1 volume** (Benchmarks, `proposed`, taken from the Estimation Workflow) replaces it with:
+
+```
+allowance = standby % (default 10%) + P1s a month (all hours) x hours per P1 call-out (default 3) / 728 hours a month
+```
+
+P1s arrive around the clock, so the busy share does not depend on how many hours are on call. P1s a month comes from each tower's incident volume times its P1 share in the severity mix (so it follows estate complexity and the yearly inflow), or from the **P1 incidents a month** box if you enter one (shared across towers by incident volume, scaled by the yearly inflow). The default stays flat 15%, so no existing estimate moves. The allowance changes the team only where the coverage floor binds. It appears in the floor note, the Delivery windows card and the register. Four self-tests cover the flat default, the P1 formula, the override and the effect on the floor.
+
 ### 3.20 Delivery windows: overlap, on-call and gaps
 
-A deal-level, **analysis-only** view of how the delivery locations' hours line up. In the rail, **Delivery windows (analysis)** takes the customer time zone (UTC offset), when the support window starts, and, for each location of the chosen region, its UTC offset and one or more working windows in its own local time (**Active** or **On-call**). In the results, **Delivery windows** draws a timeline on the customer's clock: one row per location with that location's local time in each cell (green active, orange on call), a **Required** row, and an **Uncovered** row when something is missing.
+A deal-level view, **analysis only unless you switch it on**, of how the delivery locations' hours line up. In the rail, **Delivery windows** takes the customer time zone (UTC offset), when the support window starts, and, for each location of the chosen region, its UTC offset and one or more working windows in its own local time (**Active** or **On-call**). In the results, **Delivery windows** draws a timeline on the customer's clock: one row per location with that location's local time in each cell (green active, orange on call), a **Required** row, and an **Uncovered** row when something is missing.
 
 - **What is required** comes from the towers: the window is the longest tower window (for example 24x7). If any tower is Active-Active, or the window is 8 hours, the whole window needs active staff. If every tower with a longer window is Active-Passive, only the business hours (8, from the business-hours start you set) need active staff and the rest of the window needs someone on call.
 - **It reports** active hours covered, hours covered on call only where active staff were needed, hours with no cover at all (with the time ranges), overlap (two or more locations active at once, with the pairs) and hours worked outside the window, plus a table comparing each location's share of active hours with its % in the location mix (flagged when more than 10 points apart).
 - **Automatic layout.** Until you set windows, they are laid out from the location mix: the active hours are cut into slices in proportion to the mix, in half-hour steps, and, for Active-Passive, the location named as the on-call carrier for the region covers the rest on call. Self-tests confirm the automatic layout leaves no gap for every region, window and off-hours model. **Lay out evenly** redoes it; **Back to automatic** clears your windows.
-- **It never changes FTE or the location mix.** A self-test runs the engine with and without custom windows and requires identical totals.
+- **By default it never changes FTE or the location mix.** A self-test runs the engine with and without custom windows and requires identical totals.
+- **Optional: let the windows set the coverage floor.** Tick **Let these windows set the coverage floor** in the same rail section. The floor of each tower whose window is the deal's longest is then scaled by (staffed shifts from your windows) ÷ (staffed shifts the declared window gives), where staffed hours are active window hours plus on-call window hours × the on-call allowance, and an Active-Passive tower's weekends count as on call, as in the shift formula. Windows that reproduce the declared window give exactly ×1.00 (checked for every region, window and off-hours model); overlap and extra hours raise the floor; uncovered hours lower it, and the card says so. The location mix is still never changed, and the floor only changes the team when it binds (it is above the work-based FTE).
 - Once you have set windows they also appear in the register (under Coverage & locations), the Download summary and the Customer summary.
 
 ### 3.18 Download summary and Customer summary
@@ -440,7 +451,7 @@ The **QUBO inspector** shows variable count, sparsity, penalty weights and the e
 
 ## 7. Verification
 
-The **Verify against framework** card runs 222 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
+The **Verify against framework** card runs 229 checks on every render. Each is a worked example from the source, or a synthetic case for logic that has no source-document analogue (the print report, the RFP intake extractors, the structural-complexity model), so a green run means the engine reproduces the document it claims to implement and the newer mechanics behave as designed:
 
 1–3. Page-3 illustration → A = 421 hrs, B = 105 hrs, base FTE = 3.3
 4. Coverage shift maths, 24×5 at 2/shift → 6.0 FTE

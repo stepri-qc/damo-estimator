@@ -428,6 +428,8 @@ function defaults(){return{
     // Existing/incumbent team the client stated (FTE, null = not given): sanity check only,
     // never changes the estimate.
     incumbentFTE:null,
+    p1PerMonth:null,           // optional override of the P1 incidents a month used by the P1-volume on-call allowance
+    winDrive:false,            // when true (and windows are set) the delivery windows scale the coverage floor
     // delivery region: ime -> whole team shown as India, no further config.
     // eu/apac/na -> percentage split across that region's own location catalogue
     // (see LOC_CATALOG). Informational staffing-location layer only - never
@@ -466,6 +468,9 @@ function defaults(){return{
     hoursMonth:160,            // [F p3 illustration]. Scenario 3 Step 1 says 150 - see conflict note.
     shiftsPerFTE:5,            // [F p3]
     oohOnCallFactor:0.15,      // PROPOSED - on-call off-hours costs ~15% of a dedicated shift
+    // PROPOSED - 'From P1 volume' (from the Estimation Workflow): the on-call allowance becomes standby % plus the share
+    // of time spent working P1 call-outs, P1s a month x hours each / 728 hours in a month. 'flat' keeps the factor above.
+    oohMode:"flat", oohStandby:0.10, p1Hours:3,
     // PROPOSED - which delivery location typically carries P1 on-call for
     // Active-Passive off-hours, per region. Not derived from real cost/rate
     // data (the tool has none) - a stated convention, editable per deal.
@@ -894,12 +899,35 @@ const SHIFTS={"8x5":5,"8x7":7,"16x5":10,"16x7":14,"24x5":15,"24x7":21};
 // (SHIFTS["8x5"]) fully staffed and discounts only the off-hours delta to
 // an on-call allowance - real people carrying a pager on top of their day
 // job, not a second dedicated shift.
-function effShiftsPerWeek(t,B){
+function effShiftsPerWeek(t,B,fac){
   const full=SHIFTS[t.coverage]||5;
   if(t.coverage==="8x5" || t.oohModel!=="passive") return full;
   const biz=SHIFTS["8x5"];
   const ooh=full-biz;
-  return biz + ooh*(B.oohOnCallFactor||0.15);
+  return biz + ooh*(fac!=null?fac:(B.oohOnCallFactor||0.15));
+}
+/* On-call allowance: the share of a fully staffed shift that an on-call (P1 only) shift costs. Flat by default; in
+   'From P1 volume' mode it is standby % plus P1s a month x hours per call-out / 728 hours (168 x 52 / 12). */
+function oohFactorFor(B,p1m){
+  if(B.oohMode==="p1") return clamp((+B.oohStandby||0)+(+p1m||0)*(+B.p1Hours||0)/728,0,1);
+  return B.oohOnCallFactor||0.15;
+}
+/* Delivery windows as hours a day, for the windows-drive option. The windows scale a tower's coverage floor by
+   (staffed shifts from the windows) / (staffed shifts the declared window gives), so windows that reproduce the
+   declared window change nothing, overlap and extra hours raise it, and uncovered hours lower it. Only towers
+   whose window is the deal's longest are scaled. Weekends of an Active-Passive tower count as on call, as in the
+   shift formula. */
+function winHoursOf(St){
+  const E=winEffective(St); let act=0, onc=0;
+  E.locs.forEach(l=>l.w.forEach(w=>{ if(w.m==="oncall") onc+=wLen(w); else act+=wLen(w); }));
+  return {winH:E.need.winH,act:act,onc:onc};
+}
+function winRatioFor(t,B,fac,WH){
+  const m=/^(\d+)x(\d)$/.exec(t.coverage||""); if(!m||+m[1]!==WH.winH) return 1;
+  const d=+m[2], wk=Math.min(d,5), we=Math.max(0,d-5), passive=(+m[1])>8&&t.oohModel==="passive";
+  const activeW=WH.act*wk+(passive?0:WH.act*we), oncW=WH.onc*wk+(passive?(WH.act+WH.onc)*we:WH.onc*we);
+  const ref=effShiftsPerWeek(t,B,fac); if(!(ref>0)) return 1;
+  return ((activeW+oncW*fac)/8)/ref;
 }
 
 /* [F] AIOps use-case catalogue, drawn from the AI-scope lists in Scenarios 1-4.
@@ -1215,6 +1243,7 @@ function runEngine(S,opts){
   const S2 = aiopsOn===e.aiops ? S : Object.assign({},S,{eng:Object.assign({},e,{aiops:aiopsOn})});
   const towers=S.towers.filter(t=>t.enabled);
   const years=[];
+  const WH=(e.winDrive&&e.win)?winHoursOf(S):null;
 
   for(let y=1;y<=e.term;y++){
     const yi=Math.min(y,3)-1;                        // benchmarks are Y1 / Y2 / Y3+
@@ -1236,6 +1265,7 @@ function runEngine(S,opts){
       const srEff  = srRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const crEff  = crRaw*deflFac*B.inflowMul[yi]*(smp.pass||1);
       const v   = incEff;
+      const emx=effectiveMix(t,S), emt=((+emx.P1||0)+(+emx.P2||0)+(+emx.P3||0)+(+emx.P4||0))||1, p1mT=incEff*((+emx.P1||0)/emt);
       const cas = tierCascade(effectiveMix(t,S)===t.mix?t:Object.assign({},t,{mix:effectiveMix(t,S)}),B,yi,opts.routing,v,passAt(S,yi));
       const t1inc=cas.l1, t2=cas.l2, t3=cas.l3;
       const t1=t1inc+srEff;                          // L1 ticket count for display includes SR fulfilment tickets
@@ -1275,7 +1305,7 @@ function runEngine(S,opts){
       tk=[tk[0]+t1,tk[1]+t2,tk[2]+t3];
       const fte=(a+b+g)/B.hoursMonth;
       baseFTE+=fte;
-      rows.push({id:t.id,type:t.type,label:t.label||"",hSr:hSr,vol:v+srEff+crEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,crVol:crEff,hCr:hCr,A:a,B:b,G:g,fte:fte,sla:sm,
+      rows.push({id:t.id,type:t.type,label:t.label||"",incM:incEff,p1m:p1mT,hSr:hSr,vol:v+srEff+crEff,t1:t1,t2:t2,t3:t3,h1:h1,h2:h2,h3:h3,crVol:crEff,hCr:hCr,A:a,B:b,G:g,fte:fte,sla:sm,
                  cpxTier:cpxTier,cpxBump:cpxBump,
                  own:{L1:ownerOf(t,"L1"),L2:ownerOf(t,"L2"),L3:ownerOf(t,"L3")},bnd:bnd,handoff:handoff});
     });
@@ -1285,17 +1315,28 @@ function runEngine(S,opts){
     // A rostered floor only applies where we hold a front-line tier. If we are the
     // L3 escalation party only, coverage is on-call, not a staffed rota.
     const frontline=towers.filter(t=>isOurs(t,"L1")||isOurs(t,"L2"));
-    let floor=0, floorNote="";
+    let floor=0, floorNote="", oocFac=null, winR=1;
     if(frontline.length){
+      const incTot=sum(rows.map(r=>r.incM||0));
+      const ovr=(e.p1PerMonth!=null&&e.p1PerMonth!==""&&!isNaN(+e.p1PerMonth))?(+e.p1PerMonth)*(B.inflowMul[yi]/(B.inflowMul[0]||1)):null;
+      const swOf=t=>{
+        const r=rows.find(x=>x.id===t.id)||{}, p1=ovr!=null?(incTot>0?ovr*(r.incM||0)/incTot:0):(r.p1m||0), fac=oohFactorFor(B,p1);
+        const ratio=WH?winRatioFor(t,B,fac,WH):1;
+        if(t.coverage!=="8x5"&&t.oohModel==="passive") oocFac=fac;
+        if(Math.abs(ratio-1)>1e-9) winR=ratio;
+        return effShiftsPerWeek(t,B,fac)*ratio;
+      };
       if(e.sharedRoster){
-        const sw=Math.max(...frontline.map(t=>effShiftsPerWeek(t,B)));
+        const sw=Math.max(...frontline.map(swOf));
         const fs=Math.max(...frontline.map(t=>+t.ftePerShift||1));
         floor=(sw*fs)/B.shiftsPerFTE;
         floorNote="shared roster, "+r1(sw)+" shifts/wk x "+fs+" per shift / "+B.shiftsPerFTE;
       }else{
-        floor=sum(frontline.map(t=>(effShiftsPerWeek(t,B)*(+t.ftePerShift||1))/B.shiftsPerFTE));
+        floor=sum(frontline.map(t=>(swOf(t)*(+t.ftePerShift||1))/B.shiftsPerFTE));
         floorNote="per-tower rosters, summed";
       }
+      if(Math.abs(winR-1)>1e-9) floorNote+="; delivery windows scale it by x"+r2(winR);
+      if(oocFac!=null&&B.oohMode==="p1") floorNote+="; on-call allowance "+pct(oocFac)+" from P1 volume";
     }else if(towers.length){
       floorNote="no front-line tier in our scope - on-call, not rostered";
     }
@@ -1342,7 +1383,7 @@ function runEngine(S,opts){
                  SDM:sdm,AIOps:aiopsFTE,Special:spc.total};
 
     years.push({y:y,yi:yi,rows:rows,vol:vol,tickets:tk,A:A,B:Bh,G:G,
-      baseFTE:baseFTE,floor:floor,floorBinds:floorBinds,floorNote:floorNote,
+      baseFTE:baseFTE,floor:floor,floorBinds:floorBinds,floorNote:floorNote,oocFac:oocFac,winR:winR,
       hyper:hyper,engUplift:engUplift,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,cont:cont,contPct:contPct,
       special:spc.total,specialRows:spc.rows,total:total,roles:roles,shape:sh});
   }
@@ -4120,6 +4161,35 @@ function selfTests(){
       ok:/^<!doctype html>/.test(dSum)&&/<\/html>$/.test(dSum)&&/^<!doctype html>/.test(dOn)&&!/<script/i.test(dSum+dOn)&&!/\$/.test(dOn)});
   }
 
+  // on-call allowance from P1 volume, and delivery windows that drive the coverage floor
+  {
+    const Sx=S;
+    const mk=(mut)=>{ const T=seedRoles(defaults()); T.eng.region="eu"; T.towers.forEach(t=>{t.coverage="24x7"; t.oohModel="passive"; t.mode="history"; t.inc=100; t.sr=0; t.mix={P1:10,P2:20,P3:40,P4:30};}); mut&&mut(T); return T; };
+    const yr=(T)=>{ S=T; try{ return runEngine(T,{}).years[0]; }finally{ S=Sx; } };
+    const Tf=mk(), Tp=mk(T=>{ T.bench.oohMode="p1"; }), To=mk(T=>{ T.bench.oohMode="p1"; T.eng.p1PerMonth=20; });
+    const yf=yr(Tf), yp=yr(Tp), yo=yr(To);
+    out.push({n:"On-call allowance: flat 15% by default, unchanged",exp:"15%",got:pct(yf.oocFac),ok:near(yf.oocFac,0.15,1e-9)});
+    out.push({n:"On-call allowance from P1 volume: standby 10% + 10 P1s a month x 3 h / 728",exp:pct(0.1+30/728),got:pct(yp.oocFac),ok:near(yp.oocFac,0.1+30/728,1e-9)});
+    out.push({n:"On-call allowance from P1 volume: a P1s-a-month entry overrides the tower volume",exp:pct(0.1+60/728),got:pct(yo.oocFac),ok:near(yo.oocFac,0.1+60/728,1e-9)});
+    out.push({n:"On-call allowance moves the coverage floor: 5 + 16 off-hours shifts x allowance",exp:fmt((5+16*(0.1+30/728))*1/Tp.bench.shiftsPerFTE,3)+" FTE",got:fmt(yp.floor,3)+" FTE",ok:near(yp.floor,(5+16*(0.1+30/728))*(+Tp.towers[0].ftePerShift||1)/Tp.bench.shiftsPerFTE,1e-6)});
+    // windows that reproduce the declared window change nothing; overlap raises the floor, a missing location lowers it
+    let allSame=true, firstBad="";
+    ["ime","eu","apac","na"].forEach(r=>["24x7","16x5","8x5"].forEach(cv=>["active","passive"].forEach(om=>{
+      const T0=mk(T=>{ T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;}); });
+      const T1=mk(T=>{ T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;}); winMat(T); T.eng.winDrive=true; });
+      const a=yr(T0).floor, b=yr(T1).floor; if(!near(a,b,1e-9)){ allSame=false; firstBad=firstBad||(r+" "+cv+" "+om+" "+fmt(a,3)+" vs "+fmt(b,3)); }
+    })));
+    out.push({n:"Windows drive the floor: automatic windows reproduce the declared window for every region, window and model",exp:"identical floor",got:allSame?"identical":firstBad,ok:allSame});
+    const TA=mk(T=>{ T.eng.region="eu"; T.towers.forEach(t=>{t.coverage="24x5"; t.oohModel="active";}); winMat(T); T.eng.winDrive=true; });
+    const base0=yr(TA).floor;
+    const TB=mk(T=>{ T.eng.region="eu"; T.towers.forEach(t=>{t.coverage="24x5"; t.oohModel="active";}); winMat(T); T.eng.winDrive=true; const k=Object.keys(T.eng.win.locs.eu)[0]; T.eng.win.locs.eu[k].w.push({id:"x",m:"active",s:9,e:13}); });
+    const TC=mk(T=>{ T.eng.region="eu"; T.towers.forEach(t=>{t.coverage="24x5"; t.oohModel="active";}); winMat(T); T.eng.winDrive=true; const L=T.eng.win.locs.eu; Object.keys(L).forEach(k=>{ if(L[k].w.length) L[k].w=L[k].w.slice(0,1); }); L[Object.keys(L).filter(k=>L[k].w.length).pop()].w=[]; });
+    const fB=yr(TB).floor, fC=yr(TC).floor;
+    out.push({n:"Windows drive the floor: 4 h of overlap raises it by (24+4)/24, a location with no window lowers it",exp:fmt(base0*28/24,3)+" up, below "+fmt(base0,3)+" down",got:fmt(fB,3)+" / "+fmt(fC,3),ok:near(fB,base0*28/24,1e-6)&&fC<base0-1e-9});
+    const Toff=mk(T=>{ T.eng.region="eu"; T.towers.forEach(t=>{t.coverage="24x5"; t.oohModel="active";}); winMat(T); const k=Object.keys(T.eng.win.locs.eu)[0]; T.eng.win.locs.eu[k].w.push({id:"x",m:"active",s:9,e:13}); });
+    out.push({n:"Windows only drive the floor when the switch is on",exp:"unchanged with it off",got:fmt(yr(Toff).floor,3)+" vs "+fmt(base0,3),ok:near(yr(Toff).floor,base0,1e-9)});
+  }
+
   // delivery windows (analysis only) and the grouped register
   {
     const Sx=S;
@@ -4690,7 +4760,7 @@ function renderRail(){
   ,true);
 
   h+=sec("cpx","Estate complexity",renderCpxRail(),!!S.eng.complexity);
-  h+=sec("win","Delivery windows (analysis)",renderWinRail(),!!S.eng.win);
+  h+=sec("win","Delivery windows",renderWinRail(),!!S.eng.win);
 
   let tw="";
   S.towers.forEach((t,i)=>{
@@ -4887,7 +4957,13 @@ function renderRail(){
       '<p class="hint">Score &times; bump-per-point, multiplying the tower\'s non-ticketing effort (B) &mdash; continuous, not a 3-step lookup, so bigger inputs keep moving the FTE past the High threshold instead of flatlining there. Capped here only against adversarial input.</p></div>'+
     '<div class="row c2">'+num("bench.govBase","Governance hrs/mo (deal)",5)+num("bench.govPerTower","Governance hrs/mo (tower)",1)+'</div>'+
     '<div class="field">'+num("bench.handoffPct","Coordination uplift per interface",0.01)+'<p class="hint">Applied to our ticketing effort for each adjacent tier pair under different ownership. <span class="flag">proposed</span></p></div>'+
-    '<div class="field">'+num("bench.oohOnCallFactor","Off-hours on-call factor",0.01)+'<p class="hint">Active-Passive discounts off-hours shifts to this fraction of a dedicated shift. <span class="flag">proposed</span></p></div>'+
+    '<div class="field"><label>Off-hours on-call allowance <span class="flag">proposed</span></label>'+seg("bench.oohMode",[["flat","Flat %"],["p1","From P1 volume"]])+
+      (B.oohMode==="p1"
+        ? '<div class="row c3">'+num("bench.oohStandby","Standby allowance",0.01)+num("bench.p1Hours","Hours per P1 call-out",0.5)+'</div>'+
+          '<div class="field"><label>P1 incidents a month, all hours (optional)</label><input type="text" inputmode="decimal" data-p="eng.p1PerMonth" value="'+esc(String(S.eng.p1PerMonth==null?"":S.eng.p1PerMonth))+'" placeholder="blank = from each tower\'s volume and P1 share"></div>'+
+          '<p class="hint">Allowance = standby % + P1s a month &times; hours per call-out &divide; 728 hours a month. P1s arrive around the clock, so the busy share does not depend on how many hours are on call. Blank uses each tower&rsquo;s incident volume times its P1 share.</p>'
+        : num("bench.oohOnCallFactor","Flat factor",0.01)+'<p class="hint">Active-Passive discounts off-hours shifts to this fraction of a dedicated shift.</p>')+'</div>'+
+    
     '<div class="field"><label>Off-hours on-call location by region <span class="flag">proposed</span></label>'+
       '<div class="row c3">'+
       ["eu","apac","na"].map(function(r){
@@ -5335,6 +5411,15 @@ function buildRegister(base,mc,o1,rp){
   }
   L.push("");
   winRegisterLines().forEach(function(l){ L.push(l); });
+  if(base.years[0].oocFac!=null && (S.bench.oohMode==="p1"||(S.eng.winDrive&&S.eng.win))){
+    var y0r=base.years[0];
+    L.push("## On-call allowance and delivery windows");
+    L.push(S.bench.oohMode==="p1"
+      ? "- Off-hours on-call allowance **"+pct(y0r.oocFac)+"** in Y1, from P1 volume: standby "+pct(+S.bench.oohStandby||0)+" plus P1s a month \u00d7 "+S.bench.p1Hours+" h per call-out \u00f7 728 hours"+(S.eng.p1PerMonth!=null&&S.eng.p1PerMonth!==""?" (P1s a month entered: "+S.eng.p1PerMonth+").":" (P1s a month from each tower's volume and P1 share).")
+      : "- Off-hours on-call allowance **"+pct(y0r.oocFac)+"** (flat).");
+    if(S.eng.winDrive&&S.eng.win) L.push("- The delivery windows drive the coverage floor: scaled by **\u00d7"+r2(y0r.winR)+"** against the declared window. The floor changes the team only when it binds.");
+    L.push("");
+  }
   L.push("## Inclusions");
   L.push("- L1/L2/L3 core maintenance across "+S.towers.filter(t=>t.enabled).map(t=>t.type).join(", ")+".");
   L.push("- Non-ticketing effort at "+pct0(S.eng.estate==="legacy"?0.32:0.22)+" of ticketing effort (transformation, automation, CFR) [F 1.1].");
@@ -5455,7 +5540,7 @@ function mdLite(text){
 var REG_CATS=["Source documents","Scenario & commercial","Coverage & locations","Scope & ownership","Complexity & delivery profile","Skills & roles","Transformation & AIOps","Confidence, risk & contingency","Client responsibilities","Calibration & source notes","Other"];
 function regCategoryOf(t){
   var m=[["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
-    ["Coverage","Coverage & locations"],["Delivery location","Coverage & locations"],["Delivery windows","Coverage & locations"],["Service responsibility","Scope & ownership"],["Inclusions","Scope & ownership"],
+    ["Coverage","Coverage & locations"],["Delivery location","Coverage & locations"],["Delivery windows","Coverage & locations"],["On-call allowance","Coverage & locations"],["Service responsibility","Scope & ownership"],["Inclusions","Scope & ownership"],
     ["Delivery profile","Complexity & delivery profile"],["Estate complexity","Complexity & delivery profile"],["Special roles","Skills & roles"],["Role & grade staffing plan","Skills & roles"],
     ["AIOps roadmap","Transformation & AIOps"],["Transition, AIOps","Transformation & AIOps"],["Adjacent automation","Transformation & AIOps"],["Confidence posture","Confidence, risk & contingency"],
     ["Exclusions & client responsibilities","Client responsibilities"],["Proposed defaults","Calibration & source notes"],["Known inconsistencies","Calibration & source notes"]];
@@ -5631,13 +5716,27 @@ function winCard(){
   h+='<div class="tablewrap" style="overflow-x:auto">'+winTable(E,C)+'</div>';
   h+='<div class="wleg"><span><i style="background:var(--good)"></i>Active</span><span><i style="background:var(--warn)"></i>On call (P1)</span><span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Needs active staff</span><span><i style="border:1px dashed var(--accent)"></i>Needs cover, on call is enough</span>'+(C.gapH>0?'<span><i style="background:var(--crit-soft);border:1px solid var(--crit)"></i>Uncovered</span>':'')+'</div>';
   h+='<div class="callout '+(C.gapH>0?'':'acc')+'" style="margin:8px 0">'+winVerdict(E,C)+'</div>';
+  {
+    const y0=runEngine(S,{}).years[0], B_=S.bench;
+    const allow=y0.oocFac!=null?(B_.oohMode==="p1"?'on-call allowance <b>'+pct(y0.oocFac)+'</b> from P1 volume':'on-call allowance <b>'+pct(y0.oocFac)+'</b> (flat)'):'';
+    if(S.eng.winDrive&&S.eng.win){
+      h+='<div class="callout" style="margin:8px 0"><b>The windows drive the coverage floor.</b> It is scaled by <b>&times;'+fmt(y0.winR,2)+'</b> against the declared window'+(allow?'; '+allow:'')+
+        '. The floor changes the team only when it binds (it is above the work-based FTE; Year 1 floor '+fmt(y0.floor)+' against '+fmt(y0.baseFTE)+').'+(C.gapH>0?' <b>'+fmt(C.gapH)+' uncovered hours are not staffed in this estimate</b>; fix the gap or accept it.':'')+'</div>';
+    }else if(S.eng.winDrive){
+      h+='<div class="callout" style="margin:8px 0">Windows drive is on, but the windows are still automatic, which reproduce the declared window exactly (&times;1.00). Edit a window in the rail to see the effect.'+(allow?' '+allow.charAt(0).toUpperCase()+allow.slice(1)+'.':'')+'</div>';
+    }else if(allow&&B_.oohMode==="p1"){
+      h+='<div class="callout" style="margin:8px 0">'+allow.charAt(0).toUpperCase()+allow.slice(1)+'. It changes the team only where the coverage floor binds.</div>';
+    }
+  }
   h+='<div class="tablewrap" style="margin-top:8px">'+winMixTable(E,C)+'</div><p class="hint">Where the share of active hours differs from the location mix by more than 10 points it is shown in orange: the windows and the mix tell different stories.</p>';
   return h+'</div></div>';
 }
 function winRailTz(){ return ""; }
 function renderWinRail(){
   var E=winEffective(S), n=E.need, C=winCoverage(E);
-  var h='<p class="hint">Analysis only. Set the customer time zone, then each location\'s UTC offset and working windows in its own local time. The timeline in the results shows active hours, on-call hours, gaps and overlap. FTE and the location mix are not changed.</p>'+
+  var h='<p class="hint">Set the customer time zone, then each location\'s UTC offset and working windows in its own local time. The timeline in the results shows active hours, on-call hours, gaps and overlap. By default this is analysis only; tick the box below to let the windows scale the coverage floor.</p>'+
+    chk("eng.winDrive","Let these windows set the coverage floor")+
+    '<p class="hint">Off: nothing changes. On, with windows set below: the floor is scaled by the staffed hours the windows give (overlap and extra hours raise it, uncovered hours lower it) against the declared window, with on-call hours counted at the on-call allowance. The location mix is never changed. <span class="flag">proposed</span></p>'+
     '<div class="field"><label>Customer time zone, UTC offset</label><input type="number" step="0.5" min="-12" max="14" data-w="tz" value="'+E.tz+'"></div>'+
     '<div class="field"><label>Support window starts at (customer time)</label><input type="time" step="900" data-w="start" value="'+wClock(E.start)+'">'+
       '<p class="hint">'+n.winH+' hours a day, from the longest tower window.</p></div>'+
