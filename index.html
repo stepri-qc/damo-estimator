@@ -215,6 +215,9 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .regview li{margin:2px 0;font-size:13px}
 .regview p{margin:0 0 6px;font-size:13px}
 .regplain{margin-top:14px}
+.covtw{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px 2px;margin-bottom:8px;background:var(--sunken)}
+.covtw h4,.covh{font-size:12.5px;margin:0 0 6px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-ink)}
+.covh{margin:14px 0 6px}
 .regplain summary{cursor:pointer;font-size:12.5px;color:var(--ink-3)}
 .wtl{border-collapse:separate;border-spacing:2px;font:10.5px var(--mono);min-width:1180px;width:100%;table-layout:fixed}
 .wtl th,.wtl td{padding:5px 0;text-align:center;border-radius:3px;white-space:nowrap;overflow:hidden}
@@ -4728,6 +4731,27 @@ function renderIntakeResults(report){
 }
 
 /* ---------- input rail ---------- */
+/* the controls that set a tower's coverage, shown in the Coverage & delivery windows rail section next to the location windows */
+function towerCoverageHtml(t,i){
+  const p="towers."+i;
+  return ""+
+      '<div class="field"><label>Service tier preset <span class="flag">proposed</span></label>'+
+        '<div class="btnrow">'+SERVICE_TIER_PRESETS.map(pr=>
+          '<button class="btn" type="button" data-tierpreset="'+pr.id+'" data-tw="'+i+'" style="font-size:11.5px;padding:4px 8px'+
+          (t.serviceTier===pr.id?';font-weight:700':'')+'">'+esc(pr.label)+'</button>').join("")+'</div>'+
+        '<p class="hint">Sets coverage window, off-hours model, Availability Class and SLA at once &mdash; generic illustrative defaults, not any specific client\'s numbers. Stays fully editable afterward'+
+        (SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier)?' (currently: <b>'+esc(SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier).label)+'</b>)':'')+'.</p></div>'+
+      '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["8x7","8x7"],["16x5","16x5"],["16x7","16x7"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
+      num(p+".ftePerShift","FTE per shift")+
+      (t.coverage!=="8x5"
+        ? '<div class="field"><label>Out-of-office-hours coverage <span class="flag">proposed</span></label>'+
+            seg(p+".oohModel",[["active","Active-Active"],["passive","Active-Passive"]])+
+            '<p class="hint">'+(t.oohModel==="passive"
+              ? '<b>Active-Passive</b> &mdash; the team works actively during business hours and is on call for critical P1 incidents outside them; P2&ndash;P4 off-hours requests queue until business hours resume. Off-hours headcount is a discounted on-call allowance, not a dedicated shift.'+
+                (oohLocationFor(S) ? ' Typically carried by <b>'+esc(oohLocationFor(S))+'</b>, per the delivery-location mix and standard cost-advantage convention <span class="flag">proposed</span> &mdash; edit in Benchmarks if this deal splits differently.' : '')
+              : '<b>Active-Active</b> &mdash; dedicated people actively staff every hour of the declared window, off-hours included, same as business hours.')+'</p></div>'
+        : '');
+}
 function renderRail(){
   const B=S.bench, sc=scenarioDef(S), n=scenarioOf(S.eng);
   let h="";
@@ -4760,7 +4784,6 @@ function renderRail(){
   ,true);
 
   h+=sec("cpx","Estate complexity",renderCpxRail(),!!S.eng.complexity);
-  h+=sec("win","Delivery windows",renderWinRail(),!!S.eng.win);
 
   let tw="";
   S.towers.forEach((t,i)=>{
@@ -4845,24 +4868,9 @@ function renderRail(){
         '<div class="ownrow"><span class="k">L2</span>'+ownSel(p,"L2",t)+'</div>'+
         '<div class="ownrow"><span class="k">L3</span>'+ownSel(p,"L3",t)+'</div>'+
         '<p class="hint">Only tiers marked <b>DAMO (us)</b> are sized. Others still carry volume through the cascade.</p></div>'+
-      '<div class="field"><label>Service tier preset <span class="flag">proposed</span></label>'+
-        '<div class="btnrow">'+SERVICE_TIER_PRESETS.map(pr=>
-          '<button class="btn" type="button" data-tierpreset="'+pr.id+'" data-tw="'+i+'" style="font-size:11.5px;padding:4px 8px'+
-          (t.serviceTier===pr.id?';font-weight:700':'')+'">'+esc(pr.label)+'</button>').join("")+'</div>'+
-        '<p class="hint">Sets coverage window, off-hours model, Availability Class and SLA at once &mdash; generic illustrative defaults, not any specific client\'s numbers. Stays fully editable afterward'+
-        (SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier)?' (currently: <b>'+esc(SERVICE_TIER_PRESETS.find(x=>x.id===t.serviceTier).label)+'</b>)':'')+'.</p></div>'+
-      '<div class="field"><label>Coverage window</label>'+seg(p+".coverage",[["8x5","8x5"],["8x7","8x7"],["16x5","16x5"],["16x7","16x7"],["24x5","24x5"],["24x7","24x7"]])+'</div>'+
-      num(p+".ftePerShift","FTE per shift")+
-      (t.coverage!=="8x5"
-        ? '<div class="field"><label>Out-of-office-hours coverage <span class="flag">proposed</span></label>'+
-            seg(p+".oohModel",[["active","Active-Active"],["passive","Active-Passive"]])+
-            '<p class="hint">'+(t.oohModel==="passive"
-              ? '<b>Active-Passive</b> &mdash; the team works actively during business hours and is on call for critical P1 incidents outside them; P2&ndash;P4 off-hours requests queue until business hours resume. Off-hours headcount is a discounted on-call allowance, not a dedicated shift.'+
-                (oohLocationFor(S) ? ' Typically carried by <b>'+esc(oohLocationFor(S))+'</b>, per the delivery-location mix and standard cost-advantage convention <span class="flag">proposed</span> &mdash; edit in Benchmarks if this deal splits differently.' : '')
-              : '<b>Active-Active</b> &mdash; dedicated people actively staff every hour of the declared window, off-hours included, same as business hours.')+'</p></div>'
-        : '')+
       '</div></div>';
   });
+  const covTw=S.towers.map(function(t,i){ return '<div class="covtw"><h4>'+esc(t.type+(t.label?" ("+t.label+")":""))+'</h4>'+towerCoverageHtml(t,i)+'</div>'; }).join("");
   const mix=mixOf(S);
   tw='<div class="field"><label>Service mix &mdash; what are we proposing?</label>'+
      '<div class="mixrow">'+["AMS","IMS","DMS"].map(k=>
@@ -4878,6 +4886,7 @@ function renderRail(){
       '<button class="btn" type="button" data-add="IMS">+ IMS</button>'+
       '<button class="btn" type="button" data-add="DMS">+ DMS</button></div></div>';
   h+=sec("tow","Service towers",tw,true);
+  h+=sec("win","Coverage & delivery windows",'<p class="hint">Each tower\'s service tier preset, coverage window and off-hours model, then the delivery locations\' working windows. The windows below are analysis only unless you tick the box in that part.</p>'+covTw+'<h4 class="covh">Delivery windows by location</h4>'+renderWinRail(),!!S.eng.win);
   h+=sec("seniority","Seniority mix",renderSeniorityRail());
 
   h+=sec("special","Special roles",renderSpecialRail(),(S.specialRoles||[]).length>0);
@@ -5712,7 +5721,7 @@ function winCard(){
   var E=winEffective(S), C=winCoverage(E), n=E.need;
   var h='<div class="card"><header><h2>Delivery windows &mdash; overlap, on-call and gaps</h2><span class="note">Analysis only: shows how the locations\' hours line up. It does not change FTE or the location mix.</span></header><div class="cardbody">';
   h+='<p class="hint" style="margin:0 0 8px">Required: '+n.winH+' hours a day, '+n.days+' days, from '+wClock(E.start)+' customer time'+(n.activeAll?', fully staffed.':'; business hours '+wClock(E.biz)+'-'+wClock(E.biz+n.actH)+' fully staffed, the rest on call (Active-Passive).')+
-    ' Towers: '+n.lines.map(function(l){return esc(l.type)+' '+esc(l.coverage)+(l.passive?' passive':'');}).join(", ")+'. '+(E.custom?'Windows are set by you in the rail.':'Windows are laid out automatically from the location mix; set your own under Delivery windows in the rail.')+'</p>';
+    ' Towers: '+n.lines.map(function(l){return esc(l.type)+' '+esc(l.coverage)+(l.passive?' passive':'');}).join(", ")+'. '+(E.custom?'Windows are set by you in the rail.':'Windows are laid out automatically from the location mix; set your own under Coverage & delivery windows in the rail.')+'</p>';
   h+='<div class="tablewrap" style="overflow-x:auto">'+winTable(E,C)+'</div>';
   h+='<div class="wleg"><span><i style="background:var(--good)"></i>Active</span><span><i style="background:var(--warn)"></i>On call (P1)</span><span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Needs active staff</span><span><i style="border:1px dashed var(--accent)"></i>Needs cover, on call is enough</span>'+(C.gapH>0?'<span><i style="background:var(--crit-soft);border:1px solid var(--crit)"></i>Uncovered</span>':'')+'</div>';
   h+='<div class="callout '+(C.gapH>0?'':'acc')+'" style="margin:8px 0">'+winVerdict(E,C)+'</div>';
