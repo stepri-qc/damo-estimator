@@ -462,7 +462,7 @@ function defaults(){return{
     // bench.cpx). contPct / cont2 are optional overrides (null = take the tier's value).
     complexity:"", contPct:null, cont2:null,
     // PROPOSED - editable final number (commercial position): a % change or a proposed FTE per year, with a reason; see adjDeltas().
-    adj:{on:false,mode:"pct",pct:0,y:[],reason:"",note:"",mit:{},extra:[]},
+    adj:{on:false,mode:"fte",pct:0,fte:null,y:[],reason:"",note:"",mit:{},extra:[]},
     // PROPOSED - what the commercial options use beyond the estimate: months of ticket history, a measurable baseline, a budget ceiling (Year 1 FTE), price pressure.
     cm:{histMonths:null,baseline:"unknown",ceiling:null,pressure:"medium"},
     // PROPOSED - observed pass-through for THIS deal (percent, null = use the benchmark): the share
@@ -1312,6 +1312,7 @@ function adjDeltas(St){
   var d=m.years.map(function(y,i){
     var cut=0;
     if(A.mode==="year"){ var v=A.y&&A.y[i]; if(v!=null&&v!==""&&!isNaN(+v)) cut=y.total-(+v); }
+    else if(A.mode==="fte"){ var f=A.fte; if(f!=null&&f!==""&&!isNaN(+f)&&m.years[0].total>0) cut=y.total*(1-Math.max(0,+f)/m.years[0].total); }
     else cut=y.total*(+A.pct||0)/100;
     if(Math.abs(cut)>1e-9) any=true; return cut; });
   return any?d:null;
@@ -1389,7 +1390,11 @@ function adjLiveHtml(St){
   var nr=adjRisks(St,p).length;
   return '<div class="callout acc"><b>'+ys.map(function(y){return "Y"+y.y+" "+fmt(y.adj.modelled)+" &rarr; "+fmt(y.total);}).join("; ")+' FTE.</b> '+nr+' risk'+(nr===1?"":"s")+' flagged; see Final number and commercial position in the results.</div>';
 }
-function adjLiveUpdate(){ var el=document.getElementById("adjLive"); if(el) el.innerHTML=adjLiveHtml(S); var c_=document.getElementById("cmLive"); if(c_) c_.innerHTML=cmLiveHtml(S); }
+function adjFteHintText(St){
+  var A=adjOf(St), m=runEngine(St,{noAdj:true}).years[0].total, f=(A&&A.fte!=null&&A.fte!==""&&!isNaN(+A.fte)&&m>0)?+A.fte:null;
+  return "The tool models "+fmt(m,2)+" FTE for Year 1."+(f!=null?" "+fmt(f,2)+" FTE is "+(f/m-1>=0?"+":"-")+fmt(Math.abs(f/m-1)*100,1)+"%, and every later year moves by the same proportion. Use Per year to set each year yourself.":" Later years move by the same proportion as Year 1. Use Per year to set each year yourself.");
+}
+function adjLiveUpdate(){ var fh=document.getElementById("adjFteHint"); if(fh) fh.textContent=adjFteHintText(S); var el=document.getElementById("adjLive"); if(el) el.innerHTML=adjLiveHtml(S); var c_=document.getElementById("cmLive"); if(c_) c_.innerHTML=cmLiveHtml(S); }
 /* ---------- commercial options ----------
    Rates four commercial models from the data the estimate already holds: fixed fee, outcome-based, time and materials, and
    an assessment-led start (T&M first, fixed fee once there is data). The starting point is the framework's scenario
@@ -1522,8 +1527,10 @@ function renderAdjRail(){
   var h=renderCmRail()+'<p class="hint">Set a proposed final number for the deal (client budget, price to win) and keep the modelled one beside it. The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut. A reason is required before it counts.</p>'+
     chk("eng.adj.on","Adjust the final number");
   if(A.on){
-    h+='<div class="field"><label>How to set it</label>'+seg("eng.adj.mode",[["pct","% change"],["year","Per year"]])+'</div>';
-    if(A.mode==="year"){
+    h+='<div class="field"><label>How to set it</label>'+seg("eng.adj.mode",[["fte","Year 1 FTE"],["pct","% change"],["year","Per year"]])+'</div>';
+    if(A.mode==="fte"){
+      h+='<div class="field"><label>Proposed Year 1 team, FTE</label><input type="number" step="0.1" min="0" data-adjfte="1" value="'+((A.fte==null||A.fte==="")?"":A.fte)+'" placeholder="modelled '+fmt(m.years[0].total)+'"><p class="hint" id="adjFteHint"></p></div>';
+    }else if(A.mode==="year"){
       h+='<div class="field"><label>Proposed FTE a year (blank keeps the modelled number)</label><div class="adjyears">'+
         m.years.map(function(y,i){ var v=A.y&&A.y[i]; return '<label style="font-size:11.5px">Y'+y.y+'<input type="number" step="0.1" min="0" data-adjy="'+i+'" value="'+((v==null||v==="")?"":v)+'" placeholder="'+fmt(y.total)+'"></label>'; }).join("")+'</div></div>';
     }else{
@@ -1748,18 +1755,23 @@ function runEngine(S,opts){
    diamond -> inverted, which is what the framework's "leaner but senior-heavy
    team" narrative actually means in staffing terms. */
 function gradeMix(tier,idx,S){
-  // 3 grades only: [Lead, Senior, Consultant]. L1/L2/L3 take the pyramid of the
-  // chosen estate complexity (Low 1:2:4 when none is set); GOV (SDM) is wholly Lead and
-  // SPECIAL keeps 1:2:4. Uplift moves Consultant -> Senior and Senior -> Lead as the
-  // shape inverts; for GOV both source terms are zero, so the 100% Lead mix holds.
+  // 3 grades only: [Lead, Senior, Consultant]. Leads are the SDMs (GOV, wholly Lead) and a tech lead on
+  // L3 only: L1 and L2, the special roles and the AI engineers have no Lead, just Senior and Consultant in
+  // the pyramid's own ratio. L3 takes the pyramid of the chosen estate complexity (Low 1:2:4 when none is
+  // set) as its tech-lead share. Uplift moves Consultant -> Senior only as the shape inverts. rolePlan then
+  // caps Lead at Senior across the whole team.
   let b;
   if(tier==="L1"||tier==="L2"||tier==="L3"){
     const c=cpxOf(S), py=(c&&c.pyr)||[1,2,4], ps=sum(py)||1;
     b=py.map(v=>v/ps);
-  }else b=(S.bench.gradeMix[tier]||[1/7,2/7,4/7]).slice();
+    if(tier!=="L3"){ const sc=(b[1]+b[2])||1; b=[0,b[1]/sc,b[2]/sc]; }
+  }else{
+    b=(S.bench.gradeMix[tier]||[1/7,2/7,4/7]).slice();
+    if(tier!=="GOV"){ const sc=(b[1]+b[2])||1; b=[0,b[1]/sc,b[2]/sc]; }
+  }
   const u=clamp(idx,0,1)*(S.bench.seniorityUplift||0);
-  const c2s=b[2]*u, s2l=b[1]*u;
-  return [b[0]+s2l, b[1]-s2l+c2s, b[2]-c2s];
+  const c2s=b[2]*u;
+  return [b[0], b[1]+c2s, b[2]-c2s];
 }
 function shapeIndex(key){
   if(key==="Pyramid") return 0;
@@ -1830,6 +1842,23 @@ function rolePlan(S,base){
       roleGrades[key]=mix.map(p=>sr.fte*p);
       GRADES.forEach((g,i)=>{ gradeTot[g]+=sr.fte*mix[i]; });
     });
+    // Lead is never above Senior across the whole team: the tech lead gives way first, and if the SDMs alone
+    // still outnumber the Seniors, Consultants are lifted to Senior. Headcount never changes.
+    {
+      const isGov=k=>{ const r=ROLES.find(x=>x.id===k); return r&&r.tier==="GOV"; };
+      const keys=Object.keys(roleGrades).filter(k=>!isGov(k));
+      let ex=gradeTot.Lead-gradeTot.Senior;
+      if(ex>1e-9){
+        const tl=keys.reduce((a,k)=>a+roleGrades[k][0],0), x=Math.min(tl,ex/2);
+        if(tl>0&&x>0) keys.forEach(k=>{ const m=roleGrades[k][0]*x/tl; roleGrades[k][0]-=m; roleGrades[k][1]+=m; });
+        ex-=2*(tl>0?x:0);
+        if(ex>1e-9){
+          const ct=keys.reduce((a,k)=>a+roleGrades[k][2],0), y=Math.min(ct,ex);
+          if(ct>0&&y>0) keys.forEach(k=>{ const m=roleGrades[k][2]*y/ct; roleGrades[k][2]-=m; roleGrades[k][1]+=m; });
+        }
+        GRADES.forEach((g,i)=>{ gradeTot[g]=Object.keys(roleGrades).reduce((a,k)=>a+roleGrades[k][i],0); });
+      }
+    }
     return {y:yr.y,alloc:alloc,roleGrades:roleGrades,gradeTot:gradeTot,shape:yr.shape,idx:idx};
   });
 }
@@ -3800,13 +3829,13 @@ function selfTests(){
   out.push({n:"Estate complexity not set: no contingency, Total = delivery + AIOps + special",
             exp:"cont 0 each year",got:bC0.years.map(y=>r1(y.cont)).join(" / "),
             ok:bC0.years.every(y=>y.cont===0&&near(y.total,y.delivery+y.aiopsFTE+y.special,1e-9))});
-  const pyrOf=k=>{ const T=seedRoles(defaults()); T.eng.complexity=k; return gradeMix("L2",0,T); };
-  const pL=pyrOf("low"), pM=pyrOf("medium"), pH=pyrOf("high"), pN=gradeMix("L2",0,Tc0);
-  out.push({n:"Pyramid follows estate complexity: Low 1:2:4, Medium 1:2:3, High 1:2:2 (not set = 1:2:4); SDM and specials unaffected",
+  const pyrOf=k=>{ const T=seedRoles(defaults()); T.eng.complexity=k; return gradeMix("L3",0,T); };
+  const pL=pyrOf("low"), pM=pyrOf("medium"), pH=pyrOf("high"), pN=gradeMix("L3",0,Tc0);
+  out.push({n:"Pyramid follows estate complexity on L3 (the tech-lead share): Low 1:2:4, Medium 1:2:3, High 1:2:2 (not set = 1:2:4); SDM and specials unaffected",
             exp:"[1/7,2/7,4/7] [1/6,2/6,3/6] [1/5,2/5,2/5]",
             got:[pL,pM,pH].map(m=>m.map(v=>v.toFixed(3)).join("/")).join(" | "),
             ok:[pN,pL].every(m=>near(m[0],1/7,1e-9)&&near(m[2],4/7,1e-9))&&near(pM[0],1/6,1e-9)&&near(pM[2],3/6,1e-9)&&near(pH[0],1/5,1e-9)&&near(pH[2],2/5,1e-9)&&
-               (()=>{ const T=seedRoles(defaults()); T.eng.complexity="high"; const g=gradeMix("GOV",0,T), sp=gradeMix("SPECIAL",0,T); return g[0]===1&&near(sp[2],4/7,1e-9); })()});
+               (()=>{ const T=seedRoles(defaults()); T.eng.complexity="high"; const g=gradeMix("GOV",0,T), sp=gradeMix("SPECIAL",0,T); return g[0]===1&&sp[0]===0&&near(sp[2],2/3,1e-9); })()});
   const Tcm=seedRoles(defaults()); Tcm.eng.term=3; Tcm.eng.complexity="medium";
   const bCm=runEngine(Tcm,{});
   out.push({n:"Contingency = % of delivery (incl. SDM): Medium 7.5% in Y1, tapering to 6% from Y2",
@@ -3858,7 +3887,7 @@ function selfTests(){
   // legacy state
   const legacyOld=defaults(); delete legacyOld.eng.complexity; legacyOld.roles={ise:true}; legacyOld.roleW={ise:3};
   delete legacyOld.bench.cpx; legacyOld.bench.gradeMix={L1:[1,0,0],L2:[1,0,0],L3:[1,0,0],GOV:[1,0,0],AIOPS:[1,0,0]};
-  let legacyOk=true; try{ const s2=seedRoles(legacyOld); runEngine(s2,{}); rolePlan(s2,runEngine(s2,{})); legacyOk=s2.eng.complexity===""&&s2.roles===undefined&&!!s2.bench.cpx.high.pyr&&near(gradeMix("L2",0,s2)[2],4/7,1e-9)&&s2.bench.gradeMix.SPECIAL!=null; }catch(e){ legacyOk=false; }
+  let legacyOk=true; try{ const s2=seedRoles(legacyOld); runEngine(s2,{}); rolePlan(s2,runEngine(s2,{})); legacyOk=s2.eng.complexity===""&&s2.roles===undefined&&!!s2.bench.cpx.high.pyr&&near(gradeMix("L3",0,s2)[2],4/7,1e-9)&&s2.bench.gradeMix.SPECIAL!=null; }catch(e){ legacyOk=false; }
   out.push({n:"Legacy state (role weights, per-tier gradeMix, no estate complexity) loads and defaults cleanly",
             exp:"complexity unset, roles dropped, cpx backfilled, pyramid 1:2:4",got:legacyOk?"ok":"failed",ok:legacyOk});
   const S_cx=S; S=Tcm;
@@ -4620,6 +4649,19 @@ function selfTests(){
       out.push({n:"Commercial options: in the register, not in the Customer summary",exp:"register has the section with a guardrail; customer summary has neither the section nor the word 'guardrail'",got:"register "+(/Commercial options/.test(rg)?"yes":"no")+", customer "+(/Commercial options|Guardrail|fixed fee/i.test(cs)?"leaks":"clean"),ok:/Commercial options/.test(rg)&&/Guardrail/.test(rg)&&!/Commercial options|Guardrail/i.test(cs)});
       const L1=defaults(); delete L1.eng.cm; const sL1=seedRoles(L1);
       out.push({n:"Commercial options: an older link without the inputs loads with their defaults",exp:"cm present, no ticket history set, baseline not confirmed, medium pressure",got:sL1.eng.cm?(sL1.eng.cm.histMonths+"/"+sL1.eng.cm.baseline+"/"+sL1.eng.cm.pressure):"missing",ok:!!sL1.eng.cm&&sL1.eng.cm.histMonths==null&&sL1.eng.cm.baseline==="unknown"&&sL1.eng.cm.pressure==="medium"}); }
+    // grade mix: Lead only for the SDMs and a tech lead on L3, never above Senior
+    { const mkG=(mut)=>{ const T=seedRoles(defaults()); T.eng.region="eu"; T.eng.term=3; T.eng.complexity="medium"; mut&&mut(T); return T; };
+      const sm=(a)=>a.reduce((x,v)=>x+v,0);
+      const l1=gradeMix("L1",0,mkG()), l2=gradeMix("L2",0,mkG()), l3=gradeMix("L3",0,mkG()), gv=gradeMix("GOV",0,mkG()), sp=gradeMix("SPECIAL",1,mkG()), l2u=gradeMix("L2",1,mkG());
+      out.push({n:"Grade mix: L1 and L2 have no Lead, L3 keeps the pyramid's Lead as the tech lead, the SDM is wholly Lead, specials have none",exp:"L1/L2 Lead 0 and sum 1; L3 Lead 1/6 (Medium); GOV [1,0,0]; SPECIAL Lead 0",
+        got:[l1,l2,l3,gv,sp].map(m=>m.map(v=>v.toFixed(3)).join("/")).join(" | "),ok:l1[0]===0&&l2[0]===0&&near(sm(l1),1,1e-9)&&near(sm(l2),1,1e-9)&&near(l3[0],1/6,1e-9)&&gv[0]===1&&sp[0]===0&&l2u[0]===0});
+      const bad=[]; ["low","medium","high"].forEach(cx=>[1,2,3,4,5].forEach(term=>["AMS","IMS","DMS"].forEach(ty=>[false,true].forEach(own=>{ const T=mkG(T=>{ T.eng.complexity=cx; T.eng.term=term; T.towers=[mkTower(ty)]; T.towers[0].inc=40; T.towers[0].sr=10; if(own) T.towers[0].own={L1:"us",L2:"us",L3:"us"}; });
+        const rp=rolePlan(T,runEngine(T,{})); rp.forEach(p=>{ const tot=sm(GRADES.map(g=>p.gradeTot[g])); if(p.gradeTot.Lead>p.gradeTot.Senior+1e-9||Math.abs(tot-sm(Object.keys(p.alloc).map(k=>p.alloc[k])))>1e-6) bad.push(cx+" "+ty+" Y"+p.y); }); }))));
+      out.push({n:"Grade mix: across the whole team Lead is never above Senior, and nobody is lost, for every complexity, tower and term",exp:"no case with Lead above Senior",got:bad.length?bad.slice(0,3).join(", "):"all fine",ok:bad.length===0});
+      const Tf=mkG(T=>{ Object.assign(T.eng.adj,{on:true,mode:"fte",reason:"budget"}); }), mod1=runEngine(Tf,{}).years[0].total;
+      Tf.eng.adj.fte=+(mod1*0.7).toFixed(6); const bf=runEngine(Tf,{}), r=Tf.eng.adj.fte/mod1, modY=runEngine(mkG(),{}).years.map(y=>y.total);
+      out.push({n:"Final number: a proposed Year 1 FTE sets Year 1 exactly and moves later years by the same proportion",exp:"Year 1 = 70% of modelled; every year x 0.7",got:bf.years.map(y=>fmt(y.total,2)).join(" / ")+" vs modelled "+modY.map(v=>fmt(v,2)).join(" / "),
+        ok:near(bf.years[0].total,Tf.eng.adj.fte,1e-6)&&bf.years.every((y,i)=>near(y.total,modY[i]*r,1e-6))&&!!bf.years[0].adj}); }
     const regs=["ime","eu","apac","na"], pass=["24x7","16x5","8x5"];
     let autoOk=true, autoGot=[];
     regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
@@ -5445,7 +5487,7 @@ function tierRoleNames(t,T){
   return ROLES.filter(r=>(r.tier===T||r.tier2===T)&&r.tw.indexOf(t.type)>=0&&roleEligible(r,t,T,S)).map(r=>r.n);
 }
 /* Seniority mix: the Lead : Senior : Consultant pyramid for L1-L3, set by the estate complexity
-   (editable per level here), plus the uplift as the team shape inverts. SDMs are graded Lead. */
+   (editable per level here), plus the uplift as the team shape inverts. Only the SDMs and a tech lead on L3 are Lead. */
 function renderSeniorityRail(){
   const c=cpxOf(S), py=(c&&c.pyr)||[1,2,4], B=S.bench, ps=sum(py)||1;
   const rowFor=k=>{
@@ -5453,7 +5495,7 @@ function renderSeniorityRail(){
     return '<tr'+(act?' style="font-weight:650"':'')+'><td>'+k+(act?' \u25cf':'')+'</td>'+[0,1,2].map(i=>
       '<td><input type="number" step="0.5" min="0" data-p="bench.cpx.'+k+'.pyr.'+i+'" value="'+B.cpx[k].pyr[i]+'"></td>').join("")+'</tr>';
   };
-  return '<p class="hint">Grade mix of the L1&ndash;L3 team, Lead : Senior : Consultant. It follows the <b>Estate complexity</b> you chose and does not change headcount. SDMs are graded Lead; special roles keep 1:2:4. Pyramid ratios follow the DAMO Estimation Workflow (Low 1:2:4, Medium 1:2:3, High 1:2:2).</p>'+
+  return '<p class="hint">Grade mix of the L1&ndash;L3 team, Lead : Senior : Consultant. It follows the <b>Estate complexity</b> you chose and does not change headcount. Only the SDMs and a tech lead on L3 are Lead: L1 and L2 have Seniors and Consultants only, special roles have no Lead, and Lead is never above Senior across the whole team (the tech lead gives way first, then Consultants are lifted to Senior). Pyramid ratios follow the DAMO Estimation Workflow (Low 1:2:4, Medium 1:2:3, High 1:2:2).</p>'+
     '<div class="callout acc">'+(c?'Using <b>'+esc(c.key)+'</b> complexity: ':'Estate complexity not set, using the default: ')+'<b>'+py.join(" : ")+'</b> &mdash; Lead '+pct0(py[0]/ps)+', Senior '+pct0(py[1]/ps)+', Consultant '+pct0(py[2]/ps)+'</div>'+
     '<div class="field"><label>Pyramid by complexity (Lead / Senior / Consultant)</label>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th></th><th>Lead</th><th>Senior</th><th>Consultant</th></tr></thead><tbody>'+
@@ -5461,7 +5503,7 @@ function renderSeniorityRail(){
       '<p class="hint">Ratios, not percentages. Not set uses the Low pyramid.</p></div>'+
     '<div class="field"><label>Seniority uplift as shape inverts</label>'+
       '<input type="number" step="0.05" data-p="bench.seniorityUplift" value="'+B.seniorityUplift+'">'+
-      '<p class="hint">Fraction of Consultant shifted to Senior, and Senior to Lead, at a fully inverted pyramid (the scenario\u2019s team shape moves pyramid &rarr; diamond &rarr; inverted). The resulting grade split by year is in the Role &amp; grade staffing plan (Results).</p></div>';
+      '<p class="hint">Fraction of Consultant shifted to Senior at a fully inverted pyramid (the scenario\u2019s team shape moves pyramid &rarr; diamond &rarr; inverted). The resulting grade split by year is in the Role &amp; grade staffing plan (Results).</p></div>';
 }
 
 /* Effective severity mix preview for a tower (estate complexity tilts it toward P1/P2). */
@@ -5596,8 +5638,8 @@ function chartGrades(rp){
       if(w>34) s+='<text x="'+(cx+w/2)+'" y="'+(top+16)+'" text-anchor="middle" style="fill:#fff;font-family:var(--mono);font-size:9.5px;font-weight:700">'+fmt(v,1)+'</text>';
       cx+=w;
     });
-    const senior=p.gradeTot.Lead/tot;
-    s+='<text class="slabel" x="'+(cx+8)+'" y="'+(top+16)+'">'+pct0(senior)+' Lead+</text>';
+    const senior=(p.gradeTot.Lead+p.gradeTot.Senior)/tot;
+    s+='<text class="slabel" x="'+(cx+8)+'" y="'+(top+16)+'">'+pct0(senior)+' Lead+Senior</text>';
   });
   s+='</svg>';
   return s;
@@ -5730,7 +5772,7 @@ function buildRegister(base,mc,o1,rp){
     L.push("## Estate complexity");
     if(!cx){ L.push("- Not set: seniority pyramid 1:2:4, no contingency added, severity mix used exactly as entered."); }
     else{
-      L.push("- **"+cx.key+"** \u2014 "+CPX_DESC[cx.key]+". Pyramid Lead:Senior:Consultant "+cx.pyr.join(":")+" for L1\u2013L3 (SDM wholly Lead).");
+      L.push("- **"+cx.key+"** \u2014 "+CPX_DESC[cx.key]+". Pyramid Lead:Senior:Consultant "+cx.pyr.join(":")+" for L3 (the tech lead share); L1 and L2 have no Lead, and the SDMs are Lead. Lead is never above Senior overall.");
       L.push("- Contingency, as real FTE on the delivery team incl. SDM (special roles carry none): "+base.years.map(function(y){return "Y"+y.y+" "+fmt(y.contPct,1)+"% = "+fmt(y.cont)+" FTE";}).join(", ")+". Y1 value follows the Estimation Workflow complexity table"+((S.eng.contPct!=null&&S.eng.contPct!=="")?" (overridden by the user)":"")+"; Y2+ tapers to the lower of Y1 and "+(+B.contTaperCap||6)+"%"+((S.eng.cont2!=null&&S.eng.cont2!=="")?" (overridden by the user)":"")+".");
       if(+cx.sev>0) S.towers.filter(function(t){return t.enabled;}).forEach(function(t){
         var e=effectiveMix(t,S), tot=sum(["P1","P2","P3","P4"].map(function(k){return +t.mix[k]||0;}))||1;
@@ -5892,11 +5934,11 @@ function buildRegister(base,mc,o1,rp){
         });
       });
       L.push("");
-      L.push("Grade mix, Lead > Senior > Consultant (target ratio 1:2:4):");
+      L.push("Grade mix. Lead is the SDMs and a tech lead on L3 only, and never above Senior:");
       rp.forEach(function(p){
         var tot=sum(GRADES.map(function(g){return p.gradeTot[g];}))||1e-9;
         L.push("- Y"+p.y+" ("+p.shape.key+"): "+GRADES.map(function(g){return g+" "+fmt(p.gradeTot[g]);}).join(", ")+
-               " \u2014 Lead share "+pct0(p.gradeTot.Lead/tot)+".");
+               " \u2014 Lead + Senior share "+pct0((p.gradeTot.Lead+p.gradeTot.Senior)/tot)+".");
       });
       L.push("");
       L.push("Role weights, tier assignment and grade mixes are PROPOSED defaults derived from the role list, not from the framework. Calibrate before committing.");
@@ -5939,7 +5981,7 @@ function buildRegister(base,mc,o1,rp){
   L.push("- Team-shape splits L1/L2/L3 \u2014 pyramid "+B.shapes.pyramid.join("/")+", diamond "+B.shapes.diamond.join("/")+", inverted "+B.shapes.inverted.join("/")+".");
   L.push("- Governance load "+B.govBase+" hrs/month at deal level plus "+B.govPerTower+" hrs/month per tower.");
   L.push("- Role policy (manual-estimation, not framework-sourced): a fixed role map per tower, with no catalogue, ticks or weights. L1 is a Product Support Engineer only where L1 is in our scope; AMS L2 and L3 are Systems Support Engineers, with a Developer taking L3 once evolution work reaches "+B.evoThreshold+"% (\"SSEs are capable of doing the minor enhancements\" below it); IMS L2 and L3 are Infrastructure Support Engineers; DMS L2 and L3 are Data Support Engineers; governance is the Service Delivery Manager, 1:"+B.span+". SRE, QA, L1.5, and Advisory are not tower roles: they are entered by hand as Special roles. AIOps engineers (Machine Learning Engineer) follow the scenario's AIOps ratio once deflection starts.");
-  L.push("- Grade ladder: three grades (Lead, Senior, Consultant \u2014 no Principal). L1\u2013L3 follow the estate-complexity pyramid ("+(cpxOf(S)?cpxOf(S).key+" "+cpxOf(S).pyr.join(":"):"not set, default 1:2:4")+"); special roles keep 1:2:4; Service Delivery Manager is graded wholly Lead.");
+  L.push("- Grade ladder: three grades (Lead, Senior, Consultant \u2014 no Principal). L1\u2013L3 follow the estate-complexity pyramid ("+(cpxOf(S)?cpxOf(S).key+" "+cpxOf(S).pyr.join(":"):"not set, default 1:2:4")+"); only the SDMs and a tech lead on L3 are Lead, with Lead never above Senior overall.");
   L.push("");
   registerExtras(EXT||extrasFor(S,base,runEngine(S,{aiops:false}))).forEach(l=>L.push(l));
   L.push("## Known inconsistencies in the source framework");
@@ -7080,8 +7122,8 @@ function renderCanvas(){
   const rp=rolePlan(S,base);
   const rp1=rp[0], rpN=rp[rp.length-1];
   const gsum=p=>sum(GRADES.map(g=>p.gradeTot[g]));
-  const seniorY1=gsum(rp1)?rp1.gradeTot.Lead/gsum(rp1):0;
-  const seniorYn=gsum(rpN)?rpN.gradeTot.Lead/gsum(rpN):0;
+  const seniorY1=gsum(rp1)?(rp1.gradeTot.Lead+rp1.gradeTot.Senior)/gsum(rp1):0;
+  const seniorYn=gsum(rpN)?(rpN.gradeTot.Lead+rpN.gradeTot.Senior)/gsum(rpN):0;
   const shown=ROLES.filter(r=>rp.some(p=>(p.alloc[r.id]||0)>0.004));
   h+='<div class="card"><header><h2>Role &amp; grade staffing plan</h2>'+
     '<span class="note">Tier headcount distributed across in-scope roles, then split Lead / Senior / Consultant, target ratio 1:2:4.</span></header><div class="cardbody">';
@@ -7127,7 +7169,7 @@ function renderCanvas(){
     h+='</tbody></table></div>';
     if(HAS_CX){
       const c_=cpxOf(S);
-      h+='<div class="callout" style="margin-top:12px"><b>Estate complexity: '+esc(c_.key)+'.</b> Pyramid '+c_.pyr.join(" : ")+' for L1&ndash;L3 (SDM is Lead). Contingency '+base.years.map(y=>"Y"+y.y+" "+fmt(y.contPct,1)+"% = "+fmt(y.cont)+" FTE").join(", ")+
+      h+='<div class="callout" style="margin-top:12px"><b>Estate complexity: '+esc(c_.key)+'.</b> Pyramid '+c_.pyr.join(" : ")+' (the tech-lead share on L3; only the SDMs and a tech lead are Lead). Contingency '+base.years.map(y=>"Y"+y.y+" "+fmt(y.contPct,1)+"% = "+fmt(y.cont)+" FTE").join(", ")+
          ' on the delivery team incl. SDM, spread across the L1&ndash;L3 roles above (each role row includes its share). Severity mix tilted '+pct0(c_.sev)+' toward P1/P2 before the ticket cascade.</div>';
     }
     if(HAS_SP) h+='<div class="callout" style="margin-top:12px"><b>Special roles are manual additions.</b> They apply to every tower, are counted separately from the tower-driven roles above, and are added on top of Total FTE &mdash; they are not deflated by AIOps, scaled by hypercare or the Brownfield uplift, or used to size the AIOps team.</div>';
@@ -7138,11 +7180,11 @@ function renderCanvas(){
     const shifts=Math.abs(seniorYn-seniorY1)>0.02;
     h+='<div class="callout acc" style="margin-top:14px"><b>The inverted pyramid is a grade story.</b> '+
        (shifts
-         ? 'The Lead share goes from <b>'+pct0(seniorY1)+'</b> of the team in Y1 to <b>'+pct0(seniorYn)+'</b> by Y'+last.y+
+         ? 'The Lead + Senior share goes from <b>'+pct0(seniorY1)+'</b> of the team in Y1 to <b>'+pct0(seniorYn)+'</b> by Y'+last.y+
            ' as the shape moves '+esc(rp1.shape.key.toLowerCase())+' &rarr; '+esc(rpN.shape.key.toLowerCase())+
            ' and automation strips the Consultant-heavy L1 base &mdash; a smaller team at higher average seniority.'
          : 'This scenario runs a '+esc(rpN.shape.key.toLowerCase())+' shape from Y1, so the mix holds at <b>'+pct0(seniorYn)+
-           '</b> Lead throughout while the team shrinks from '+fmt(gsum(rp1))+' to '+fmt(gsum(rpN))+' FTE. '+
+           '</b> Lead + Senior throughout while the team shrinks from '+fmt(gsum(rp1))+' to '+fmt(gsum(rpN))+' FTE. '+
            'The seniority story here is the starting position, not a migration &mdash; price it that way.')+
        ' That is the "leaner but senior-heavy team at comparable or lower cost" claim in [F G7], stated in your own grade ladder.</div>';
   }
@@ -7386,6 +7428,7 @@ document.addEventListener("input",e=>{
   if(el.id==="intakeJson"){ clearTimeout(XR_TIMER); XR_TIMER=setTimeout(renderExtractReview,500); return; }
   if(el.dataset && (el.dataset.w||el.dataset.wu||el.dataset.wt)){ winEdit(el); refresh(false); return; }
   if(el.dataset && el.dataset.cmnum){ const C_=S.eng.cm; C_[el.dataset.cmnum]=(el.value===""||isNaN(+el.value))?null:+el.value; refresh(false); return; }
+  if(el.dataset && el.dataset.adjfte){ const A_=adjOf(S); if(A_) A_.fte=(el.value===""||isNaN(+el.value))?null:Math.max(0,+el.value); refresh(false); return; }
   if(el.dataset && el.dataset.adjy!=null){ const A_=adjOf(S); if(A_){ A_.y=A_.y||[]; A_.y[+el.dataset.adjy]=(el.value===""||isNaN(+el.value))?null:+el.value; } refresh(false); return; }
   if(el.dataset && el.dataset.p){
     sp(S,el.dataset.p,coerce(el));
@@ -7425,7 +7468,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
-  if(b.dataset.cmceil!=null){ const c_=S.eng.cm, A_=S.eng.adj; if(c_.ceiling>0){ A_.on=true; A_.mode="year"; A_.y=A_.y||[]; A_.y[0]=+c_.ceiling; if(!A_.reason) A_.reason="budget"; refresh(true); } return; }
+  if(b.dataset.cmceil!=null){ const c_=S.eng.cm, A_=S.eng.adj; if(c_.ceiling>0){ A_.on=true; A_.mode="fte"; A_.fte=+c_.ceiling; if(!A_.reason) A_.reason="budget"; refresh(true); } return; }
   if(b.dataset.adjadd!=null){ const inp_=document.getElementById("adjNewMit"), A_=adjOf(S); if(A_&&inp_&&inp_.value.trim()){ A_.extra=A_.extra||[]; A_.extra.push({t:inp_.value.trim()}); refresh(false); } return; }
   if(b.dataset.adjrm!=null){ const A_=adjOf(S); if(A_&&A_.extra){ A_.extra.splice(+b.dataset.adjrm,1); refresh(false); } return; }
   const segEl=b.closest("[data-seg]");
