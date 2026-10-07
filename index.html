@@ -265,6 +265,13 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .adjmit input[type=text]{width:100%}
 .adjmit small{display:block;color:var(--ink-3);font-size:11px;margin-top:2px}
 .adjyears{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.adjsev.rec,.adjsev.add{background:var(--good-soft);color:var(--good)}
+.adjsev.pos{background:var(--accent-soft);color:var(--accent-ink)}
+.adjsev.not{background:var(--sunken);color:var(--ink-3)}
+.copt{border:1px solid var(--rule);border-radius:var(--r);margin:8px 0;padding:6px 10px;background:var(--surface)}
+.copt summary{cursor:pointer;font-size:13.5px}
+.copt ul{margin:2px 0 4px;padding-left:18px;font-size:12.5px}
+.coptb{padding:4px 0 6px}
 .wloc{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;background:var(--sunken)}
 .wloc .whead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-weight:600}
 .wrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:5px 0;border-top:1px dashed var(--rule)}
@@ -456,6 +463,8 @@ function defaults(){return{
     complexity:"", contPct:null, cont2:null,
     // PROPOSED - editable final number (commercial position): a % change or a proposed FTE per year, with a reason; see adjDeltas().
     adj:{on:false,mode:"pct",pct:0,y:[],reason:"",note:"",mit:{},extra:[]},
+    // PROPOSED - what the commercial options use beyond the estimate: months of ticket history, a measurable baseline, a budget ceiling (Year 1 FTE), price pressure.
+    cm:{histMonths:null,baseline:"unknown",ceiling:null,pressure:"medium"},
     // PROPOSED - observed pass-through for THIS deal (percent, null = use the benchmark): the share
     // of tickets reaching a tier that are escalated to the next (L1->L2, L2->L3). Y1 takes the
     // value; later years keep the benchmark's own year-on-year improvement (see passAt).
@@ -663,6 +672,7 @@ function seedRoles(st){
     ["pass12","pass23","incumbentFTE"].forEach(k=>{ if(e2[k]===undefined||e2[k]===""||isNaN(+e2[k])) e2[k]=null; });
     if(!e2.adj||typeof e2.adj!=="object") e2.adj=defaults().eng.adj;
     e2.adj=Object.assign({},defaults().eng.adj,e2.adj); if(!Array.isArray(e2.adj.y)) e2.adj.y=[]; if(!e2.adj.mit||typeof e2.adj.mit!=="object") e2.adj.mit={}; if(!Array.isArray(e2.adj.extra)) e2.adj.extra=[];
+    e2.cm=Object.assign({},defaults().eng.cm,(e2.cm&&typeof e2.cm==="object")?e2.cm:{}); ["histMonths","ceiling"].forEach(k=>{ if(e2.cm[k]===""||e2.cm[k]===undefined||isNaN(+e2.cm[k])) e2.cm[k]=null; }); if(["unknown","yes","no"].indexOf(e2.cm.baseline)<0) e2.cm.baseline="unknown"; if(["low","medium","high"].indexOf(e2.cm.pressure)<0) e2.cm.pressure="medium";
   }
   if(st){
     // calculator/outcome/transition arrived after links were already being shared;
@@ -1379,10 +1389,137 @@ function adjLiveHtml(St){
   var nr=adjRisks(St,p).length;
   return '<div class="callout acc"><b>'+ys.map(function(y){return "Y"+y.y+" "+fmt(y.adj.modelled)+" &rarr; "+fmt(y.total);}).join("; ")+' FTE.</b> '+nr+' risk'+(nr===1?"":"s")+' flagged; see Final number and commercial position in the results.</div>';
 }
-function adjLiveUpdate(){ var el=document.getElementById("adjLive"); if(!el) return; el.innerHTML=adjLiveHtml(S); }
+function adjLiveUpdate(){ var el=document.getElementById("adjLive"); if(el) el.innerHTML=adjLiveHtml(S); var c_=document.getElementById("cmLive"); if(c_) c_.innerHTML=cmLiveHtml(S); }
+/* ---------- commercial options ----------
+   Rates four commercial models from the data the estimate already holds: fixed fee, outcome-based, time and materials, and
+   an assessment-led start (T&M first, fixed fee once there is data). The starting point is the framework's scenario
+   recommendation (sc.comm); the fit rules that move it are PROPOSED. Model level only: no price, effort and FTE at most. */
+var CM_OPTS=[{id:"fixed",n:"Fixed fee"},{id:"outcome",n:"Outcome-based terms"},{id:"tm",n:"Time and materials, with a cap"},{id:"assess",n:"Assessment-led: T&M first, fixed fee once there is data"}];
+var CM_BASE={fixed:[20,30,80,85],outcome:[5,40,25,70],tm:[70,65,25,15],assess:[85,75,40,25]};
+function cmOf(St){ var c=St&&St.eng&&St.eng.cm; return (c&&typeof c==="object")?c:{histMonths:null,baseline:"unknown",ceiling:null,pressure:"medium"}; }
+function commercialOptions(St,base){
+  var cm=cmOf(St), sc=base.sc, n=base.scenario, eff=effScore(St), bd=bandOf(eff), e=St.eng;
+  var histStated=(cm.histMonths!=null&&cm.histMonths!==""&&!isNaN(+cm.histMonths)), h=histStated?+cm.histMonths:(e.volumetrics==="available"?6:0);
+  var m=runEngine(St,{noAdj:true}), y1=m.years[0].total, ceil=(cm.ceiling!=null&&cm.ceiling!==""&&+cm.ceiling>0)?+cm.ceiling:null;
+  var gap=ceil?(y1-ceil)/y1*100:null, a1=base.years.filter(function(y){return y.adj;})[0], cut=a1?a1.adj.cut/a1.adj.modelled*100:0;
+  var sc_={}, why={}, f1=function(v){return (Math.round(v*10)/10).toFixed(1);};
+  CM_OPTS.forEach(function(o){ sc_[o.id]=CM_BASE[o.id][n-1]; why[o.id]=[]; });
+  var rule=function(id,pts,t){ sc_[id]+=pts; why[id].push({pts:pts,t:t}); };
+  var hs=h<=0?"no":Math.round(h);
+  if(h>=12){ rule("fixed",10,hs+" months of ticket history is enough to hold a volume band."); rule("outcome",5,"A year of ticket history gives a credible baseline."); }
+  else if(h>=6){ rule("fixed",5,hs+" months of ticket history supports a volume band."); rule("outcome",5,hs+" months of history gives a usable baseline."); }
+  else if(h<3){ rule("fixed",-15,"With "+hs+" months of ticket history there is too little to price a fixed volume."); rule("outcome",-10,"Too little history to measure outcomes against."); rule("assess",10,"A short data-gathering phase fits when ticket history is thin."); rule("tm",5,"Time and materials carries the risk while data is gathered."); }
+  if(e.baseline!==undefined){} 
+  if(cm.baseline==="yes") rule("outcome",15,"A signed-off baseline (incident volume and MTTR) exists, which outcome-based terms need.");
+  else if(cm.baseline==="no") rule("outcome",-25,"There is no measurable baseline, so outcomes cannot be measured fairly.");
+  else rule("outcome",-10,"The baseline is not confirmed; outcome terms need one agreed before start.");
+  var cf="Confidence is "+bd.name+" ("+eff.toFixed(0)+")";
+  if(bd.name==="Low"){ rule("fixed",-10,cf+": avoid a firm fixed-fee commitment."); rule("outcome",-10,cf+": too uncertain to share outcome risk."); rule("tm",5,cf+": a capped T&M start limits exposure."); rule("assess",5,cf+": an assessment-led start fits."); }
+  else if(bd.name==="Medium"){ rule("fixed",-5,cf+": directional estimate, price with explicit caveats."); rule("assess",5,cf+": assessment-led posture."); }
+  else if(bd.name==="High") rule("fixed",5,cf+": commercially usable with standard guardrails.");
+  else rule("fixed",10,cf+": the strongest basis for a fixed fee."), rule("outcome",5,cf+": supports outcome-linked terms.");
+  if(e.complexity==="high"||e.estate==="legacy"){ var why_=e.complexity==="high"?"High estate complexity":"A legacy estate"; rule("fixed",-10,why_+" hides work that only shows after takeover."); rule("outcome",-5,why_+" makes the baseline harder to trust."); rule("tm",5,why_+" favours paying for effort at first."); rule("assess",5,why_+" favours a discovery phase."); }
+  else if(e.complexity==="low") rule("fixed",5,"Low complexity on a modern estate is easier to price firm.");
+  if(e.engagementType==="brownfield"){ rule("fixed",-5,"Taking over a running estate carries hidden-work and handoff risk in the first months."); rule("assess",5,"A takeover benefits from a settling-in period before fixing the price."); }
+  if(e.term>=3) rule("outcome",10,"A "+e.term+"-year term gives outcome-based benefits time to materialise.");
+  else rule("outcome",-15,"A "+e.term+"-year term is too short for outcome-based benefits to show.");
+  if(!e.aiops) rule("outcome",-20,"AIOps is not in scope, so there are no efficiency outcomes to share.");
+  if(ceil){
+    if(gap>10){ rule("fixed",-10,"The budget ceiling ("+f1(ceil)+" FTE) is "+Math.round(gap)+"% below the modelled Year 1 team ("+f1(y1)+"): a fixed fee would need descoping."); rule("tm",10,"A not-to-exceed cap at the ceiling fits a budget limit."); rule("assess",5,"A capped start lets the gap be tested against real data."); rule("outcome",-5,"Outcome terms cannot close a gap in the base team."); }
+    else if(gap>0) rule("tm",5,"The ceiling ("+f1(ceil)+" FTE) is slightly below the modelled Year 1 team, so a cap needs managing.");
+    else rule("fixed",5,"The modelled team ("+f1(y1)+" FTE) is within the client's ceiling ("+f1(ceil)+").");
+  }
+  if(cut>15&&(bd.name==="Low"||bd.name==="Medium")){ rule("fixed",-10,"A "+Math.round(cut)+"% cut on a "+bd.name.toLowerCase()+"-confidence estimate leaves no room for a fixed price."); rule("tm",5,"A cut is safer on time and materials with a cap."); rule("assess",5,"A cut is safer with a data-gathering start."); }
+  if(cm.pressure==="high"){ rule("fixed",5,"A firm price is a stronger answer to price competition."); rule("outcome",5,"Sharing risk differentiates the bid under price pressure."); rule("tm",-5,"Open-ended T&M is weak under price competition."); }
+  CM_OPTS.forEach(function(o){ sc_[o.id]=Math.max(0,Math.min(100,sc_[o.id])); });
+  // outcome-based terms are an add-on to a base model, so they are rated beside the three base models rather than against them
+  var order=["fixed","assess","tm"].slice().sort(function(a,b){return sc_[b]-sc_[a];}), top=order[0], topS=sc_[top], addOn=sc_.outcome>=60;
+  var rating=function(id){ if(id==="outcome") return addOn?"add":(sc_.outcome>=40?"pos":"not"); return id===top?"rec":(sc_[id]>=topS-15&&sc_[id]>=45?"pos":"not"); };
+  var O=St.outcome||{}, od=defaults().outcome, ou=Object.assign({},od,O);
+  var guard={
+    fixed:["Volume band of \u00b115% around the modelled Year 1 demand, with a scope and capacity review after two months outside it (the register's volume band clause).","Change control for new scope, and a cap on the enhancement and change-request pool.","Keep the contingency ("+fmt(m.years[0].contPct,1)+"% in Year 1) inside the price or as a visible reserve.","Service credits capped as a share of fees."],
+    outcome:["Agree and sign off the baseline (incident volume and MTTR) before start.","Credit floor at "+fmt(ou.floorPct,2)+"x the committed reduction, gain-share trigger at "+fmt(ou.stretchPct,2)+"x, credits capped at "+Math.round(ou.creditCap*100)+"% of annual effort, our gain-share "+Math.round(ou.gainShare*100)+"% (see Outcome model).","Start outcome measurement from Year "+sc.aiopsFrom+" when the AIOps roadmap begins."],
+    tm:["Not-to-exceed cap at "+f1(ceil||y1)+" FTE for Year 1"+(ceil?" (the client's ceiling)":" (the modelled team)")+".","Monthly review of actual effort against the modelled team.","Name the trigger to convert to a fixed fee, for example three months of ticket data."],
+    assess:["Run the first months (or a rapid assessment of a few weeks) on time and materials with a cap.","Convert to a fixed fee once there are at least three months of ticket data and a volume band is agreed.","Re-baseline Year 2 contingency at the conversion point."]
+  };
+  var up={
+    fixed:[].concat(h<6?["Obtain at least 6 months of ticket data (now "+(h<=0?"none":Math.round(h))+")."]:[],(bd.name==="Low"||bd.name==="Medium")?["Raise confidence: data availability and scope clarity are the biggest levers."]:[],(gap!=null&&gap>10)?["Agree scope or SLA reductions that close the gap to the budget ceiling."]:[],(e.complexity==="high"||e.estate==="legacy")?["Run a discovery of the legacy estate before fixing the price."]:[]),
+    outcome:[].concat(cm.baseline!=="yes"?["Agree and sign off a baseline of incident volume and MTTR."]:[],e.term<3?["Extend the term to at least 3 years."]:[],!e.aiops?["Bring AIOps into scope."]:[],h<3?["Gather ticket history to measure against."]:[]),
+    tm:[],
+    assess:["Define the conversion trigger and the date it is reviewed."]
+  };
+  var opts=CM_OPTS.map(function(o){ return {id:o.id,n:o.n,score:sc_[o.id],rating:rating(o.id),why:why[o.id],guard:guard[o.id],up:rating(o.id)==="rec"?[]:up[o.id]}; })
+    .sort(function(a,b){ var k={rec:0,add:1,pos:2,not:3}; return (k[a.rating]-k[b.rating])||(b.score-a.score); });
+  var head;
+  if(top==="fixed") head="Fixed fee"+(addOn?", with an outcome-based component":"")+", with a \u00b115% volume band and change control.";
+  else if(top==="assess") head="Start on time and materials with a cap, then convert to a fixed fee once there are at least three months of ticket data and a volume band is agreed."+(addOn?" Add outcome-based terms once the baseline is agreed.":"");
+  else head="Time and materials with a not-to-exceed cap, with a named point to review a fixed fee."+(addOn?" Add outcome-based terms once the baseline is agreed.":"");
+  var caution=(top==='fixed'&&((gap!=null&&gap>10)||cut>15))?'Caution: the budget ceiling or the cut is large for a firm price. Keep every guardrail below, and consider an assessment-led start instead.':'';
+  return {top:top,head:head,caution:caution,opts:opts,scenario:n,start:sc.comm,hist:h,histStated:histStated,gap:gap,y1:y1,ceil:ceil,cut:cut,band:bd.name};
+}
+function cmStartText(c){ return "Scenario "+c.scenario+": the framework's starting point is "+c.start+"."; }
+function cmRatingLabel(r){ return r==="rec"?"Recommended":(r==="add"?"Recommended as an add-on":(r==="pos"?"Possible":"Not yet")); }
+function commercialCard(base){
+  var c=commercialOptions(S,base);
+  var h='<div class="card"><header><h2>Commercial options</h2><span class="pill">PROPOSED</span><span class="note">Model level only, no price. Internal; not in the Customer summary.</span></header><div class="cardbody">';
+  h+='<div class="callout acc"><b>'+esc(c.head)+'</b><br><span class="hint">'+esc(cmStartText(c))+' The fit rules below move it from the data you have.'+(!c.histStated&&S.eng.volumetrics==="available"?' Months of ticket history is not set, so 6 months is assumed.':'')+'</span></div>';
+  if(c.caution) h+='<div class="callout" style="margin-top:8px;border-left-color:var(--crit)">'+esc(c.caution)+'</div>';
+  if(c.gap!=null&&c.gap>0) h+='<div class="callout" style="margin-top:8px">The budget ceiling of <b>'+fmt(c.ceil)+' FTE</b> is <b>'+Math.round(c.gap)+'%</b> below the modelled Year 1 team ('+fmt(c.y1)+'). Use Commercial position in the rail to set the proposed number and see the risks.</div>';
+  c.opts.forEach(function(o,i){
+    h+='<details class="copt" '+(o.rating==="rec"||o.rating==="add"||i===0?"open":"")+'><summary><span class="adjsev '+o.rating+'">'+cmRatingLabel(o.rating)+'</span><b>'+esc(o.n)+'</b></summary><div class="coptb">';
+    var pos=o.why.filter(function(w){return w.pts>0;}), neg=o.why.filter(function(w){return w.pts<0;});
+    if(pos.length) h+='<p class="hint" style="margin:6px 0 2px">For</p><ul>'+pos.map(function(w){return '<li>'+esc(w.t)+'</li>';}).join("")+'</ul>';
+    if(neg.length) h+='<p class="hint" style="margin:6px 0 2px">Against</p><ul>'+neg.map(function(w){return '<li>'+esc(w.t)+'</li>';}).join("")+'</ul>';
+    h+='<p class="hint" style="margin:6px 0 2px">Guardrails if you choose it</p><ul>'+o.guard.map(function(g){return '<li>'+esc(g)+'</li>';}).join("")+'</ul>';
+    if(o.up.length) h+='<p class="hint" style="margin:6px 0 2px">What would move it up</p><ul>'+o.up.map(function(g){return '<li>'+esc(g)+'</li>';}).join("")+'</ul>';
+    h+='</div></details>';
+  });
+  return h+'</div></div>';
+}
+function cmRegisterLines(base,L,St){
+  var c=commercialOptions(St,base);
+  L.push("## Commercial options (internal, model level, no price)");
+  L.push("- Suggested: **"+c.head+"** "+cmStartText(c)+(c.caution?" "+c.caution:""));
+  c.opts.forEach(function(o){
+    var pos=o.why.filter(function(w){return w.pts>0;}).slice(0,2).map(function(w){return w.t;}), neg=o.why.filter(function(w){return w.pts<0;}).slice(0,2).map(function(w){return w.t;});
+    L.push("- **"+o.n+"** \u2014 "+cmRatingLabel(o.rating)+"."+(pos.length?" For: "+pos.join(" "):"")+(neg.length?" Against: "+neg.join(" "):""));
+  });
+  var t=c.opts[0]; t.guard.forEach(function(g){ L.push("- Guardrail ("+t.n+"): "+g); });
+  L.push("- The fit rules beyond the framework's scenario recommendation are proposed. This section is internal; the Customer summary does not include it.");
+  L.push("");
+}
+function cmPrintHtml(base,St){
+  var c=commercialOptions(St,base);
+  return '<section><h2>Commercial options</h2><p style="font-size:11px;margin:0 0 4px"><b>'+esc(c.head)+'</b> '+esc(cmStartText(c))+' Model level only, no price.</p><table><thead><tr><th>Option</th><th>Fit</th></tr></thead><tbody>'+
+    c.opts.map(function(o){return '<tr><td>'+esc(o.n)+'</td><td>'+cmRatingLabel(o.rating)+'</td></tr>';}).join("")+'</tbody></table></section>';
+}
+function cmSheetRows(base,St){
+  var c=commercialOptions(St,base), rows=[["Option","Fit","Score (0-100, proposed)"]];
+  c.opts.forEach(function(o){ rows.push([o.n,cmRatingLabel(o.rating),Math.round(o.score)]); });
+  rows.push([],["Suggested",c.head],["Starting point",cmStartText(c)]);
+  c.opts.forEach(function(o){ o.why.forEach(function(w){ rows.push([o.n+(w.pts>0?" (for)":" (against)"),w.t]); }); });
+  c.opts[0].guard.forEach(function(g){ rows.push(["Guardrail ("+c.opts[0].n+")",g]); });
+  return rows;
+}
+function renderCmRail(){
+  var cm=cmOf(S), base=runEngine(S,{noAdj:true}), y1=base.years[0].total;
+  var h='<p class="hint">What the commercial options use, beyond the estimate itself. All optional. Model level only: no price.</p>'+
+    '<div class="field"><label>Months of ticket history available</label><input type="number" step="1" min="0" data-cmnum="histMonths" value="'+((cm.histMonths==null)?"":cm.histMonths)+'" placeholder="not set"></div>'+
+    '<div class="field"><label>Measurable baseline (incident volume, MTTR)</label><select data-p="eng.cm.baseline">'+[["unknown","Not confirmed"],["yes","Yes, agreed"],["no","No"]].map(function(o){return '<option value="'+o[0]+'" '+(cm.baseline===o[0]?"selected":"")+'>'+o[1]+'</option>';}).join("")+'</select></div>'+
+    '<div class="field"><label>Client budget ceiling, Year 1 FTE</label><input type="number" step="0.5" min="0" data-cmnum="ceiling" value="'+((cm.ceiling==null)?"":cm.ceiling)+'" placeholder="not set (modelled '+fmt(y1)+')"></div>'+
+    '<div class="field"><label>Competitive pressure on price</label>'+seg("eng.cm.pressure",[["low","Low"],["medium","Medium"],["high","High"]])+'</div>'+
+    '<div id="cmLive">'+cmLiveHtml(S)+'</div><hr style="border:0;border-top:1px solid var(--rule);margin:12px 0">';
+  return h;
+}
+function cmLiveHtml(St){
+  var cm=cmOf(St); if(!(cm.ceiling!=null&&cm.ceiling!==""&&+cm.ceiling>0)) return "";
+  var y1=runEngine(St,{noAdj:true}).years[0].total, gap=y1-(+cm.ceiling);
+  if(gap<=0) return '<p class="hint">The modelled Year 1 team ('+fmt(y1)+' FTE) is within the ceiling.</p>';
+  return '<div class="callout">The ceiling is <b>'+fmt(gap)+' FTE ('+Math.round(gap/y1*100)+'%)</b> below the modelled Year 1 team ('+fmt(y1)+'). <button type="button" class="btn" data-cmceil="1" style="font-size:11.5px;padding:3px 8px;margin-top:6px">Use the ceiling as the Year 1 proposal</button></div>';
+}
 function renderAdjRail(){
   var A=adjOf(S)||defaults().eng.adj, T=S.eng.term, m=runEngine(S,{noAdj:true});
-  var h='<p class="hint">Set a proposed final number for the deal (client budget, price to win) and keep the modelled one beside it. The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut. A reason is required before it counts.</p>'+
+  var h=renderCmRail()+'<p class="hint">Set a proposed final number for the deal (client budget, price to win) and keep the modelled one beside it. The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut. A reason is required before it counts.</p>'+
     chk("eng.adj.on","Adjust the final number");
   if(A.on){
     h+='<div class="field"><label>How to set it</label>'+seg("eng.adj.mode",[["pct","% change"],["year","Per year"]])+'</div>';
@@ -2349,6 +2486,7 @@ function buildWorkbook(){
     .concat(base.years.map((y,i)=>["Y"+y.y,r2(y.vol),r2(y.A),r2(y.B),r2(y.G),r2(y.baseFTE),r2(y.floor),r2(y.pre),r2(y.defl),
       r2(y.delivery),y.aiopsFTE,r2(y.cont||0),r2(y.special||0),r2(y.total),r2(trad.years[i].total),r2(y.prod)]))});
   { const ar=adjSheetRows(base,S); if(ar) sheets.push({name:"Commercial position",rows:ar}); }
+  sheets.push({name:"Commercial options",rows:cmSheetRows(base,S)});
   sheets.push({name:"Tower breakdown (Y1)",rows:[["Tower","Tickets/mo","L1 tickets","L2 tickets","L3 tickets","L1 h","L2 h","L3 h",
     "A (h)","B (h)","G (h)","FTE","L1 owner","L2 owner","L3 owner"]]
     .concat(base.years[0].rows.map(r=>[r.type,r2(r.vol),r2(r.t1),r2(r.t2),r2(r.t3),r2(r.h1),r2(r.h2),r2(r.h3),r2(r.A),r2(r.B),r2(r.G),r2(r.fte),
@@ -4457,6 +4595,31 @@ function selfTests(){
         ok:/Commercial position/.test(regA)&&/Client budget constraint/.test(regA)&&!/Commercial position/.test(regOff)&&custA.indexOf(fmt(bp.years[0].total))>=0&&!/Client budget constraint|Commercial position|Mitigation/.test(custA)});
       const L0=defaults(); delete L0.eng.adj; const sL=seedRoles(L0), bL=runEngine(sL,{});
       out.push({n:"Final number: an older link without the adjustment loads with it switched off",exp:"adj present, off, totals unchanged",got:sL.eng.adj?("on="+sL.eng.adj.on):"missing",ok:!!sL.eng.adj&&sL.eng.adj.on===false&&bL.years[0].total>0}); }
+    // commercial options: fixed fee, outcome-based, T&M, assessment-led, rated from the data held
+    { const mk=(mut)=>{ const T=seedRoles(defaults()); T.eng.region="eu"; T.eng.term=3; Object.assign(T.eng.cm,{histMonths:12,baseline:"yes",pressure:"medium"}); mut&&mut(T); return T; };
+      const run=(T)=>commercialOptions(T,runEngine(T,{})), get=(c,id)=>c.opts.filter(o=>o.id===id)[0];
+      const S3=run(mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="available"; }));
+      const S4=run(mk(T=>{ T.eng.aiMaturity="moderate"; T.eng.volumetrics="available"; }));
+      const S1=run(mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="unavailable"; T.eng.cm.histMonths=0; T.eng.cm.baseline="unknown"; }));
+      out.push({n:"Commercial options: Scenario 3 with a year of data suggests a fixed fee",exp:"fixed fee recommended",got:S3.top+" ("+S3.opts.map(o=>o.id+" "+Math.round(o.score)).join(", ")+")",ok:S3.top==="fixed"&&get(S3,"fixed").rating==="rec"});
+      out.push({n:"Commercial options: Scenario 4 with a baseline suggests a fixed fee with an outcome-based component; Scenario 3 does not",exp:"S4: fixed fee recommended, outcome-based recommended as an add-on, headline says so; S3: outcome-based only possible",got:"S4 "+S4.top+", outcome "+get(S4,"outcome").rating+"; S3 outcome "+get(S3,"outcome").rating,ok:S4.top==="fixed"&&get(S4,"outcome").rating==="add"&&/outcome-based component/.test(S4.head)&&get(S3,"outcome").rating==="pos"&&!/outcome/.test(S3.head)});
+      out.push({n:"Commercial options: Scenario 1 (no volumetrics, low AI) suggests an assessment-led start; fixed fee is not yet",exp:"assessment-led recommended, fixed fee Not yet",got:S1.top+", fixed "+get(S1,"fixed").rating,ok:S1.top==="assess"&&get(S1,"fixed").rating==="not"});
+      const S3thin=run(mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="available"; T.eng.cm.histMonths=2; }));
+      out.push({n:"Commercial options: under three months of ticket data pulls a fixed fee down and an assessment-led start up",exp:"fixed fee score falls by 25 against 12 months, assessment-led rises by 10",got:"fixed "+Math.round(get(S3,"fixed").score)+"->"+Math.round(get(S3thin,"fixed").score)+", assess "+Math.round(get(S3,"assess").score)+"->"+Math.round(get(S3thin,"assess").score),
+        ok:near(get(S3,"fixed").score-get(S3thin,"fixed").score,25,1e-9)&&near(get(S3thin,"assess").score-get(S3,"assess").score,10,1e-9)});
+      const S4no=run(mk(T=>{ T.eng.aiMaturity="moderate"; T.eng.volumetrics="available"; T.eng.cm.baseline="no"; }));
+      out.push({n:"Commercial options: no measurable baseline lowers outcome-based terms by 40 against an agreed one",exp:"40 points lower",got:Math.round(get(S4,"outcome").score)+" vs "+Math.round(get(S4no,"outcome").score),ok:near(get(S4,"outcome").score-get(S4no,"outcome").score,40,1e-9)});
+      const Tc3=mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="available"; }), y1m=runEngine(Tc3,{}).years[0].total, S3c=run(mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="available"; T.eng.cm.ceiling=y1m*0.8; }));
+      out.push({n:"Commercial options: a budget ceiling 20% below the model lowers a fixed fee and favours a capped T&M",exp:"fixed -10, T&M +10, gap reported",got:"fixed "+Math.round(get(S3,"fixed").score)+"->"+Math.round(get(S3c,"fixed").score)+", tm "+Math.round(get(S3,"tm").score)+"->"+Math.round(get(S3c,"tm").score)+", gap "+Math.round(S3c.gap)+"%",
+        ok:near(get(S3,"fixed").score-get(S3c,"fixed").score,10,1e-9)&&near(get(S3c,"tm").score-get(S3,"tm").score,10,1e-9)&&near(S3c.gap,20,0.01)});
+      const S4off=run(mk(T=>{ T.eng.aiMaturity="moderate"; T.eng.volumetrics="available"; T.eng.aiops=false; }));
+      out.push({n:"Commercial options: without AIOps in scope, outcome-based terms drop by 20",exp:"20 points lower",got:Math.round(get(S4,"outcome").score)+" vs "+Math.round(get(S4off,"outcome").score),ok:near(get(S4,"outcome").score-get(S4off,"outcome").score,20,1e-9)});
+      const allc=[S3,S4,S1,S3thin,S3c,S4no,S4off];
+      out.push({n:"Commercial options: scores stay between 0 and 100 and exactly one base model is recommended",exp:"every case",got:allc.map(c=>c.opts.filter(o=>o.rating==="rec").length).join(""),ok:allc.every(c=>c.opts.every(o=>o.score>=0&&o.score<=100)&&c.opts.filter(o=>o.rating==="rec").length===1)});
+      const Tr=mk(T=>{ T.eng.aiMaturity="low"; T.eng.volumetrics="available"; }); S=Tr; let rg, cs; try{ const b=runEngine(Tr,{}); rg=buildRegister(b,null,null,rolePlan(Tr,b)); cs=buildCustomerReport(Tr,reportData(Tr),{cont:true,bench:true,save:true}); }finally{ S=Sx; }
+      out.push({n:"Commercial options: in the register, not in the Customer summary",exp:"register has the section with a guardrail; customer summary has neither the section nor the word 'guardrail'",got:"register "+(/Commercial options/.test(rg)?"yes":"no")+", customer "+(/Commercial options|Guardrail|fixed fee/i.test(cs)?"leaks":"clean"),ok:/Commercial options/.test(rg)&&/Guardrail/.test(rg)&&!/Commercial options|Guardrail/i.test(cs)});
+      const L1=defaults(); delete L1.eng.cm; const sL1=seedRoles(L1);
+      out.push({n:"Commercial options: an older link without the inputs loads with their defaults",exp:"cm present, no ticket history set, baseline not confirmed, medium pressure",got:sL1.eng.cm?(sL1.eng.cm.histMonths+"/"+sL1.eng.cm.baseline+"/"+sL1.eng.cm.pressure):"missing",ok:!!sL1.eng.cm&&sL1.eng.cm.histMonths==null&&sL1.eng.cm.baseline==="unknown"&&sL1.eng.cm.pressure==="medium"}); }
     const regs=["ime","eu","apac","na"], pass=["24x7","16x5","8x5"];
     let autoOk=true, autoGot=[];
     regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
@@ -5161,7 +5324,7 @@ function renderRail(){
 
   h+=sec("calc","AIOps efficiency calculator",renderCalcRail(),!!S.aiopsCalc.drive);
   h+=sec("out","Outcome model",renderOutcomeRail());
-  h+=sec("adj","Commercial position",renderAdjRail(),!!(S.eng.adj&&S.eng.adj.on));
+  h+=sec("adj","Commercial position",renderAdjRail(),!!((S.eng.adj&&S.eng.adj.on)||S.eng.cm.histMonths!=null||S.eng.cm.ceiling!=null));
 
   let cf=CONF_DRIVERS.map((d,i)=>
     '<div class="scorer"><span>'+esc(d[0])+(i===4?' <span class="flag" title="Auto-seeded from Engagement type">proposed</span>':"")+'</span><span class="w">'+d[1]+'</span>'+
@@ -5577,6 +5740,7 @@ function buildRegister(base,mc,o1,rp){
   }
   L.push("");
   adjRegisterLines(base,L,S);
+  cmRegisterLines(base,L,S);
   L.push("## Confidence posture [F Annexures 1\u20132]");
   L.push("- Weighted driver score "+confScore(S).toFixed(1)+" \u2212 risk drag "+riskDrag(S).toFixed(1)+" = effective "+eff.toFixed(1)+" ("+bd.name+").");
   L.push("- "+bd.posture+".");
@@ -5808,7 +5972,7 @@ function mdLite(text){
    shown under Other, never dropped. */
 var REG_CATS=["Source documents","Scenario & commercial","Coverage & locations","Scope & ownership","Complexity & delivery profile","Skills & roles","Transformation & AIOps","Confidence, risk & contingency","Client responsibilities","Calibration & source notes","Other"];
 function regCategoryOf(t){
-  var m=[["Commercial position","Scenario & commercial"],["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
+  var m=[["Commercial position","Scenario & commercial"],["Commercial options","Scenario & commercial"],["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
     ["Coverage","Coverage & locations"],["Delivery location","Coverage & locations"],["Delivery windows","Coverage & locations"],["On-call allowance","Coverage & locations"],["Service responsibility","Scope & ownership"],["Inclusions","Scope & ownership"],
     ["Delivery profile","Complexity & delivery profile"],["Estate complexity","Complexity & delivery profile"],["Special roles","Skills & roles"],["Role & grade staffing plan","Skills & roles"],
     ["AIOps roadmap","Transformation & AIOps"],["Transition, AIOps","Transformation & AIOps"],["Adjacent automation","Transformation & AIOps"],["Confidence posture","Confidence, risk & contingency"],
@@ -6139,6 +6303,7 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
     base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td>'+(cpxOf(S)?'<td class="num">'+fmt(y.cont||0)+'</td>':'')+((S.specialRoles||[]).length?'<td class="num">'+fmt(y.special||0)+'</td>':'')+'<td class="num">'+fmt(y.total)+'</td></tr>').join("")+
     '</tbody></table></section>';
   h+=adjPrintHtml(base,S);
+  h+=cmPrintHtml(base,S);
 
   h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Tier</th><th>Window</th><th>Availability</th><th>Off-hours model</th></tr></thead><tbody>'+
     S.towers.filter(t=>t.enabled).map(t=>{const loc=t.oohModel==="passive"?oohLocationFor(S):null;
@@ -6851,6 +7016,7 @@ function renderCanvas(){
   h+='</div></div>';
 
   h+=adjCard(base);
+  h+=commercialCard(base);
 
   /* coverage */
   h+='<div class="card"><header><h2>Coverage</h2><span class="note">Declared window and off-hours staffing model, per tower.</span></header><div class="cardbody">'+
@@ -7219,6 +7385,7 @@ document.addEventListener("input",e=>{
   const el=e.target;
   if(el.id==="intakeJson"){ clearTimeout(XR_TIMER); XR_TIMER=setTimeout(renderExtractReview,500); return; }
   if(el.dataset && (el.dataset.w||el.dataset.wu||el.dataset.wt)){ winEdit(el); refresh(false); return; }
+  if(el.dataset && el.dataset.cmnum){ const C_=S.eng.cm; C_[el.dataset.cmnum]=(el.value===""||isNaN(+el.value))?null:+el.value; refresh(false); return; }
   if(el.dataset && el.dataset.adjy!=null){ const A_=adjOf(S); if(A_){ A_.y=A_.y||[]; A_.y[+el.dataset.adjy]=(el.value===""||isNaN(+el.value))?null:+el.value; } refresh(false); return; }
   if(el.dataset && el.dataset.p){
     sp(S,el.dataset.p,coerce(el));
@@ -7258,6 +7425,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.cmceil!=null){ const c_=S.eng.cm, A_=S.eng.adj; if(c_.ceiling>0){ A_.on=true; A_.mode="year"; A_.y=A_.y||[]; A_.y[0]=+c_.ceiling; if(!A_.reason) A_.reason="budget"; refresh(true); } return; }
   if(b.dataset.adjadd!=null){ const inp_=document.getElementById("adjNewMit"), A_=adjOf(S); if(A_&&inp_&&inp_.value.trim()){ A_.extra=A_.extra||[]; A_.extra.push({t:inp_.value.trim()}); refresh(false); } return; }
   if(b.dataset.adjrm!=null){ const A_=adjOf(S); if(A_&&A_.extra){ A_.extra.splice(+b.dataset.adjrm,1); refresh(false); } return; }
   const segEl=b.closest("[data-seg]");
