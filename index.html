@@ -235,6 +235,25 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .wtl td.c.gap{background:var(--crit-soft);color:var(--crit);border:1px solid var(--crit)}
 .wleg{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);margin:8px 0}
 .wleg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+/* live coverage strip, kept at the top of the Coverage & delivery windows rail section while editing */
+.winlive{position:sticky;top:0;z-index:5;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:8px 8px 7px;margin:0 0 12px;box-shadow:0 3px 8px rgba(0,0,0,.10)}
+.wm-h{font-size:11.5px;margin-bottom:5px;color:var(--ink-2)}
+.wm-h span{font:10.5px var(--mono);color:var(--ink-3);margin-left:4px}
+.wm-r{display:grid;grid-template-columns:62px minmax(0,1fr);gap:6px;align-items:center;margin:2px 0}
+.wm-l{font-size:10.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wm-b{display:grid;grid-template-columns:repeat(48,1fr);height:12px;border-radius:2px;overflow:hidden;background:var(--sunken);border:1px solid var(--rule-2)}
+.wm-b i{display:block}
+.wm-b i.a{background:var(--good)}
+.wm-b i.o{background:var(--warn)}
+.wm-b i.rqa{background:var(--accent)}
+.wm-b i.rqo{background:var(--accent-soft)}
+.wm-b i.gap{background:var(--crit)}
+.wm-ticks{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));font:9px var(--mono);color:var(--ink-3)}
+.wm-leg{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10.5px;color:var(--ink-3);margin-top:5px}
+.wm-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.wm-sum{font-size:11px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.wm-bad{color:var(--crit)}
+.wm-ok{color:var(--good)}
 .wloc{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;background:var(--sunken)}
 .wloc .whead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-weight:600}
 .wrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:5px 0;border-top:1px dashed var(--rule)}
@@ -4204,6 +4223,9 @@ function selfTests(){
     const T2w=tw(T=>{ T.eng.region="eu"; T.eng.win={tz:0,start:0,biz:9,locs:{eu:{onshore:{utc:0,w:[{id:"a",m:"active",s:0,e:12}]},nearshore:{utc:0,w:[{id:"b",m:"active",s:10,e:22}]},offshore:{utc:0,w:[]}}}}; });
     S=T2w; let C2; try{ C2=winCoverage(winEffective(T2w)); }finally{ S=Sx; }
     out.push({n:"Delivery windows: two locations overlapping by 2 h leave 2 h uncovered",exp:"overlap 2 h, gap 2 h",got:fmt(C2.overlapH)+" h overlap, "+fmt(C2.gapH)+" h gap",ok:near(C2.overlapH,2,0.01)&&near(C2.gapH,2,0.01)&&C2.gaps.length===1});
+    { S=T2w; let M2; try{ const E2=winEffective(T2w); M2=winMini(E2,winCoverage(E2)); }finally{ S=Sx; }
+      const nGap=(M2.match(/<i class="gap">/g)||[]).length, nBar=(M2.match(/class="wm-b"/g)||[]).length;
+      out.push({n:"Delivery windows: the live strip beside the controls marks the uncovered hours",exp:"4 half-hour cells (2 h) marked uncovered, a bar for Needs, each location and Uncovered",got:nGap+" uncovered cells, "+nBar+" bars",ok:nGap===4&&nBar===5}); }
     const regs=["ime","eu","apac","na"], pass=["24x7","16x5","8x5"];
     let autoOk=true, autoGot=[];
     regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
@@ -4890,7 +4912,7 @@ function renderRail(){
       '<button class="btn" type="button" data-add="IMS">+ IMS</button>'+
       '<button class="btn" type="button" data-add="DMS">+ DMS</button></div></div>';
   h+=sec("tow","Service towers",tw,true);
-  h+=sec("win","Coverage & delivery windows",'<p class="hint">Each tower\'s service tier preset, coverage window and off-hours model, then the delivery locations\' working windows. The windows below are analysis only unless you tick the box in that part.</p>'+covTw+'<h4 class="covh">Delivery windows by location</h4>'+renderWinRail(),!!S.eng.win);
+  h+=sec("win","Coverage & delivery windows",'<p class="hint">Each tower\'s service tier preset, coverage window and off-hours model, then the delivery locations\' working windows. The windows below are analysis only unless you tick the box in that part. The strip below redraws as you change anything here.</p><div class="winlive" id="winLive">'+(function(){ var E_=winEffective(S); return winMini(E_,winCoverage(E_)); })()+'</div>'+covTw+'<h4 class="covh">Delivery windows by location</h4>'+renderWinRail(),!!S.eng.win);
   h+=sec("seniority","Seniority mix",renderSeniorityRail());
 
   h+=sec("special","Special roles",renderSpecialRail(),(S.specialRoles||[]).length>0);
@@ -5744,10 +5766,31 @@ function winCard(){
   h+='<div class="tablewrap" style="margin-top:8px">'+winMixTable(E,C)+'</div><p class="hint">Where the share of active hours differs from the location mix by more than 10 points it is shown in orange: the windows and the mix tell different stories.</p>';
   return h+'</div></div>';
 }
+/* A compact version of the timeline for the rail: one 48-cell bar per row, on the customer clock from the window start. */
+function winMini(E,C){
+  var st=Math.round(wMod(E.start)*2)%48, W=48, j;
+  var bar=function(fn){ var o=""; for(j=0;j<W;j++) o+='<i class="'+fn((st+j)%W)+'"></i>'; return '<div class="wm-b">'+o+'</div>'; };
+  var row=function(label,tip,body){ return '<div class="wm-r"><div class="wm-l" title="'+esc(tip||label)+'">'+esc(label)+'</div>'+body+'</div>'; };
+  var ticks=""; for(j=0;j<24;j+=3) ticks+='<span>'+wClock(wMod(wMod(E.start)+j))+'</span>';
+  var h='<div class="wm-h"><b>Live coverage</b> on the customer clock<span>'+wUtc(E.tz)+'</span></div>'+
+    '<div class="wm-r"><div class="wm-l"></div><div class="wm-ticks">'+ticks+'</div></div>'+
+    row("Needs","Hours that need active staff (solid) or on-call cover (pale)",bar(function(k){ return C.reqA[k]?"rqa":C.reqW[k]?"rqo":""; }));
+  C.rows.forEach(function(r){ h+=row(r.label,r.label+" "+wUtc(r.utc),bar(function(k){ return r.a[k]?"a":r.o[k]?"o":""; })); });
+  if(C.gapH>0) h+=row("Uncovered","Hours with no one active or on call",bar(function(k){ return C.reqW[k]&&!C.state[k]?"gap":""; }));
+  var s='<b>'+fmt(C.activeH)+'</b> of '+fmt(C.reqActH)+' h active covered';
+  if(!E.need.activeAll) s+=' &middot; <b>'+fmt(C.oncCoveredH)+'</b> of '+fmt(C.reqOncH)+' h off-hours covered';
+  s+=C.gapH>0?' &middot; <b class="wm-bad">'+fmt(C.gapH)+' h uncovered ('+C.gaps.map(function(g){return wClock(g[0])+"-"+wClock(g[1]);}).join(", ")+')</b>':' &middot; <span class="wm-ok">no gap</span>';
+  if(C.overlapH>0) s+=' &middot; '+fmt(C.overlapH)+' h overlap';
+  return h+'<div class="wm-leg"><span><i style="background:var(--good)"></i>Active</span><span><i style="background:var(--warn)"></i>On call</span><span><i style="background:var(--accent)"></i>Needs active</span><span><i style="background:var(--crit)"></i>Uncovered</span></div><div class="wm-sum">'+s+'</div>';
+}
+function winLiveUpdate(){
+  var el=document.getElementById("winLive"); if(!el) return;
+  var E=winEffective(S); el.innerHTML=winMini(E,winCoverage(E));
+}
 function winRailTz(){ return ""; }
 function renderWinRail(){
   var E=winEffective(S), n=E.need, C=winCoverage(E);
-  var h='<p class="hint">Set the customer time zone, then each location\'s UTC offset and working windows in its own local time. The timeline in the results shows active hours, on-call hours, gaps and overlap. By default this is analysis only; tick the box below to let the windows scale the coverage floor.</p>'+
+  var h='<p class="hint">Set the customer time zone, then each location\'s UTC offset and working windows in its own local time. The live strip at the top of this section shows active hours, on-call hours, gaps and overlap as you edit; the full table with times is in the results. By default this is analysis only; tick the box below to let the windows scale the coverage floor.</p>'+
     chk("eng.winDrive","Let these windows set the coverage floor")+
     '<p class="hint">Off: nothing changes. On, with windows set below: the floor is scaled by the staffed hours the windows give (overlap and extra hours raise it, uncovered hours lower it) against the declared window, with on-call hours counted at the on-call allowance. The location mix is never changed. <span class="flag">proposed</span></p>'+
     '<div class="field"><label>Customer time zone, UTC offset</label><input type="number" step="0.5" min="-12" max="14" data-w="tz" value="'+E.tz+'"></div>'+
@@ -6906,6 +6949,7 @@ function renderCanvas(){
 let raf=null;
 function refresh(structural){
   if(structural) renderRail();
+  winLiveUpdate();
   // setTimeout, not requestAnimationFrame: rAF is throttled to zero in a hidden or
   // background tab, which would leave the results pane blank until the tab is focused.
   if(raf) clearTimeout(raf);
