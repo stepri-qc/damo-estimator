@@ -254,6 +254,17 @@ textarea.reg{min-height:260px;font-family:var(--mono);font-size:11.5px;line-heig
 .wm-sum{font-size:11px;color:var(--ink-2);margin-top:4px;line-height:1.45}
 .wm-bad{color:var(--crit)}
 .wm-ok{color:var(--good)}
+.adjtbl td.hot{color:var(--crit);font-weight:650}
+.adjtbl td.warm{color:var(--warn);font-weight:650}
+.adjsev{display:inline-block;font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:3px;margin-right:6px}
+.adjsev.high{background:var(--crit-soft);color:var(--crit)}
+.adjsev.medium{background:var(--warn-soft);color:var(--warn)}
+.adjsev.low{background:var(--sunken);color:var(--ink-2)}
+.adjrisk{margin:0 0 8px;font-size:13px;line-height:1.5}
+.adjmit{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;margin:6px 0}
+.adjmit input[type=text]{width:100%}
+.adjmit small{display:block;color:var(--ink-3);font-size:11px;margin-top:2px}
+.adjyears{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
 .wloc{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;background:var(--sunken)}
 .wloc .whead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-weight:600}
 .wrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:5px 0;border-top:1px dashed var(--rule)}
@@ -443,6 +454,8 @@ function defaults(){return{
     // Y1 / Y2+ contingency and a promotion of the severity mix toward P1/P2 (see
     // bench.cpx). contPct / cont2 are optional overrides (null = take the tier's value).
     complexity:"", contPct:null, cont2:null,
+    // PROPOSED - editable final number (commercial position): a % change or a proposed FTE per year, with a reason; see adjDeltas().
+    adj:{on:false,mode:"pct",pct:0,y:[],reason:"",note:"",mit:{},extra:[]},
     // PROPOSED - observed pass-through for THIS deal (percent, null = use the benchmark): the share
     // of tickets reaching a tier that are escalated to the next (L1->L2, L2->L3). Y1 takes the
     // value; later years keep the benchmark's own year-on-year improvement (see passAt).
@@ -487,6 +500,8 @@ function defaults(){return{
     p12:[0.70,0.65,0.60],
     p23:[0.20,0.20,0.15],
     util:0.85,                 // [F 1.1] 85%; guardrail G6 says 80-85%
+    // PROPOSED - thresholds for the risks raised when the final number is edited (implied utilisation amber / red, share of contingency left)
+    adj:{utilAmber:0.90,utilRed:1.00,contWarn:0.5},
     hoursMonth:160,            // [F p3 illustration]. Scenario 3 Step 1 says 150 - see conflict note.
     shiftsPerFTE:5,            // [F p3]
     oohOnCallFactor:0.15,      // PROPOSED - on-call off-hours costs ~15% of a dedicated shift
@@ -646,6 +661,8 @@ function seedRoles(st){
     if(e2.contPct===undefined||e2.contPct==="") e2.contPct=null;
     if(e2.cont2===undefined||e2.cont2==="") e2.cont2=null;
     ["pass12","pass23","incumbentFTE"].forEach(k=>{ if(e2[k]===undefined||e2[k]===""||isNaN(+e2[k])) e2[k]=null; });
+    if(!e2.adj||typeof e2.adj!=="object") e2.adj=defaults().eng.adj;
+    e2.adj=Object.assign({},defaults().eng.adj,e2.adj); if(!Array.isArray(e2.adj.y)) e2.adj.y=[]; if(!e2.adj.mit||typeof e2.adj.mit!=="object") e2.adj.mit={}; if(!Array.isArray(e2.adj.extra)) e2.adj.extra=[];
   }
   if(st){
     // calculator/outcome/transition arrived after links were already being shared;
@@ -1257,6 +1274,164 @@ function crAreAvg(t,B,S){
 
 /* Core run. opts.aiops overrides the toggle (for the traditional-vs-AI comparison).
    opts.sample supplies Monte-Carlo multipliers. opts.routing overrides the matrix. */
+/* ---------- editable final number (commercial position) ----------
+   The engine keeps the modelled team and, once a reason is chosen, applies a management adjustment on top: a % change or a
+   proposed FTE for each year. The cut comes out of contingency first, then the delivery team (so the SDM, roles and
+   locations all follow); special roles and AIOps engineers are not cut. Nothing is overwritten: each year keeps adj.modelled.
+   The no-AIOps comparison run gets the same cut on its total only, so savings keep meaning the same thing. Effort only. */
+var ADJ_REASONS=[["budget","Client budget constraint"],["ptw","Price to win"],["comp","Competitive position"],["scope","Scope reduced"],["ai","Stronger AI or automation commitment"],["strat","Strategic investment in the account"],["other","Other (explain in the note)"]];
+var ADJ_MITS=[
+ {id:"vol",t:"Volume band and change-control clause: re-price or re-baseline if volumes move outside the band.",r:["util","cont","scope","exist","cap"]},
+ {id:"ramp",t:"Phase the reduction: hold the modelled team through hypercare and step down once volumes are proven.",r:["util","floor","cont"]},
+ {id:"rev",t:"Agree a joint review after 90 days, with the right to re-baseline on real ticket data.",r:["util","scope","exist","cap","ai"]},
+ {id:"win",t:"Relax the window or the off-hours model (for example Active-Active to Active-Passive, or fewer hours) so the coverage floor falls.",r:["floor","util"]},
+ {id:"l1",t:"Client keeps L1, or a shared service desk, so the provider's team excludes it.",r:["floor","util"]},
+ {id:"cr",t:"Cap the enhancement and change-request pool; anything above the cap is a separate change request.",r:["util","scope"]},
+ {id:"sla",t:"Agree SLA relaxations, or service credits capped as a share of fees, until baselines are proven.",r:["floor","util"]},
+ {id:"res",t:"Hold a client-visible risk reserve outside the price, with agreed drawdown rules.",r:["cont","cap"]},
+ {id:"ai",t:"Commit AIOps deflection only from the year the scenario supports, with credits at risk if it is missed; share the benefit through gain-share.",r:["ai"]},
+ {id:"shadow",t:"Extend shadowing with the existing team and agree a transition assurance plan.",r:["exist"]},
+ {id:"just",t:"Show the extra capacity as a named investment (for example hypercare or transformation), not as unexplained buffer.",r:["above"]}
+];
+function adjOf(St){ var a=St&&St.eng&&St.eng.adj; return (a&&typeof a==="object")?a:null; }
+function adjReasonLabel(k){ var r=ADJ_REASONS.filter(function(x){return x[0]===k;})[0]; return r?r[1]:""; }
+/* FTE to take out of each year (negative = add), or null when nothing applies */
+function adjDeltas(St){
+  var A=adjOf(St); if(!(A&&A.on&&A.reason)) return null;
+  var m=runEngine(St,{noAdj:true}), any=false;
+  var d=m.years.map(function(y,i){
+    var cut=0;
+    if(A.mode==="year"){ var v=A.y&&A.y[i]; if(v!=null&&v!==""&&!isNaN(+v)) cut=y.total-(+v); }
+    else cut=y.total*(+A.pct||0)/100;
+    if(Math.abs(cut)>1e-9) any=true; return cut; });
+  return any?d:null;
+}
+function adjMitOn(A,id){ var m=A&&A.mit&&A.mit[id]; return !(m&&m.on===false); }
+function adjMitText(A,m){ var o=A&&A.mit&&A.mit[m.id]; return (o&&o.text)?o.text:m.t; }
+/* risks raised by the numbers themselves */
+function adjRisks(St,base){
+  var A=adjOf(St), B=St.bench, ad=B.adj||{}, out=[], ys=base.years.filter(function(y){return y.adj;});
+  if(!A||!ys.length) return out;
+  var cutYs=ys.filter(function(y){return y.adj.cut>1e-9;}), f1=function(v){return (Math.round(v*10)/10).toFixed(1);};
+  var amber=+ad.utilAmber||0.9, red=+ad.utilRed||1.0, contWarn=(ad.contWarn!=null&&ad.contWarn!=="")?+ad.contWarn:0.5, u0=+B.util||0.85;
+  if(cutYs.length){
+    var wu=null; cutYs.forEach(function(y){ var u=u0*y.adj.deliveryModelled/Math.max(y.delivery,1e-9); if(!wu||u>wu.u) wu={u:u,y:y.y}; });
+    if(wu&&wu.u>=amber-1e-9) out.push({id:"util",sev:wu.u>=red?"high":"medium",title:"The team runs hotter than planned",
+      detail:"Implied utilisation reaches "+Math.round(wu.u*100)+"% in Y"+wu.y+", against the "+Math.round(u0*100)+"% planning assumption. Above about "+Math.round(amber*100)+"% queues build up and SLAs slip."});
+    var fl=null; cutYs.forEach(function(y){ if(y.floorDelivery>0&&y.delivery<y.floorDelivery-1e-9){ var fr=y.delivery/y.floorDelivery; if(!fl||fr<fl.fr) fl={fr:fr,y:y.y,need:y.floorDelivery,have:y.delivery}; } });
+    if(fl) out.push({id:"floor",sev:"high",title:"Below the coverage floor",
+      detail:"In Y"+fl.y+" the proposed delivery team is "+f1(fl.have)+" FTE against "+f1(fl.need)+" needed to roster the declared window, so about "+Math.round((1-fl.fr)*100)+"% of the window's staffed hours cannot be covered without overtime or on-call."});
+    var cu=null; cutYs.forEach(function(y){ if(y.adj.contModelled>1e-9){ var left=y.cont/y.adj.contModelled; if(left<contWarn-1e-9&&(!cu||left<cu.left)) cu={left:left,y:y.y,cont:y.cont,mod:y.adj.contModelled}; } });
+    if(cu) out.push({id:"cont",sev:cu.left<=1e-9?"high":"medium",title:cu.left<=1e-9?"Contingency fully used":"Contingency largely used",
+      detail:"Y"+cu.y+" keeps "+f1(cu.cont)+" of "+f1(cu.mod)+" FTE of modelled contingency, so there is little room for volume or complexity surprises."});
+    var inc=+St.eng.incumbentFTE;
+    if(inc>0){ var ex=ys.filter(function(y){return y.y<=2&&y.total<inc*0.85&&y.adj.modelled>=inc*0.85;})[0];
+      if(ex) out.push({id:"exist",sev:"medium",title:"Well below the existing team",detail:"Y"+ex.y+" is "+f1(ex.total)+" FTE against an existing team of "+f1(inc)+" ("+Math.round((1-ex.total/inc)*100)+"% lower). The client will ask how the work is covered."}); }
+    out.push({id:"scope",sev:"medium",title:"Capacity falls but the scope does not",detail:"The contract scope, SLAs and volume assumptions stay as written while capacity falls, so any growth or extra work lands on the provider."});
+    if(A.reason==="ai") out.push({id:"ai",sev:"medium",title:"Relies on faster AI or automation savings",detail:"The reduction assumes AI or automation delivers more, or earlier, than the scenario supports. If the savings arrive late the gap is unfunded."});
+  }
+  if(ys.some(function(y){return y.adj.capped;})) out.push({id:"cap",sev:"high",title:"Requested cut is larger than the team it comes from",detail:"The reduction exceeds the delivery team plus contingency in at least one year, so it was capped there. Special roles and AIOps engineers are not cut."});
+  if(ys.some(function(y){return y.adj.cut<-1e-9;})) out.push({id:"above",sev:"low",title:"Proposed number is above the modelled team",detail:"The extra capacity is not driven by the inputs. Be ready to explain it, or the price may lose against leaner bids."});
+  return out;
+}
+function adjMitList(St,risks){
+  var ids={}; risks.forEach(function(r){ ids[r.id]=1; });
+  return ADJ_MITS.filter(function(m){ return m.r.some(function(x){return ids[x];}); });
+}
+function adjYearsHtml(base,forPrint){
+  var h='<table'+(forPrint?'':' class="adjtbl"')+'><thead><tr><th>Year</th><th class="num">Modelled</th><th class="num">Proposed</th><th class="num">Change</th><th class="num">From contingency</th><th class="num">From delivery team</th><th class="num">Implied utilisation</th></tr></thead><tbody>';
+  var u0=+S.bench.util||0.85, ad=S.bench.adj||{}, amber=+ad.utilAmber||0.9, red=+ad.utilRed||1.0;
+  base.years.forEach(function(y){
+    if(!y.adj){ h+='<tr><td>Y'+y.y+'</td><td class="num">'+fmt(y.total)+'</td><td class="num">'+fmt(y.total)+'</td><td class="num" colspan="4">unchanged</td></tr>'; return; }
+    var ch=y.total-y.adj.modelled, pc=y.adj.modelled?ch/y.adj.modelled*100:0, u=u0*y.adj.deliveryModelled/Math.max(y.delivery,1e-9);
+    h+='<tr><td>Y'+y.y+'</td><td class="num">'+fmt(y.adj.modelled)+'</td><td class="num"><b>'+fmt(y.total)+'</b></td><td class="num">'+(ch>0?"+":"")+fmt(ch)+' ('+(pc>0?"+":"")+fmt(pc,1)+'%)</td>'+
+      '<td class="num">'+fmt(-y.adj.fromCont)+'</td><td class="num">'+fmt(-y.adj.fromDel)+'</td><td class="num '+(u>=red-1e-9?"hot":u>=amber-1e-9?"warm":"")+'">'+Math.round(u*100)+'%</td></tr>';
+  });
+  return h+'</tbody></table>';
+}
+function adjCard(base){
+  var A=adjOf(S); if(!A||!A.on) return "";
+  var anyAdj=base.years.some(function(y){return y.adj;});
+  var h='<div class="card"><header><h2>Final number and commercial position</h2><span class="pill '+(anyAdj?"warn":"")+'">'+(anyAdj?"ADJUSTED":"NOT APPLIED")+'</span>'+
+    '<span class="note">The modelled team is kept; the proposed number is what the rest of the estimate uses. Effort only.</span></header><div class="cardbody">';
+  if(!A.reason){ h+='<div class="callout" style="border-left-color:var(--crit)"><b>Not applied yet.</b> Choose a reason under Commercial position in the rail. The number does not change until a reason is on record.</div></div></div>'; return h; }
+  if(!anyAdj){ h+='<div class="callout acc">No change entered. Set a % reduction or a proposed FTE for a year in the rail.</div></div></div>'; return h; }
+  h+='<div class="tablewrap">'+adjYearsHtml(base,false)+'</div>';
+  h+='<p class="hint" style="margin:8px 0 12px"><b>Reason:</b> '+esc(adjReasonLabel(A.reason))+(A.note?'. '+esc(A.note):'')+'. The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut. The Customer summary shows the proposed number only.</p>';
+  var risks=adjRisks(S,base);
+  if(risks.length){
+    h+='<h3 style="font-size:13px;margin:6px 0">Risks this creates</h3>'+risks.map(function(r){ return '<p class="adjrisk"><span class="adjsev '+r.sev+'">'+r.sev+'</span><b>'+esc(r.title)+'.</b> '+esc(r.detail)+'</p>'; }).join("");
+    h+='<h3 style="font-size:13px;margin:14px 0 4px">Mitigations</h3><p class="hint" style="margin:0 0 6px">Ticked ones go into the register. Edit the wording or add your own.</p>';
+    adjMitList(S,risks).forEach(function(m){
+      var tags=m.r.filter(function(x){return risks.some(function(r){return r.id===x;});});
+      h+='<div class="adjmit"><input type="checkbox" data-adjmit="'+m.id+'" '+(adjMitOn(A,m.id)?"checked":"")+' aria-label="Include this mitigation"><div><input type="text" data-adjmit-t="'+m.id+'" value="'+esc(adjMitText(A,m))+'"><small>For: '+tags.map(function(x){var r=risks.filter(function(q){return q.id===x;})[0]; return esc(r.title.toLowerCase());}).join("; ")+'</small></div></div>';
+    });
+  }
+  (A.extra||[]).forEach(function(x,i){ h+='<div class="adjmit"><span></span><div style="display:flex;gap:6px"><input type="text" data-adjextra-t="'+i+'" value="'+esc(x.t||"")+'"><button type="button" class="btn" data-adjrm="'+i+'" style="font-size:11.5px;padding:3px 8px">Remove</button></div></div>'; });
+  h+='<div class="adjmit"><span></span><div style="display:flex;gap:6px"><input type="text" id="adjNewMit" placeholder="Add your own mitigation"><button type="button" class="btn" data-adjadd="1" style="font-size:11.5px;padding:3px 10px">Add</button></div></div>';
+  return h+'</div></div>';
+}
+function adjLiveHtml(St){
+  var A=adjOf(St); if(!A||!A.on) return "";
+  if(!A.reason) return '<div class="callout" style="border-left-color:var(--crit)"><b>Not applied yet.</b> Choose a reason first. The number does not change until one is on record.</div>';
+  var m=runEngine(St,{noAdj:true}), p=runEngine(St,{}), ys=p.years.filter(function(y){return y.adj;});
+  if(!ys.length) return '<p class="hint">No change entered. The modelled number stands.</p>';
+  var nr=adjRisks(St,p).length;
+  return '<div class="callout acc"><b>'+ys.map(function(y){return "Y"+y.y+" "+fmt(y.adj.modelled)+" &rarr; "+fmt(y.total);}).join("; ")+' FTE.</b> '+nr+' risk'+(nr===1?"":"s")+' flagged; see Final number and commercial position in the results.</div>';
+}
+function adjLiveUpdate(){ var el=document.getElementById("adjLive"); if(!el) return; el.innerHTML=adjLiveHtml(S); }
+function renderAdjRail(){
+  var A=adjOf(S)||defaults().eng.adj, T=S.eng.term, m=runEngine(S,{noAdj:true});
+  var h='<p class="hint">Set a proposed final number for the deal (client budget, price to win) and keep the modelled one beside it. The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut. A reason is required before it counts.</p>'+
+    chk("eng.adj.on","Adjust the final number");
+  if(A.on){
+    h+='<div class="field"><label>How to set it</label>'+seg("eng.adj.mode",[["pct","% change"],["year","Per year"]])+'</div>';
+    if(A.mode==="year"){
+      h+='<div class="field"><label>Proposed FTE a year (blank keeps the modelled number)</label><div class="adjyears">'+
+        m.years.map(function(y,i){ var v=A.y&&A.y[i]; return '<label style="font-size:11.5px">Y'+y.y+'<input type="number" step="0.1" min="0" data-adjy="'+i+'" value="'+((v==null||v==="")?"":v)+'" placeholder="'+fmt(y.total)+'"></label>'; }).join("")+'</div></div>';
+    }else{
+      h+=num("eng.adj.pct","Reduce the final number by % (negative adds)",0.5);
+    }
+    h+='<div class="field"><label>Reason (required)</label><select data-p="eng.adj.reason"><option value="">Choose a reason</option>'+ADJ_REASONS.map(function(r){return '<option value="'+r[0]+'" '+(A.reason===r[0]?"selected":"")+'>'+esc(r[1])+'</option>';}).join("")+'</select></div>'+
+      '<div class="field"><label>Note (optional)</label><textarea data-p="eng.adj.note" rows="2" style="width:100%" placeholder="For example: client cap of 30 FTE in Year 1">'+esc(A.note||"")+'</textarea></div>'+
+      '<div id="adjLive">'+adjLiveHtml(S)+'</div>';
+  }
+  return h;
+}
+function adjRegisterLines(base,L,St){
+  var A=adjOf(St), ys=base.years.filter(function(y){return y.adj;}); if(!A||!ys.length) return;
+  L.push("## Commercial position: adjusted final number");
+  L.push("- The modelled team is kept; the proposed number below is what this estimate uses. Reason: **"+adjReasonLabel(A.reason)+"**"+(A.note?" \u2014 "+A.note:"")+". The cut comes out of contingency first, then the delivery team; special roles and AIOps engineers are not cut.");
+  base.years.forEach(function(y){
+    if(y.adj){ var ch=y.total-y.adj.modelled; L.push("- Y"+y.y+": modelled "+fmt(y.adj.modelled)+" FTE, proposed **"+fmt(y.total)+"** FTE ("+(ch>0?"+":"")+fmt(ch)+", "+fmt(y.adj.modelled?ch/y.adj.modelled*100:0,1)+"%)."); }
+    else L.push("- Y"+y.y+": unchanged at "+fmt(y.total)+" FTE.");
+  });
+  var risks=adjRisks(St,base);
+  risks.forEach(function(r){ L.push("- Risk ["+r.sev+"] **"+r.title+"**: "+r.detail); });
+  adjMitList(St,risks).filter(function(m){return adjMitOn(A,m.id);}).forEach(function(m){ L.push("- Mitigation: "+adjMitText(A,m)); });
+  (A.extra||[]).forEach(function(x){ if(x.t) L.push("- Mitigation: "+x.t); });
+  L.push("- This section is internal. The Customer summary shows the proposed number only.");
+  L.push("");
+}
+function adjPrintHtml(base,St){
+  var A=adjOf(St), ys=base.years.filter(function(y){return y.adj;}); if(!A||!ys.length) return "";
+  var risks=adjRisks(St,base), mits=adjMitList(St,risks).filter(function(m){return adjMitOn(A,m.id);});
+  return '<section><h2>Final number and commercial position</h2><p style="font-size:11px;margin:0 0 4px">Reason: '+esc(adjReasonLabel(A.reason))+(A.note?'. '+esc(A.note):'')+'. Effort only; the cut comes out of contingency first.</p>'+adjYearsHtml(base,true)+
+    (risks.length?'<ul style="font-size:11px;margin:6px 0 0;padding-left:16px">'+risks.map(function(r){return '<li><b>['+r.sev+'] '+esc(r.title)+'.</b> '+esc(r.detail)+'</li>';}).join("")+'</ul>':"")+
+    ((mits.length||(A.extra||[]).length)?'<p style="font-size:11px;margin:6px 0 0"><b>Mitigations:</b></p><ul style="font-size:11px;margin:2px 0 0;padding-left:16px">'+mits.map(function(m){return '<li>'+esc(adjMitText(A,m))+'</li>';}).join("")+(A.extra||[]).filter(function(x){return x.t;}).map(function(x){return '<li>'+esc(x.t)+'</li>';}).join("")+'</ul>':"")+'</section>';
+}
+function adjSheetRows(base,St){
+  var A=adjOf(St), ys=base.years.filter(function(y){return y.adj;}); if(!A||!ys.length) return null;
+  var rows=[["Year","Modelled FTE","Proposed FTE","Change FTE","From contingency","From delivery team","Implied utilisation"]];
+  var u0=+St.bench.util||0.85;
+  base.years.forEach(function(y){ if(y.adj) rows.push(["Y"+y.y,r2(y.adj.modelled),r2(y.total),r2(y.total-y.adj.modelled),r2(-y.adj.fromCont),r2(-y.adj.fromDel),r2(u0*y.adj.deliveryModelled/Math.max(y.delivery,1e-9))]); else rows.push(["Y"+y.y,r2(y.total),r2(y.total),0,0,0,""]); });
+  rows.push([],["Reason",adjReasonLabel(A.reason)],["Note",A.note||""]);
+  var risks=adjRisks(St,base); risks.forEach(function(r){ rows.push(["Risk ["+r.sev+"]",r.title+": "+r.detail]); });
+  adjMitList(St,risks).filter(function(m){return adjMitOn(A,m.id);}).forEach(function(m){ rows.push(["Mitigation",adjMitText(A,m)]); });
+  (A.extra||[]).forEach(function(x){ if(x.t) rows.push(["Mitigation",x.t]); });
+  return rows;
+}
+
 function runEngine(S,opts){
   opts=opts||{};
   const B=S.bench, e=S.eng;
@@ -1266,6 +1441,8 @@ function runEngine(S,opts){
   const towers=S.towers.filter(t=>t.enabled);
   const years=[];
   const WH=(e.winDrive&&e.win)?winHoursOf(S):null;
+  const adjD=opts.noAdj?null:(opts.adjDeltas!==undefined?opts.adjDeltas:adjDeltas(S));
+  const cmpRun=(opts.aiops!=null&&opts.aiops!==e.aiops);   // the no-AIOps comparison run: same cut on the total only
 
   for(let y=1;y<=e.term;y++){
     const yi=Math.min(y,3)-1;                        // benchmarks are Y1 / Y2 / Y3+
@@ -1379,19 +1556,31 @@ function runEngine(S,opts){
     const d=deflectionAt(S2,y,smp.defl);
     const ceil_=towerCeiling(S2);
     const deflCapped = d>0 && Math.abs(d-ceil_)<1e-9;   // automation ceiling is binding, not the curve
-    const delivery=pre*(1-d);
-    const ratio=aiopsRatio(S,delivery);
+    const deliveryM=pre*(1-d);
+    const ratio=aiopsRatio(S,deliveryM);
     // Engineers are phased in with the roadmap, not charged from Y1 regardless: only once
     // deflection is actually non-zero, whether that is the scenario curve's own start year
     // or (in calculator-driving mode) the earliest selected solution's start.
-    const aiopsFTE = (aiopsOn && d>0) ? Math.ceil(delivery/ratio) : 0;
+    const aiopsFTE = (aiopsOn && d>0) ? Math.ceil(deliveryM/ratio) : 0;
     const spc=specialFor(S,y);
     // PROPOSED - contingency as real FTE: % of the delivery team (incl. SDM, before
     // AIOps engineers and special roles), by estate complexity, tapering from Y2. Spread across the
     // delivery tiers (the SDM carries none) so the role/grade plan still sums to Total.
-    const contPct=contPctFor(S,y);
-    const cont=delivery*contPct/100;
-    const total=delivery+aiopsFTE+cont+spc.total;
+    const contPctM=contPctFor(S,y);
+    const contM=deliveryM*contPctM/100;
+    // PROPOSED - editable final number: the cut comes out of contingency first, then the delivery team (SDM, roles and locations follow);
+    // AIOps engineers and special roles are not cut. The comparison run keeps its own team and takes the same cut off its total only.
+    let delivery=deliveryM, cont=contM, contPct=contPctM, adjRec=null, totalShift=0;
+    const cutReq=(adjD&&adjD[y-1])?adjD[y-1]:0;
+    if(Math.abs(cutReq)>1e-9){
+      const pool=deliveryM+contM, cut=Math.min(cutReq,pool), fromCont=cut>0?Math.min(contM,cut):0, fromDel=cut-fromCont;
+      if(cmpRun) totalShift=cut;
+      else{
+        delivery=Math.max(deliveryM-fromDel,0); cont=contM-fromCont; contPct=delivery>0?cont/delivery*100:contPctM;
+        adjRec={modelled:deliveryM+aiopsFTE+contM+spc.total,cutReq:cutReq,cut:cut,fromCont:fromCont,fromDel:fromDel,deliveryModelled:deliveryM,contModelled:contM,capped:cutReq>pool+1e-9};
+      }
+    }
+    const total=delivery+aiopsFTE+cont+spc.total-totalShift;
 
     // role split of the delivery team
     const sh=shapeAt(S,y);
@@ -1406,7 +1595,7 @@ function runEngine(S,opts){
 
     years.push({y:y,yi:yi,rows:rows,vol:vol,tickets:tk,A:A,B:Bh,G:G,
       baseFTE:baseFTE,floor:floor,floorBinds:floorBinds,floorNote:floorNote,oocFac:oocFac,winR:winR,
-      hyper:hyper,engUplift:engUplift,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,cont:cont,contPct:contPct,
+      hyper:hyper,engUplift:engUplift,pre:pre,defl:d,deflCapped:deflCapped,delivery:delivery,ratio:ratio,aiopsFTE:aiopsFTE,cont:cont,contPct:contPct,adj:adjRec,floorDelivery:floor*hyper*(1+engUplift)*(1-d),
       special:spc.total,specialRows:spc.rows,total:total,roles:roles,shape:sh});
   }
 
@@ -1839,7 +2028,7 @@ function o4Run(S){
   const cv=clamp(0.36-0.0032*eff,0.08,0.40);
   const N=clamp(S.optim.mcN|0,200,20000);
   const rand=rng(S.optim.seed|0||1);
-  const T=S.eng.term;
+  const T=S.eng.term, adjD0=adjDeltas(S);
   const acc=[]; for(let y=0;y<T;y++) acc.push([]);
   const driverSpread={vol:[],are:[],defl:[]};
   for(let i=0;i<N;i++){
@@ -1850,7 +2039,7 @@ function o4Run(S){
       defl: triangular(rand(),0.5,1,1.1),      // achieved vs modelled AIOps deflation
       pass: 1+(rand()-0.5)*cv*0.5
     };
-    const r=runEngine(S,{sample:sm});
+    const r=runEngine(S,{sample:sm,adjDeltas:adjD0});
     r.years.forEach((yr,y)=>acc[y].push(yr.total));
     driverSpread.vol.push(sm.vol); driverSpread.are.push(sm.are2); driverSpread.defl.push(sm.defl);
   }
@@ -1860,8 +2049,8 @@ function o4Run(S){
   const basePt=runEngine(S).years.map(y=>y.total);
   const tor=[];
   const probe=(name,key,lo,hi)=>{
-    const a=runEngine(S,{sample:{vol:1,are2:1,are3:1,defl:1,pass:1,[key]:lo}}).years;
-    const b=runEngine(S,{sample:{vol:1,are2:1,are3:1,defl:1,pass:1,[key]:hi}}).years;
+    const a=runEngine(S,{adjDeltas:adjD0,sample:{vol:1,are2:1,are3:1,defl:1,pass:1,[key]:lo}}).years;
+    const b=runEngine(S,{adjDeltas:adjD0,sample:{vol:1,are2:1,are3:1,defl:1,pass:1,[key]:hi}}).years;
     const idx=Math.min(T,3)-1;
     tor.push({name:name,lo:a[idx].total,hi:b[idx].total,base:basePt[idx]});
   };
@@ -2159,6 +2348,7 @@ function buildWorkbook(){
     "Base FTE","Coverage floor","Pre-AIOps FTE","AIOps deflection","Delivery FTE","AIOps FTE","Contingency FTE","Special roles FTE","Total FTE","No-AIOps total","Productivity vs Y1"]]
     .concat(base.years.map((y,i)=>["Y"+y.y,r2(y.vol),r2(y.A),r2(y.B),r2(y.G),r2(y.baseFTE),r2(y.floor),r2(y.pre),r2(y.defl),
       r2(y.delivery),y.aiopsFTE,r2(y.cont||0),r2(y.special||0),r2(y.total),r2(trad.years[i].total),r2(y.prod)]))});
+  { const ar=adjSheetRows(base,S); if(ar) sheets.push({name:"Commercial position",rows:ar}); }
   sheets.push({name:"Tower breakdown (Y1)",rows:[["Tower","Tickets/mo","L1 tickets","L2 tickets","L3 tickets","L1 h","L2 h","L3 h",
     "A (h)","B (h)","G (h)","FTE","L1 owner","L2 owner","L3 owner"]]
     .concat(base.years[0].rows.map(r=>[r.type,r2(r.vol),r2(r.t1),r2(r.t2),r2(r.t3),r2(r.h1),r2(r.h2),r2(r.h3),r2(r.A),r2(r.B),r2(r.G),r2(r.fte),
@@ -4226,6 +4416,47 @@ function selfTests(){
     { S=T2w; let M2; try{ const E2=winEffective(T2w); M2=winMini(E2,winCoverage(E2)); }finally{ S=Sx; }
       const nGap=(M2.match(/<i class="gap">/g)||[]).length, nBar=(M2.match(/class="wm-b"/g)||[]).length;
       out.push({n:"Delivery windows: the live strip beside the controls marks the uncovered hours",exp:"4 half-hour cells (2 h) marked uncovered, a bar for Needs, each location and Uncovered",got:nGap+" uncovered cells, "+nBar+" bars",ok:nGap===4&&nBar===5}); }
+    // editable final number: a proposed number beside the modelled one, with a reason, risks and mitigations
+    { const mk=(mut)=>{ const T=seedRoles(defaults()); T.eng.region="eu"; T.eng.term=3; T.eng.complexity="medium"; mut&&mut(T); return T; };
+      const adj=(o)=>(T)=>{ Object.assign(T.eng.adj,{on:true,reason:"budget"},o); };
+      const T0=mk(), b0=runEngine(T0,{}), mod=b0.years.map(y=>y.total);
+      const Toff=mk(T=>{ T.eng.adj.on=false; T.eng.adj.pct=20; T.eng.adj.reason="budget"; }), Tnr=mk(T=>{ T.eng.adj.on=true; T.eng.adj.pct=20; T.eng.adj.reason=""; });
+      const same=(T)=>runEngine(T,{}).years.every((y,i)=>near(y.total,mod[i],1e-9)&&!y.adj);
+      out.push({n:"Final number: nothing changes while the switch is off or no reason is chosen",exp:"identical totals, no adjustment record",got:(same(Toff)&&same(Tnr))?"identical":"changed",ok:same(Toff)&&same(Tnr)});
+      const Tp=mk(adj({mode:"pct",pct:10})), bp=runEngine(Tp,{});
+      out.push({n:"Final number: a 10% reduction takes 10% off every year and keeps the modelled value",exp:"proposed = 0.9 x modelled; adj.modelled = modelled",got:bp.years.map(y=>fmt(y.total)+" from "+fmt(y.adj?y.adj.modelled:0)).join(" / "),
+        ok:bp.years.every((y,i)=>y.adj&&near(y.total,mod[i]*0.9,1e-6)&&near(y.adj.modelled,mod[i],1e-9))});
+      const y0=b0.years[0], tgt=y0.total-0.5*y0.cont, Tc=mk(adj({mode:"year",y:[tgt]})), yc=runEngine(Tc,{}).years[0];
+      out.push({n:"Final number: a cut smaller than the contingency comes out of the contingency only",exp:"delivery team unchanged, contingency halved, total = target",
+        got:"delivery "+fmt(yc.delivery)+" (was "+fmt(y0.delivery)+"), contingency "+fmt(yc.cont)+" (was "+fmt(y0.cont)+"), total "+fmt(yc.total),
+        ok:near(yc.delivery,y0.delivery,1e-9)&&near(yc.cont,0.5*y0.cont,1e-9)&&near(yc.total,tgt,1e-9)});
+      const yb=bp.years[0], yb0=b0.years[0];
+      out.push({n:"Final number: a larger cut empties the contingency, then the delivery team; special roles and AIOps engineers are untouched; the total still adds up",
+        exp:"contingency 0, delivery lower, AIOps and special equal, total = delivery + AIOps + contingency + special",
+        got:"contingency "+fmt(yb.cont)+", delivery "+fmt(yb.delivery)+" (was "+fmt(yb0.delivery)+")",
+        ok:near(yb.cont,0,1e-9)&&yb.delivery<yb0.delivery&&yb.aiopsFTE===yb0.aiopsFTE&&near(yb.special,yb0.special,1e-9)&&bp.years.every(y=>near(y.total,y.delivery+y.aiopsFTE+y.cont+y.special,1e-9))});
+      const rpA=rolePlan(Tp,bp), consA=rpA.every((p,i)=>Math.abs(sum(GRADES.map(g=>p.gradeTot[g]))-bp.years[i].total)<0.05);
+      out.push({n:"Final number: roles and grades still add up to the proposed total",exp:"grade totals = total FTE each year",got:rpA.map(p=>r1(sum(GRADES.map(g=>p.gradeTot[g])))).join(" / "),ok:consA});
+      const Ty=mk(adj({mode:"year",y:[null,15]})), by=runEngine(Ty,{}).years;
+      out.push({n:"Final number: per-year mode sets only the years you fill in",exp:"Y1 unchanged, Y2 = 15",got:fmt(by[0].total)+" / "+fmt(by[1].total),ok:near(by[0].total,mod[0],1e-9)&&near(by[1].total,15,1e-6)&&!by[0].adj});
+      const Tr=mk(adj({mode:"pct",pct:-10})), br=runEngine(Tr,{});
+      out.push({n:"Final number: a negative change adds capacity and flags it",exp:"1.1 x modelled and an 'above the modelled team' risk",got:br.years.map(y=>fmt(y.total)).join(" / "),
+        ok:br.years.every((y,i)=>near(y.total,mod[i]*1.1,1e-6))&&adjRisks(Tr,br).some(r=>r.id==="above")});
+      const rk20=adjRisks(Tp,runEngine(mk(adj({mode:"pct",pct:20})),{})), rkSmall=adjRisks(Tc,runEngine(Tc,{}));
+      out.push({n:"Final number: implied utilisation is flagged when the team is cut below the work",exp:"20% cut flags utilisation; a cut inside the contingency does not",got:rk20.map(r=>r.id).join(",")+" | "+rkSmall.map(r=>r.id).join(","),
+        ok:rk20.some(r=>r.id==="util")&&!rkSmall.some(r=>r.id==="util")});
+      const Tfl=mk(T=>{ T.towers=[mkTower("AMS")]; T.towers[0].mode="history"; T.towers[0].inc=15; T.towers[0].sr=5; T.towers[0].coverage="24x7"; T.towers[0].oohModel="active"; T.eng.aiops=false; Object.assign(T.eng.adj,{on:true,reason:"ptw",mode:"pct",pct:15}); });
+      const bfl=runEngine(Tfl,{}), rkf=adjRisks(Tfl,bfl);
+      out.push({n:"Final number: a cut below the coverage floor is flagged",exp:"floor risk raised when the floor sets the team",got:rkf.map(r=>r.id).join(",")+" (floor binds: "+bfl.years[0].floorBinds+")",ok:bfl.years[0].floorBinds&&rkf.some(r=>r.id==="floor")});
+      const tradA=runEngine(Tp,{aiops:false}), tradM=runEngine(T0,{aiops:false});
+      out.push({n:"Final number: the AI-versus-traditional saving is the same with or without the adjustment",exp:"traditional minus AIOps total equal in every year",
+        got:bp.years.map((y,i)=>fmt(tradA.years[i].total-y.total)+" vs "+fmt(tradM.years[i].total-b0.years[i].total)).join(" / "),ok:bp.years.every((y,i)=>near(tradA.years[i].total-y.total,tradM.years[i].total-b0.years[i].total,1e-9))});
+      S=Tp; let regA, regOff, custA; try{ regA=buildRegister(bp,null,null,rolePlan(Tp,bp)); regOff=buildRegister(b0,null,null,rolePlan(T0,b0)); custA=buildCustomerReport(Tp,reportData(Tp),{cont:true,bench:true,save:true}); }finally{ S=Sx; }
+      out.push({n:"Final number: the register records the adjustment, and the Customer summary shows only the proposed number",exp:"register has the section with the reason; customer summary has the proposed Y1 and no reason or risks",
+        got:"register "+(/Commercial position/.test(regA)?"yes":"no")+", off "+(/Commercial position/.test(regOff)?"yes":"no")+", customer shows proposed "+(custA.indexOf(fmt(bp.years[0].total))>=0?"yes":"no")+", leaks "+(/Client budget constraint|Commercial position|Mitigation/.test(custA)?"yes":"no"),
+        ok:/Commercial position/.test(regA)&&/Client budget constraint/.test(regA)&&!/Commercial position/.test(regOff)&&custA.indexOf(fmt(bp.years[0].total))>=0&&!/Client budget constraint|Commercial position|Mitigation/.test(custA)});
+      const L0=defaults(); delete L0.eng.adj; const sL=seedRoles(L0), bL=runEngine(sL,{});
+      out.push({n:"Final number: an older link without the adjustment loads with it switched off",exp:"adj present, off, totals unchanged",got:sL.eng.adj?("on="+sL.eng.adj.on):"missing",ok:!!sL.eng.adj&&sL.eng.adj.on===false&&bL.years[0].total>0}); }
     const regs=["ime","eu","apac","na"], pass=["24x7","16x5","8x5"];
     let autoOk=true, autoGot=[];
     regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
@@ -4930,6 +5161,7 @@ function renderRail(){
 
   h+=sec("calc","AIOps efficiency calculator",renderCalcRail(),!!S.aiopsCalc.drive);
   h+=sec("out","Outcome model",renderOutcomeRail());
+  h+=sec("adj","Commercial position",renderAdjRail(),!!(S.eng.adj&&S.eng.adj.on));
 
   let cf=CONF_DRIVERS.map((d,i)=>
     '<div class="scorer"><span>'+esc(d[0])+(i===4?' <span class="flag" title="Auto-seeded from Engagement type">proposed</span>':"")+'</span><span class="w">'+d[1]+'</span>'+
@@ -4971,6 +5203,7 @@ function renderRail(){
       '<tr><td>L2&rarr;L3</td>'+rt("bench.p23.0")+rt("bench.p23.1")+rt("bench.p23.2")+'</tr>'+
       '</tbody></table></div></div>'+
     '<div class="row c2">'+num("bench.util","Utilisation",0.01)+num("bench.hoursMonth","Hours / month",10)+'</div>'+
+    '<div class="field"><label>Edited final number: risk thresholds <span class="flag">proposed</span></label><div class="row c3">'+num("bench.adj.utilAmber","Utilisation amber",0.01)+num("bench.adj.utilRed","Utilisation red",0.01)+num("bench.adj.contWarn","Contingency left",0.05)+'</div></div>'+
     '<p class="hint">[F p3] divides by <b>160</b> hrs/month; [F Sc.3 Step 1] says <b>150</b> productive hrs. The source is inconsistent &mdash; pick deliberately.</p>'+
     '<div class="field"><label>Per-tower multipliers <span class="flag">proposed</span></label>'+
       '<div class="tablewrap bench-tbl"><table><thead><tr><th></th><th>L1</th><th>L2/L3</th><th>B mod</th><th>B leg</th><th>Ceil</th></tr></thead><tbody>'+
@@ -5343,6 +5576,7 @@ function buildRegister(base,mc,o1,rp){
     }
   }
   L.push("");
+  adjRegisterLines(base,L,S);
   L.push("## Confidence posture [F Annexures 1\u20132]");
   L.push("- Weighted driver score "+confScore(S).toFixed(1)+" \u2212 risk drag "+riskDrag(S).toFixed(1)+" = effective "+eff.toFixed(1)+" ("+bd.name+").");
   L.push("- "+bd.posture+".");
@@ -5574,7 +5808,7 @@ function mdLite(text){
    shown under Other, never dropped. */
 var REG_CATS=["Source documents","Scenario & commercial","Coverage & locations","Scope & ownership","Complexity & delivery profile","Skills & roles","Transformation & AIOps","Confidence, risk & contingency","Client responsibilities","Calibration & source notes","Other"];
 function regCategoryOf(t){
-  var m=[["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
+  var m=[["Commercial position","Scenario & commercial"],["Document summary","Source documents"],["Scenario-specific risk log","Confidence, risk & contingency"],["Scenario","Scenario & commercial"],["Sizing outcome","Scenario & commercial"],["Volume band clause","Scenario & commercial"],
     ["Coverage","Coverage & locations"],["Delivery location","Coverage & locations"],["Delivery windows","Coverage & locations"],["On-call allowance","Coverage & locations"],["Service responsibility","Scope & ownership"],["Inclusions","Scope & ownership"],
     ["Delivery profile","Complexity & delivery profile"],["Estate complexity","Complexity & delivery profile"],["Special roles","Skills & roles"],["Role & grade staffing plan","Skills & roles"],
     ["AIOps roadmap","Transformation & AIOps"],["Transition, AIOps","Transformation & AIOps"],["Adjacent automation","Transformation & AIOps"],["Confidence posture","Confidence, risk & contingency"],
@@ -5904,6 +6138,7 @@ function buildPrintReport(S,base,trad,rp,mc,eff,bd,o1,testsInfo){
   h+='<section><h2>Year by year</h2><table><thead><tr><th>Year</th><th class="num">Tickets/mo</th><th class="num">A hrs</th><th class="num">B hrs</th><th class="num">Base FTE</th><th class="num">Deflect</th><th class="num">Delivery</th><th class="num">AIOps</th>'+(cpxOf(S)?'<th class="num">Contingency</th>':'')+((S.specialRoles||[]).length?'<th class="num">Special</th>':'')+'<th class="num">Total FTE</th></tr></thead><tbody>'+
     base.years.map(y=>'<tr><td>Y'+y.y+(y.y===1&&y.hyper>1?" (hypercare)":"")+'</td><td class="num">'+f0(y.vol)+'</td><td class="num">'+f0(y.A)+'</td><td class="num">'+f0(y.B)+'</td><td class="num">'+fmt(y.baseFTE)+'</td><td class="num">'+(y.defl?pct0(y.defl):"\u2013")+'</td><td class="num">'+fmt(y.delivery)+'</td><td class="num">'+y.aiopsFTE+'</td>'+(cpxOf(S)?'<td class="num">'+fmt(y.cont||0)+'</td>':'')+((S.specialRoles||[]).length?'<td class="num">'+fmt(y.special||0)+'</td>':'')+'<td class="num">'+fmt(y.total)+'</td></tr>').join("")+
     '</tbody></table></section>';
+  h+=adjPrintHtml(base,S);
 
   h+='<section><h2>Coverage</h2><table><thead><tr><th>Tower</th><th>Tier</th><th>Window</th><th>Availability</th><th>Off-hours model</th></tr></thead><tbody>'+
     S.towers.filter(t=>t.enabled).map(t=>{const loc=t.oohModel==="passive"?oohLocationFor(S):null;
@@ -6600,7 +6835,7 @@ function renderCanvas(){
       '<td>'+(y.defl?pct0(y.defl)+(y.deflCapped?' <span class="flag">ceiling</span>':''):"\u2013")+'</td><td>'+fmt(y.delivery)+'</td><td>'+y.aiopsFTE+'</td>'+
       (HAS_CX?'<td>'+fmt(y.cont||0)+' <span class="flag">'+fmt(y.contPct,1)+'%</span></td>':'')+
       (HAS_SP?'<td>'+fmt(y.special||0)+'</td>':'')+
-      '<td><b>'+fmt(y.total)+'</b></td><td>'+(y.y===1?"baseline":pct0(y.prod))+'</td></tr>';
+      '<td><b>'+fmt(y.total)+'</b>'+(y.adj?' <span class="flag" title="modelled '+fmt(y.adj.modelled)+' FTE">adjusted</span>':'')+'</td><td>'+(y.y===1?"baseline":pct0(y.prod))+'</td></tr>';
   });
   h+='</tbody></table></div>';
   if(base.years.some(y=>y.deflCapped)){
@@ -6614,6 +6849,8 @@ function renderCanvas(){
        ') requires more people than the ticket workload does. Headcount is set by the support window, not by demand &mdash; the lever is coverage, not volume.</div>';
   h+=y1toY2StepDownNote(base);
   h+='</div></div>';
+
+  h+=adjCard(base);
 
   /* coverage */
   h+='<div class="card"><header><h2>Coverage</h2><span class="note">Declared window and off-hours staffing model, per tower.</span></header><div class="cardbody">'+
@@ -6950,6 +7187,7 @@ let raf=null;
 function refresh(structural){
   if(structural) renderRail();
   winLiveUpdate();
+  adjLiveUpdate();
   // setTimeout, not requestAnimationFrame: rAF is throttled to zero in a hidden or
   // background tab, which would leave the results pane blank until the tab is focused.
   if(raf) clearTimeout(raf);
@@ -6981,6 +7219,7 @@ document.addEventListener("input",e=>{
   const el=e.target;
   if(el.id==="intakeJson"){ clearTimeout(XR_TIMER); XR_TIMER=setTimeout(renderExtractReview,500); return; }
   if(el.dataset && (el.dataset.w||el.dataset.wu||el.dataset.wt)){ winEdit(el); refresh(false); return; }
+  if(el.dataset && el.dataset.adjy!=null){ const A_=adjOf(S); if(A_){ A_.y=A_.y||[]; A_.y[+el.dataset.adjy]=(el.value===""||isNaN(+el.value))?null:+el.value; } refresh(false); return; }
   if(el.dataset && el.dataset.p){
     sp(S,el.dataset.p,coerce(el));
     if(el.type==="range"){ const pts=el.parentElement.querySelector(".pts");
@@ -6996,6 +7235,15 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const el=e.target;
+  if(el.dataset && (el.dataset.adjmit||el.dataset.adjmitT||el.dataset.adjextraT!=null)){
+    const A_=adjOf(S); if(A_){
+      A_.mit=A_.mit||{};
+      if(el.dataset.adjmit){ A_.mit[el.dataset.adjmit]=Object.assign({},A_.mit[el.dataset.adjmit],{on:el.checked}); }
+      else if(el.dataset.adjmitT){ const m_=ADJ_MITS.filter(x=>x.id===el.dataset.adjmitT)[0]; const v_=el.value.trim(); A_.mit[el.dataset.adjmitT]=Object.assign({},A_.mit[el.dataset.adjmitT],{text:(m_&&v_===m_.t)?"":v_}); }
+      else { const i_=+el.dataset.adjextraT; if(A_.extra&&A_.extra[i_]) A_.extra[i_].t=el.value.trim(); }
+    }
+    refresh(false); return;
+  }
   if(el.dataset && el.dataset.scencmp){
     const id=el.dataset.scencmp;
     SCEN_CMP=SCEN_CMP.filter(x=>x!==id);
@@ -7010,6 +7258,8 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.adjadd!=null){ const inp_=document.getElementById("adjNewMit"), A_=adjOf(S); if(A_&&inp_&&inp_.value.trim()){ A_.extra=A_.extra||[]; A_.extra.push({t:inp_.value.trim()}); refresh(false); } return; }
+  if(b.dataset.adjrm!=null){ const A_=adjOf(S); if(A_&&A_.extra){ A_.extra.splice(+b.dataset.adjrm,1); refresh(false); } return; }
   const segEl=b.closest("[data-seg]");
   if(segEl){ let v=b.dataset.v; if(/^-?\d+(\.\d+)?$/.test(v)) v=parseFloat(v);
     if(segEl.dataset.seg==="eng.engagementType") seedEngagementType(S,v);
