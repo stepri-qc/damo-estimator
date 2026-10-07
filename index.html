@@ -4209,6 +4209,10 @@ function selfTests(){
     regs.forEach(r=>pass.forEach(cv=>["active","passive"].forEach(om=>{ const T=seedRoles(defaults()); T.eng.region=r; T.towers.forEach(t=>{t.coverage=cv; t.oohModel=om;});
       S=T; try{ const C=winCoverage(winEffective(T)); if(C.gapH>0.001||C.activeH<C.reqActH-0.001){ autoOk=false; autoGot.push(r+" "+cv+" "+om); } }finally{ S=Sx; } })));
     out.push({n:"Delivery windows: the automatic layout covers every region, window and off-hours model",exp:"no gaps, every required active hour covered",got:autoOk?"all covered":autoGot.slice(0,3).join(", "),ok:autoOk});
+    // towers with different windows together (24x7 Active-Passive plus a 16x5 Active-Active tower) still lay out with no gap
+    { const T=seedRoles(defaults()); T.eng.region="na"; T.towers=[mkTower("AMS"),mkTower("DMS")]; T.towers[0].coverage="24x7"; T.towers[0].oohModel="passive"; T.towers[1].coverage="16x5"; T.towers[1].oohModel="active";
+      S=T; let Cm; try{ Cm=winCoverage(winEffective(T)); }finally{ S=Sx; }
+      out.push({n:"Delivery windows: mixed towers (24x7 Active-Passive with 16x5 Active-Active) lay out with no gap",exp:"no gap, 16 h active covered",got:fmt(Cm.gapH)+" h gap, "+fmt(Cm.activeH)+" of "+fmt(Cm.reqActH)+" h active",ok:Cm.gapH<0.001&&near(Cm.activeH,Cm.reqActH,0.001)}); }
     const Tf0=tw(), Tf1=tw(T=>{ T.eng.win={tz:3,start:2,biz:9,locs:{na:{nearshore:{utc:-5,w:[{id:"a",m:"active",s:1,e:5}]},offshore:{utc:5.5,w:[]}}}}; });
     const f0=runEngine(Tf0,{}).years.map(y=>y.total), f1=runEngine(Tf1,{}).years.map(y=>y.total);
     out.push({n:"Delivery windows never change the FTE",exp:"identical totals with and without custom windows",got:f0.map(v=>fmt(v,2)).join(" / ")+" vs "+f1.map(v=>fmt(v,2)).join(" / "),ok:f0.length===f1.length&&f0.every((v,i)=>near(v,f1[i],1e-9))});
@@ -5623,7 +5627,7 @@ function winAutoFill(St,need,E){
   var rest=need.winH-need.actH;
   if(rest>0){
     var ok=winOohKey(St), car=E.locs.filter(function(l){return l.key===ok;})[0]||live[live.length-1];
-    var pre=Math.min(rest,wMod(actS-E.start)), post=rest-pre; car.w=car.w||[];
+    var pre=need.winH>=24?0:Math.min(rest,wMod(actS-E.start)), post=rest-pre; car.w=car.w||[];
     if(pre>0){ var a1=wMod(E.start+(car.utc-E.tz)); car.w.push({id:"o1-"+car.key,m:"oncall",s:a1,e:a1+pre}); }
     if(post>0){ var a2=wMod(actS+need.actH+(car.utc-E.tz)); car.w.push({id:"o2-"+car.key,m:"oncall",s:a2,e:a2+post}); }
   }
